@@ -6,7 +6,7 @@
 //! Rule: bindings own nothing. Each function converts arguments (zero-copy `NumPy` views),
 //! calls `glasshouse_core`, and maps `GlassError` to `ValueError`. No `if` about numbers here.
 
-use glasshouse_core::{metrics, Family, GlassError};
+use glasshouse_core::{metrics, ranking, Family, GlassError};
 use numpy::PyReadonlyArray1;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -47,9 +47,27 @@ fn d2(
     metrics::d2(fam, y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
 }
 
+/// Gini of the Lorenz curve ranked by `score`. See `glasshouse.metrics.gini`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn gini(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    ranking::gini(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
+/// Gini divided by the perfect-ranking Gini. See `glasshouse.metrics.normalized_gini`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn normalized_gini(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    ranking::normalized_gini(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(deviance, m)?)?;
     m.add_function(wrap_pyfunction!(d2, m)?)?;
+    m.add_function(wrap_pyfunction!(gini, m)?)?;
+    m.add_function(wrap_pyfunction!(normalized_gini, m)?)?;
     Ok(())
 }
