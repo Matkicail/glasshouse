@@ -150,12 +150,74 @@ def binomial_deviance(y: ArrayLike, mu: ArrayLike, sample_weight: ArrayLike | No
     return deviance(y, mu, family="binomial", sample_weight=sample_weight)
 
 
+def gini(y: ArrayLike, score: ArrayLike, sample_weight: ArrayLike | None = None) -> float:
+    """Gini index: how well ``score`` sorts risk from low to high.
+
+    What it is for: pricing, credit, any place you act on the *ordering* of predictions.
+    Rows are ranked by ``score``; the Lorenz curve accumulates exposure (``sample_weight``)
+    on the x-axis and actual ``y`` on the y-axis. Gini is twice the area between that curve
+    and the diagonal: 0 is random order, negative is backwards, and the ceiling depends on how
+    concentrated ``y`` is (see :func:`normalized_gini`). For a 0/1 ``y`` the raw Gini is
+    ``(2 * AUC - 1) * (1 - prevalence)``; the *normalised* one is exactly ``2 * AUC - 1``.
+
+    When it lies: it assumes the data should follow a Lorenz curve, and most data doesn't;
+    it needs sample size; and it is blind to calibration — double every prediction and Gini
+    does not move. In fraud with lots of unlabelled fraud it can look great while missing
+    the real problem: read it next to MCC / PR-AUC and calibration, never alone.
+
+    Parameters
+    ----------
+    y : array-like of shape (n,)
+        Actual outcome per row, ``>= 0`` (claim counts, losses, 0/1 labels).
+    score : array-like of shape (n,)
+        The ranking key: predicted *rate* or probability. Ties are grouped, so row order
+        never matters.
+    sample_weight : array-like of shape (n,), optional
+        Exposure per row, ``> 0``. ``None`` means one unit per row.
+
+    Examples
+    --------
+    >>> from glasshouse.metrics import gini
+    >>> gini([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
+    0.5
+    >>> gini([0, 0, 1, 1], [0.9, 0.8, 0.2, 0.1])
+    -0.5
+    """
+    w = _weights(sample_weight)
+    return float(_core.gini(_f64(y, "y"), _f64(score, "score"), w))
+
+
+def normalized_gini(
+    y: ArrayLike, score: ArrayLike, sample_weight: ArrayLike | None = None
+) -> float:
+    """:func:`gini` of ``score`` divided by the Gini of the perfect ranking. 1 is perfect.
+
+    What it is for: comparing models across datasets or sample sizes. The raw Gini's ceiling
+    depends on how concentrated ``y`` is (a 0.3 can be excellent on sparse claims and poor on
+    a dense target); dividing by the best achievable Gini makes it scale-free, and it is your
+    safety net on noise — the same Kaggle "normalized Gini" used in insurance competitions.
+    For 0/1 labels it is exactly ``2 * AUC - 1`` (the accuracy ratio / Somers' D).
+
+    When it lies: exactly as :func:`gini`; a ratio inherits all of it.
+
+    Examples
+    --------
+    >>> from glasshouse.metrics import normalized_gini
+    >>> normalized_gini([0, 0, 1, 1], [0.1, 0.2, 0.8, 0.9])
+    1.0
+    """
+    w = _weights(sample_weight)
+    return float(_core.normalized_gini(_f64(y, "y"), _f64(score, "score"), w))
+
+
 __all__ = [
     "binomial_deviance",
     "d2",
     "deviance",
     "gamma_deviance",
     "gaussian_deviance",
+    "gini",
+    "normalized_gini",
     "poisson_deviance",
     "tweedie_deviance",
 ]

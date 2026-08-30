@@ -17,3 +17,13 @@ def d2(
     sample_weight: npt.NDArray[np.float64] | None = None,
     power: float | None = None,
 ) -> float: ...
+def gini(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> float: ...
+def normalized_gini(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> float: ...
