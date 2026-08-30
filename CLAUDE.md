@@ -36,6 +36,9 @@ licence MIT OR Apache-2.0.
 - Every metric takes `sample_weight`; offsets are first-class. Weight semantics documented once in
   `docs/methods`, linked, not repeated.
 - The scorecard is a panel, never one number, and always includes the naive baseline row.
+- Leakage is a property of the split, not the transform: datasets declare their kind (random /
+  time / group) at the split; fit-time transforms fit on the training fold only and obey it;
+  target encodings never let a row see its own y. Never auto-detect time series.
 - Seeds and split indices are stored artifacts; benchmark reports are committed and drift-tested.
 
 ## Process rules
