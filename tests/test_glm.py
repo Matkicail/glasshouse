@@ -84,6 +84,25 @@ def test_golden_vs_statsmodels(family: str) -> None:
     assert model.null_deviance_ == pytest.approx(ref.null_deviance, rel=1e-8)
     assert model.dispersion_ == pytest.approx(ref.scale, rel=1e-6)
     assert model.converged_
+    robust = sm.GLM(
+        y,
+        sm.add_constant(X.to_numpy()),
+        family=_sm_family(family, model._link_name(), power),
+        var_weights=w,
+        offset=offset,
+    ).fit(tol=1e-14, maxiter=200, cov_type="HC0")
+    # statsmodels' GLM returns the same numbers for HC0 and HC1 (it skips the n/(n-p)
+    # small-sample factor that defines HC1); ours is the textbook HC1, so scale their HC0.
+    hc1_factor = np.sqrt(N / (N - 4))
+    np.testing.assert_allclose(model.se_robust_, robust.bse * hc1_factor, rtol=1e-6)
+
+
+def test_robust_se_exceed_naive_se_under_overdispersion() -> None:
+    """Negative-binomial counts fitted as Poisson: the model understates uncertainty."""
+    mu = np.exp(ETA.to_numpy())
+    y = rng.negative_binomial(n=1.0, p=1.0 / (1.0 + mu)).astype(float)  # variance mu + mu^2
+    model = GLM(family="poisson").fit(X, y)
+    assert np.all(model.se_robust_ > 1.3 * model.se_)
 
 
 def test_canonical_link_is_balanced_and_predict_matches_fit() -> None:

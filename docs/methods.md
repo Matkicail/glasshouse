@@ -162,6 +162,17 @@ binomial and otherwise the Pearson estimate `Σ w (y − mu)² / V(mu) / (n − 
 deviance is a fresh intercept-only IRLS fit with the same offset and weights. A rank-deficient
 `XᵀWX` is reported with the column index (a relative pivot tolerance of `1e-12`).
 
+**Robust (HC1) covariance** `= (XᵀWX)⁻¹ (Σᵢ sᵢsᵢᵀ) (XᵀWX)⁻¹ · n/(n−p)`, with row score
+`sᵢ = xᵢ · wᵢ (yᵢ − muᵢ) (dmu/deta) / V(muᵢ)`. The dispersion cancels, so these stand even when
+the variance function is wrong (over-dispersed counts fitted as Poisson). Note: statsmodels'
+GLM reports identical numbers for `HC0` and `HC1` — it omits the `n/(n−p)` factor — so the
+golden test scales its `HC0` by `√(n/(n−p))`; R's `sandwich::vcovHC(type = "HC1")` agrees with
+ours. Reference: MacKinnon & White, "Some heteroskedasticity-consistent covariance matrix
+estimators with improved finite sample properties", *J. Econometrics* 29 (1985).
+
+AIC/BIC are deliberately not provided yet: they need the full per-family log-likelihood
+(log-gamma terms; none in closed form for Tweedie), and the scorecard compares on deviance.
+
 References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized Linear Models",
 *JRSS A* 135 (1972). Golden reference: `statsmodels.GLM` with `var_weights` and `offset`.
 

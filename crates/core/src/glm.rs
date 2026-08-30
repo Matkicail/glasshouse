@@ -53,6 +53,10 @@ pub struct GlmFit {
     pub dispersion: f64,
     /// `dispersion * (X' W X)^{-1}` at convergence, row-major `p x p`.
     pub cov: Vec<f64>,
+    /// HC1 sandwich covariance `(X'WX)^{-1} (sum_i s_i s_i') (X'WX)^{-1} * n/(n-p)`, where
+    /// `s_i = x_i * w_i (y_i - mu_i) (dmu/deta) / V(mu_i)` is row i's score. Robust to a
+    /// mis-specified variance function (over-dispersion); the dispersion cancels out.
+    pub cov_robust: Vec<f64>,
     pub n_rows: usize,
     pub n_features: usize,
     pub iterations: usize,
@@ -138,6 +142,7 @@ pub fn fit(
         pearson / dof
     };
     let cov = inv.data.iter().map(|v| v * dispersion).collect();
+    let cov_robust = sandwich(family, link, data, &state.eta, &state.mu, &inv);
 
     // the intercept-only model with the same offset and weights: what a model must beat
     let ones = vec![1.0; data.n_rows];
@@ -161,6 +166,7 @@ pub fn fit(
         null_deviance: null.deviance,
         dispersion,
         cov,
+        cov_robust,
         n_rows: data.n_rows,
         n_features: data.n_features,
         iterations: state.trace.len(),
@@ -272,6 +278,47 @@ fn irls(
         }
     }
     Ok(state)
+}
+
+/// HC1: `B = sum_i s_i s_i'`, then `inv B inv * n / (n - p)`.
+fn sandwich(
+    family: Family,
+    link: Link,
+    data: Data<'_>,
+    eta: &[f64],
+    mu: &[f64],
+    inv: &Square,
+) -> Vec<f64> {
+    let p = data.n_features;
+    let mut meat = Square::zeros(p);
+    for i in 0..data.n_rows {
+        let score_i =
+            data.weight(i) * (data.y[i] - mu[i]) * link.mu_eta(eta[i]) / family.variance(mu[i]);
+        let row = data.row(i);
+        for a in 0..p {
+            for b in 0..p {
+                let v = meat.get(a, b) + score_i * score_i * row[a] * row[b];
+                meat.set(a, b, v);
+            }
+        }
+    }
+    // inv * meat * inv
+    let mut tmp = Square::zeros(p);
+    for a in 0..p {
+        for b in 0..p {
+            let v: f64 = (0..p).map(|k| inv.get(a, k) * meat.get(k, b)).sum();
+            tmp.set(a, b, v);
+        }
+    }
+    #[allow(clippy::cast_precision_loss)]
+    let scale = data.n_rows as f64 / (data.n_rows - p) as f64;
+    let mut out = vec![0.0; p * p];
+    for a in 0..p {
+        for b in 0..p {
+            out[a * p + b] = scale * (0..p).map(|k| tmp.get(a, k) * inv.get(k, b)).sum::<f64>();
+        }
+    }
+    out
 }
 
 /// `w * (d mu / d eta)^2 / V(mu)` per row.
