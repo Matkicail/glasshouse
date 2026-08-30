@@ -180,6 +180,22 @@ class GLM:
         return np.sqrt(np.diag(self.cov_))
 
     @property
+    def cov_robust_(self) -> F64:
+        """HC1 sandwich covariance: robust to a wrong variance function (over-dispersion)."""
+        p = self._require_fit()["n_features"]
+        return np.asarray(self._fit["cov_robust"], dtype=np.float64).reshape(p, p)
+
+    @property
+    def se_robust_(self) -> F64:
+        """HC1 robust standard errors, intercept first.
+
+        Use these when you doubt the variance assumption — a Poisson model on over-dispersed
+        counts, say. If they are much larger than ``se_``, the model's uncertainty is
+        understated and the family (or a quasi-family) deserves a second look.
+        """
+        return np.sqrt(np.diag(self.cov_robust_))
+
+    @property
     def deviance_(self) -> float:
         """Total weighted deviance of the fit (lower is better; 0 is perfect)."""
         return float(self._require_fit()["deviance"])
@@ -268,11 +284,11 @@ class GLM:
         lines = [
             f"GLM family={self.family} link={self._link_name()}  n={r['n_rows']}  "
             f"iterations={r['iterations']} ({r['stop']})",
-            f"{'term':<24}{'coef':>14}{'se':>14}{'z':>10}",
+            f"{'term':<24}{'coef':>14}{'se':>14}{'z':>10}{'se_robust':>14}",
         ]
-        for name, b, s in zip(self.feature_names_in_, coef, se, strict=True):
+        for name, b, s, sr in zip(self.feature_names_in_, coef, se, self.se_robust_, strict=True):
             z = b / s if s > 0 else float("nan")
-            lines.append(f"{name:<24}{b:>14.6g}{s:>14.4g}{z:>10.3f}")
+            lines.append(f"{name:<24}{b:>14.6g}{s:>14.4g}{z:>10.3f}{sr:>14.4g}")
         lines.append(
             f"deviance={r['deviance']:.6g}  null_deviance={r['null_deviance']:.6g}  "
             f"dispersion={r['dispersion']:.6g}"
@@ -292,6 +308,7 @@ class GLM:
             "feature_names_in": list(self.feature_names_in_),
             "coef": list(map(float, r["coef"])),
             "cov": list(map(float, r["cov"])),
+            "cov_robust": list(map(float, r["cov_robust"])),
             "n_features": int(r["n_features"]),
             "n_rows": int(r["n_rows"]),
             "deviance": float(r["deviance"]),
@@ -316,6 +333,7 @@ class GLM:
             for key in (
                 "coef",
                 "cov",
+                "cov_robust",
                 "n_features",
                 "n_rows",
                 "deviance",

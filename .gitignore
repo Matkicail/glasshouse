@@ -75,3 +75,6 @@ Thumbs.db
 *.so
 *.pyd
 *.dylib
+
+# --- personal scratch: benchmarks, proofs, experiments. Never tracked. ---
+scratch/

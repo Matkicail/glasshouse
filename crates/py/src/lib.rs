@@ -225,6 +225,7 @@ fn glm_fit<'py>(
     out.set_item("null_deviance", fit.null_deviance)?;
     out.set_item("dispersion", fit.dispersion)?;
     out.set_item("cov", fit.cov)?;
+    out.set_item("cov_robust", fit.cov_robust)?;
     out.set_item("n_rows", fit.n_rows)?;
     out.set_item("n_features", fit.n_features)?;
     out.set_item("iterations", fit.iterations)?;

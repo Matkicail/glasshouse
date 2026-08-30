@@ -162,6 +162,20 @@ binomial and otherwise the Pearson estimate `Σ w (y − mu)² / V(mu) / (n − 
 deviance is a fresh intercept-only IRLS fit with the same offset and weights. A rank-deficient
 `XᵀWX` is reported with the column index (a relative pivot tolerance of `1e-12`).
 
+**Robust (HC1) covariance** `= (XᵀWX)⁻¹ (Σᵢ sᵢsᵢᵀ) (XᵀWX)⁻¹ · n/(n−p)`, with row score
+`sᵢ = xᵢ · wᵢ (yᵢ − muᵢ) (dmu/deta) / V(muᵢ)`. The dispersion cancels, so these stand even when
+the variance function is wrong (over-dispersed counts fitted as Poisson). The bread is the
+*expected* information `XᵀWX` — the same matrix behind `se_`, and what R's `sandwich` uses for
+`glm` objects; statsmodels uses the *observed* Hessian instead, which coincides only under a
+canonical link. Two further statsmodels notes: its GLM reports identical numbers for `HC0` and
+`HC1` (it omits the `n/(n−p)` factor). The golden tests therefore compare against statsmodels'
+`HC0 · √(n/(n−p))` for the canonical-link families, and against the formula written out in
+NumPy for all five. Reference: MacKinnon & White, "Some heteroskedasticity-consistent covariance matrix
+estimators with improved finite sample properties", *J. Econometrics* 29 (1985).
+
+AIC/BIC are deliberately not provided yet: they need the full per-family log-likelihood
+(log-gamma terms; none in closed form for Tweedie), and the scorecard compares on deviance.
+
 References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized Linear Models",
 *JRSS A* 135 (1972). Golden reference: `statsmodels.GLM` with `var_weights` and `offset`.
 
