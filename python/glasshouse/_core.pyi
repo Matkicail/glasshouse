@@ -105,3 +105,13 @@ def residuals(
     sample_weight: npt.NDArray[np.float64] | None = None,
     power: float | None = None,
 ) -> list[float]: ...
+def roc_curve(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> tuple[list[float], list[float], list[float]]: ...
+def pr_curve(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> tuple[list[float], list[float], list[float]]: ...

@@ -55,6 +55,7 @@ dev = [
   "polars>=1.44.1",
   "pyarrow>=25.0.1",
   "statsmodels>=0.15.0",
+  "jsonschema>=4.26.0",
 ]
 
 [tool.uv]
@@ -90,7 +91,7 @@ python_version = "3.12"
 files = ["python", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pandas.*", "pyarrow.*", "statsmodels.*", "plotly.*"]
+module = ["sklearn.*", "pandas.*", "pyarrow.*", "statsmodels.*", "plotly.*", "jsonschema.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
