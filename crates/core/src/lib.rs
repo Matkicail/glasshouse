@@ -4,6 +4,7 @@
 //! weights, and bad input fails early and clearly with reasons why.
 
 pub mod calibration;
+pub mod classification;
 pub mod error;
 pub mod family;
 pub mod metrics;

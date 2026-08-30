@@ -6,7 +6,8 @@
 //! Rule: bindings own nothing. Each function converts arguments (zero-copy `NumPy` views),
 //! calls `glasshouse_core`, and maps `GlassError` to `ValueError`. No `if` about numbers here.
 
-use glasshouse_core::{calibration, metrics, ranking, Family, GlassError};
+use glasshouse_core::classification::Confusion;
+use glasshouse_core::{calibration, classification, metrics, ranking, Family, GlassError};
 use numpy::PyReadonlyArray1;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -102,8 +103,62 @@ fn balance(y: Arr<'_>, mu: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<
     calibration::balance(y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
 }
 
+/// Confusion counts and every threshold metric at once. See `glasshouse.metrics.threshold_metrics`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None, threshold=0.5))]
+fn threshold_metrics<'py>(
+    py: Python<'py>,
+    y: Arr<'_>,
+    score: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+    threshold: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let c = Confusion::at(y.as_slice()?, score.as_slice()?, w, threshold).map_err(to_py)?;
+    let out = PyDict::new(py);
+    out.set_item("tp", c.tp)?;
+    out.set_item("fp", c.fp)?;
+    out.set_item("fn", c.fn_)?;
+    out.set_item("tn", c.tn)?;
+    out.set_item("accuracy", c.accuracy())?;
+    out.set_item("balanced_accuracy", c.balanced_accuracy())?;
+    out.set_item("precision", c.precision())?;
+    out.set_item("recall", c.recall())?;
+    out.set_item("f1", c.f1())?;
+    out.set_item("mcc", c.mcc())?;
+    Ok(out)
+}
+
+/// See `glasshouse.metrics.roc_auc`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn roc_auc(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    classification::roc_auc(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
+/// See `glasshouse.metrics.average_precision`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn average_precision(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    classification::average_precision(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
+/// See `glasshouse.metrics.ks`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn ks(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    classification::ks(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(threshold_metrics, m)?)?;
+    m.add_function(wrap_pyfunction!(roc_auc, m)?)?;
+    m.add_function(wrap_pyfunction!(average_precision, m)?)?;
+    m.add_function(wrap_pyfunction!(ks, m)?)?;
     m.add_function(wrap_pyfunction!(calibration_table, m)?)?;
     m.add_function(wrap_pyfunction!(balance, m)?)?;
     m.add_function(wrap_pyfunction!(deviance, m)?)?;

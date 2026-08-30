@@ -94,7 +94,7 @@ fn gini_unchecked(y: &[f64], score: &[f64], w: Option<&[f64]>) -> f64 {
         let y1 = cum_y / total_y;
         area += (x1 - x0) * (y0 + y1) / 2.0;
     }
-    1.0 - 2.0 * area
+    (1.0 - 2.0 * area).clamp(-1.0, 1.0)
 }
 
 fn validate(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<(), GlassError> {

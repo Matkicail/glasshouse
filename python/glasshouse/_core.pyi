@@ -38,3 +38,24 @@ def balance(
     mu: npt.NDArray[np.float64],
     sample_weight: npt.NDArray[np.float64] | None = None,
 ) -> float: ...
+def threshold_metrics(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    threshold: float = 0.5,
+) -> dict[str, float]: ...
+def roc_auc(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> float: ...
+def average_precision(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> float: ...
+def ks(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> float: ...
