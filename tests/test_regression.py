@@ -72,7 +72,7 @@ def test_properties(data: st.DataObject, c: float) -> None:
         (msle, [-2.0, 1.0], [1.0, 1.0], "MSLE"),
         (r2, [1.0, 1.0], [1.0, 2.0], "constant"),
         (mae, [1.0], [1.0, 2.0], "same length"),
-        (rmse, [1.0, np.inf], [1.0, 2.0], "1 row(s)"),
+        (rmse, [1.0, np.inf], [1.0, 2.0], "1 infinite value"),
     ],
 )
 def test_fails_early_and_clearly(fn: object, y: list[float], mu: list[float], needle: str) -> None:

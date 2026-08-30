@@ -98,7 +98,7 @@ def test_properties(data: st.DataObject, c: float) -> None:
     ("y", "s", "w", "needle"),
     [
         ([0.0, -1.0], [0.1, 0.2], None, "1 row(s)"),
-        ([0.0, 1.0], [0.1, np.inf], None, "cannot be ranked"),
+        ([0.0, 1.0], [0.1, np.inf], None, "1 infinite value"),
         ([0.0, 0.0], [0.1, 0.2], None, "no positive outcomes"),
         ([0.0, 1.0], [0.1, 0.2], [1.0, 0.0], "exposure of zero"),
         ([1.0], [0.1, 0.2], None, "same length"),

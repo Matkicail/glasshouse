@@ -16,7 +16,8 @@ import numpy as np
 
 from glasshouse import classification as clf
 from glasshouse import metrics, regression
-from glasshouse.metrics import ArrayLike, CalibrationTable, FamilyName, _f64, _weights
+from glasshouse.arrays import ArrayLike
+from glasshouse.metrics import CalibrationTable, FamilyName, _f64, _weights
 
 # Which way is "good" for each metric name. Anything not listed is a diagnostic, not a score.
 HIGHER_IS_BETTER: Mapping[str, bool] = {

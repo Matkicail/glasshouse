@@ -15,24 +15,20 @@ zero is perfect. Read it next to the null model's deviance: ``d2`` does that div
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 import numpy as np
 import numpy.typing as npt
 
 from glasshouse import _core
+from glasshouse.arrays import ArrayLike, to_vector
 
-ArrayLike = Any  # anything ``np.asarray`` accepts: list, NumPy, pandas/Polars Series, pyarrow
 FamilyName = Literal["gaussian", "poisson", "gamma", "tweedie", "binomial"]
 
 
 def _f64(x: ArrayLike, name: str) -> npt.NDArray[np.float64]:
-    """Return ``x`` as a contiguous 1-D float64 array, or explain why it cannot be one."""
-    arr = np.ascontiguousarray(np.asarray(x, dtype=np.float64))
-    if arr.ndim != 1:
-        msg = f"{name} must be 1-D, got shape {arr.shape}; pass one column at a time"
-        raise ValueError(msg)
-    return arr
+    """One door for every metric: see :func:`glasshouse.arrays.to_vector`."""
+    return to_vector(x, name)
 
 
 def _weights(sample_weight: ArrayLike | None) -> npt.NDArray[np.float64] | None:
