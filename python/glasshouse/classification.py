@@ -16,7 +16,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from glasshouse import _core
-from glasshouse.metrics import ArrayLike, _f64, _weights, deviance
+from glasshouse.arrays import ArrayLike
+from glasshouse.metrics import _f64, _weights, deviance
 
 
 @dataclass(frozen=True)

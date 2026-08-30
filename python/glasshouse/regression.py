@@ -9,7 +9,8 @@ minimises. Report both.
 from __future__ import annotations
 
 from glasshouse import _core
-from glasshouse.metrics import ArrayLike, _f64, _weights
+from glasshouse.arrays import ArrayLike
+from glasshouse.metrics import _f64, _weights
 
 
 def _run(metric: str, y: ArrayLike, mu: ArrayLike, sample_weight: ArrayLike | None) -> float:

@@ -14,6 +14,8 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 - Regression: `regression.rmse`, `mae`, `mape`, `smape`, `msle`, `r2`.
 - The panel: `scorecard.scorecard` (always with a naive baseline row) and `scorecard.compare`.
 - `docs/methods.md`: formulas, references, and the weights convention.
+- `arrays.to_vector` / `arrays.to_matrix`: the one data door — lists, NumPy, pandas, Polars
+  and Arrow in; clean float64 out, or a message naming the column, the count and the fix.
 
 ### Notes
 - Every metric takes `sample_weight` (sample-weight semantics; see `docs/methods.md`).

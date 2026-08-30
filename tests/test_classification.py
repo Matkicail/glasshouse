@@ -100,7 +100,7 @@ def test_properties(data: st.DataObject, c: float) -> None:
     [
         ([0.5, 1.0], [0.1, 0.9], "exactly 0 or 1"),
         ([1.0, 1.0], [0.1, 0.9], "both classes"),
-        ([0.0, 1.0], [0.1, np.nan], "cannot be scored"),
+        ([0.0, 1.0], [0.1, np.nan], "1 missing value"),
         ([0.0], [0.1, 0.2], "same length"),
     ],
 )

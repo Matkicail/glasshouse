@@ -87,7 +87,7 @@ def test_properties(data: st.DataObject, n_bins: int) -> None:
 @pytest.mark.parametrize(
     ("y", "mu", "w", "kw", "needle"),
     [
-        ([1.0, 1.0], [1.0, np.nan], None, {}, "1 row(s)"),
+        ([1.0, 1.0], [1.0, np.nan], None, {}, "1 missing value"),
         ([1.0], [1.0, 1.0], None, {}, "same length"),
         ([1.0, 1.0], [1.0, 1.0], [1.0, 0.0], {}, "zero weight"),
         ([1.0, 1.0], [1.0, -1.0], None, {}, "non-zero expected total"),

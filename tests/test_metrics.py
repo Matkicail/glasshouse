@@ -158,7 +158,7 @@ def test_properties(family: str, data: st.DataObject, c: float) -> None:
         ("poisson", [1.0], [1.0, 1.0], None, "same length"),
         ("poisson", [1.0, 1.0], [1.0, 0.0], None, "linear predictor"),
         ("poisson", [1.0, 1.0], [1.0, 1.0], [0.0, 0.0], "sum to more than zero"),
-        ("poisson", [1.0, np.nan], [1.0, 1.0], None, "1 row(s)"),
+        ("poisson", [1.0, np.nan], [1.0, 1.0], None, "1 missing value"),
         ("gamma", [0.0, 1.0], [1.0, 1.0], None, "tweedie"),
         ("binomial", [0.0, 1.0], [0.5, 1.0], None, "probabilities"),
         ("binomial", [0.0, 2.0], [0.5, 0.5], None, "0 <= y <= 1"),
