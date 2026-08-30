@@ -5,6 +5,7 @@
 !COMMANDS.md
 !CHANGELOG.md
 !docs/**/*.md
+!benchmarks/**/*.md
 # plan2-*.md and session*-addendum.md are covered by *.md above: never tracked.
 
 # --- secrets / local ---

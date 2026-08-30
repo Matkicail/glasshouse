@@ -30,6 +30,9 @@ plots = ["plotly>=5.20"]
 # research models (torch) come later, behind this extra, so the core install stays light.
 research = []
 
+[project.scripts]
+glasshouse = "glasshouse.cli:main"
+
 [project.urls]
 Repository = "https://github.com/Matkicail/glasshouse"
 
