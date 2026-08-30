@@ -82,7 +82,7 @@ impl Confusion {
     pub fn mcc(&self) -> f64 {
         let Self { tp, fp, fn_, tn } = *self;
         let denom = ((tp + fp) * (tp + fn_) * (tn + fp) * (tn + fn_)).sqrt();
-        zero_if_nan((tp * tn - fp * fn_) / denom)
+        zero_if_nan((tp * tn - fp * fn_) / denom).clamp(-1.0, 1.0)
     }
 }
 
@@ -97,6 +97,13 @@ fn is_positive(label: f64) -> bool {
 #[inline]
 fn is_label(v: f64) -> bool {
     v == 0.0 || v == 1.0
+}
+
+/// Bounded metrics can land a rounding error outside [0, 1] (seen on macOS CI:
+/// 1.0000000000000002); the true value cannot, so clamp to the real range.
+#[inline]
+fn unit(v: f64) -> f64 {
+    v.clamp(0.0, 1.0)
 }
 
 fn zero_if_nan(v: f64) -> f64 {
@@ -132,7 +139,7 @@ pub fn roc_auc(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<f64, Glass
         let (tpr1, fpr1) = (tp / pos, fp / neg);
         area += (fpr1 - fpr0) * (tpr0 + tpr1) / 2.0;
     }
-    Ok(area)
+    Ok(unit(area))
 }
 
 /// Average precision: the area under the precision–recall curve as a step function, the same
@@ -158,7 +165,7 @@ pub fn average_precision(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<
         ap += (recall - prev_recall) * precision;
         prev_recall = recall;
     }
-    Ok(ap)
+    Ok(unit(ap))
 }
 
 /// Kolmogorov–Smirnov: the largest gap between the score distributions of the two classes.
@@ -181,7 +188,7 @@ pub fn ks(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<f64, GlassError
         }
         best = best.max((cum_pos / pos - cum_neg / neg).abs());
     }
-    Ok(best)
+    Ok(unit(best))
 }
 
 fn validate_labels(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<(), GlassError> {

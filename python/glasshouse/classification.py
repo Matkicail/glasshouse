@@ -102,9 +102,9 @@ def average_precision(
 ) -> float:
     """Area under the precision-recall curve, step-wise like scikit-learn.
 
-    What it is for: fraud and rare events, where positives are 0.2 % and ROC-AUC looks great
-    for everyone. It only looks at how the positives are ranked, so it is the honest ranking
-    number under imbalance.
+    What it is for: rare-event classification, where positives are a fraction of a percent and
+    ROC-AUC looks great for everyone. It only looks at how the positives are ranked, so it is
+    the honest ranking number under imbalance.
 
     When it lies: it ignores true negatives entirely, so when both classes matter equally it
     undersells a model; and its baseline moves with prevalence, so never compare it across

@@ -163,8 +163,8 @@ def gini(y: ArrayLike, score: ArrayLike, sample_weight: ArrayLike | None = None)
 
     When it lies: it assumes the data should follow a Lorenz curve, and most data doesn't;
     it needs sample size; and it is blind to calibration — double every prediction and Gini
-    does not move. In fraud with lots of unlabelled fraud it can look great while missing
-    the real problem: read it next to MCC / PR-AUC and calibration, never alone.
+    does not move. On rare-event problems with unlabelled positives it can look great while
+    missing the real problem: read it next to MCC / PR-AUC and calibration, never alone.
 
     Parameters
     ----------

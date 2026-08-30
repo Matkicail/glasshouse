@@ -7,7 +7,7 @@ as a panel rather than a single number, and always measured against a naive base
 know whether your model is actually helping.
 
 Actuarial families (Poisson, gamma, Tweedie, offsets) are first-class, but they're rows in the
-table, not the identity: fraud, churn, forecasting and general regression/classification go
+table, not the identity: rare-event classification, churn, forecasting and general regression/classification go
 through the same machinery.
 
 **Status:** pre-alpha. The first milestone (metrics → GLM → scorecard → benchmark report) is in

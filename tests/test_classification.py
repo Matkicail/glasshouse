@@ -24,7 +24,7 @@ from glasshouse.classification import (
 Arr = npt.NDArray[np.float64]
 rng = np.random.default_rng(3)
 N = 4000
-PROB = rng.beta(0.5, 4.0, size=N)  # imbalanced, fraud-like
+PROB = rng.beta(0.5, 4.0, size=N)  # imbalanced, rare-event
 Y = (rng.uniform(size=N) < PROB).astype(float)
 SCORE = np.clip(PROB + rng.normal(0, 0.1, size=N), 1e-6, 1 - 1e-6)
 W = rng.uniform(0.1, 2.0, size=N)
