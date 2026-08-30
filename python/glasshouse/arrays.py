@@ -74,8 +74,8 @@ def to_matrix(x: ArrayLike, name: str = "X", *, allow_nan: bool = False) -> tupl
     >>> names
     ['x0', 'x1']
     """
-    columns = _columns(x)
-    if columns is None:  # not a frame: treat as an array
+    columns_ = columns(x)
+    if columns_ is None:  # not a frame: treat as an array
         arr = _to_numpy(x, name)
         if arr.ndim == 1:
             arr = arr[:, None]
@@ -87,10 +87,10 @@ def to_matrix(x: ArrayLike, name: str = "X", *, allow_nan: bool = False) -> tupl
         _check_finite(out, name, allow_nan=allow_nan)
         return out, names
 
-    names = [str(c) for c, _ in columns]
+    names = [str(c) for c, _ in columns_]
     bad: list[str] = []
     vectors: list[F64] = []
-    for col_name, col in columns:
+    for col_name, col in columns_:
         try:
             vectors.append(to_vector(col, str(col_name), allow_nan=allow_nan))
         except ValueError as err:
@@ -126,7 +126,7 @@ def _to_numpy(x: ArrayLike, name: str) -> npt.NDArray[Any]:
     return arr
 
 
-def _columns(x: ArrayLike) -> list[tuple[str, Any]] | None:
+def columns(x: ArrayLike) -> list[tuple[str, Any]] | None:
     """Return the (name, column) pairs of a frame-like object, or ``None`` if not a frame."""
     if isinstance(x, np.ndarray):
         return None
@@ -154,4 +154,4 @@ def _check_finite(arr: F64, name: str, *, allow_nan: bool) -> None:
         raise ValueError(msg)
 
 
-__all__ = ["F64", "ArrayLike", "to_matrix", "to_vector"]
+__all__ = ["F64", "ArrayLike", "columns", "to_matrix", "to_vector"]
