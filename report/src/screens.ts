@@ -3,8 +3,8 @@
 
 const METRIC_HELP: Record<string, string> = {
   deviance: "Family deviance: did the model fit the distribution it claims? Lower is better; the naive row is the intercept-only model.",
-  d2: "Deviance explained: 1 is perfect, 0 is no better than the mean. The honest 'vs naive' number for a GLM.",
-  gini: "Does the model sort risk low to high? Blind to calibration — read next to balance and A/E.",
+  d2: "Deviance explained: 1 is perfect, 0 is no better than the mean.",
+  gini: "Does the model sort risk low to high? It says nothing about calibration, so read it next to balance and A/E.",
   normalized_gini: "Gini divided by the best achievable Gini; comparable across datasets.",
   balance: "Total actual / total expected. 1 means the book adds up; 3 % under on the whole book is a problem no Gini shows.",
   rmse: "Root mean squared error; dominated by big misses on heavy tails.",
@@ -13,7 +13,7 @@ const METRIC_HELP: Record<string, string> = {
   log_loss: "Proper score on the probabilities; cannot be gamed by miscalibrating.",
   brier: "Mean squared error on probabilities; read against the always-say-0 baseline (the positive rate).",
   roc_auc: "Ranking quality across all thresholds; inflated under heavy imbalance.",
-  average_precision: "Area under precision–recall; the honest ranking number for rare events.",
+  average_precision: "Area under the precision and recall curve; the ranking number to trust for rare events.",
   ks: "Largest gap between the two classes' score distributions.",
   mcc: "Matthews correlation at the threshold: high only when all four confusion cells are right.",
   f1: "Harmonic mean of precision and recall at the threshold; ignores true negatives.",
@@ -51,7 +51,7 @@ function overviewScreen(doc: ReportDoc, root: HTMLElement): void {
   const tbl = el("table", { class: "grid panel" }, [el("thead", {}, [head]), body]);
   root.append(tbl);
   root.append(el("p", { class: "caption" }, [
-    `★ primary metric by convention for a ${doc.task.type} task, not a verdict. Bold = best model on that metric. ✓ / ✗ = better / worse than the naive baseline (the weighted mean of y${doc.task.type === "binary" ? ", i.e. the class prior" : ""}). Hover a metric for what it is for.`,
+    `★ marks the primary metric, a convention for a ${doc.task.type} task rather than a verdict. Bold is the best model on that metric. ✓ means better than the naive baseline${doc.task.type === "binary" ? " (the class prior)" : " (the weighted mean of y)"}, ✗ means worse. Hover a metric for what it is for.`,
   ]));
 
   // provenance
@@ -69,7 +69,7 @@ function overviewScreen(doc: ReportDoc, root: HTMLElement): void {
 function compareScreen(doc: ReportDoc, root: HTMLElement): void {
   clear(root);
   if (doc.models.length < 2) {
-    root.append(el("p", { class: "muted" }, ["Only one model: nothing to compare. The overview holds its scorecard against the naive baseline."]));
+    root.append(el("p", { class: "muted" }, ["Only one model, so there is nothing to compare. The overview holds its scorecard against the naive baseline."]));
     return;
   }
   const selA = select(doc.models, doc.models[0]!);
@@ -111,7 +111,7 @@ function curvesScreen(doc: ReportDoc, root: HTMLElement): void {
   const features = Array.from(new Set(Object.values(doc.residuals).flatMap((r) => r.by_feature.map((t) => t.feature))));
   const hasTime = Object.values(doc.residuals).some((r) => r.over_time !== null);
   const options = [...kinds, ...features.map((f) => `ae:${f}`), ...(hasTime ? ["ae:time"] : [])];
-  const labels: Record<string, string> = { lorenz: "Lorenz", lift: "Lift", calibration: "Calibration", roc: "ROC", pr: "Precision–recall" };
+  const labels: Record<string, string> = { lorenz: "Lorenz", lift: "Lift", calibration: "Calibration", roc: "ROC", pr: "Precision and recall" };
   const sel = el("select");
   for (const o of options) sel.append(el("option", { value: o }, [o.startsWith("ae:") ? `A/E by ${o.slice(3)}` : (labels[o] ?? o)]));
   const toggles = el("span", { class: "toggles" });

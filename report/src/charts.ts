@@ -39,8 +39,8 @@ function diagonal(hi = 1, name = "reference"): Record<string, unknown> {
 
 function lorenzSpec(curves: LorenzCurve[], models: string[]): ChartSpec {
   return {
-    title: "Lorenz — ranked by predicted risk, low to high",
-    caption: "Further below the diagonal is better ranking. Gini is blind to calibration; read it next to A/E.",
+    title: "Lorenz curve",
+    caption: "Ranked by predicted risk, low to high. Further below the diagonal is better ranking. Gini says nothing about calibration, so read it next to A/E.",
     data: [diagonal(1, "random"), ...curves.map((c) => ({ ...line(c.x, c.y, `${c.label} (Gini ${fmt(c.gini, 3)})`, colourOf(models, c.label)), mode: "lines", marker: undefined }))],
     layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "cumulative share of exposure", range: [0, 1] }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "cumulative share of outcome", range: [0, 1] } },
     table: { columns: ["model", "Gini", "points"], rows: curves.map((c) => [c.label, fmt(c.gini), c.x.length]) },
@@ -57,7 +57,7 @@ function liftSpec(curves: LiftCurve[], models: string[]): ChartSpec {
   const rows: (string | number)[][] = [];
   for (const c of curves) c.bin.forEach((b, i) => rows.push([c.label, b, fmt(c.weight[i]), fmt(c.predicted[i]), fmt(c.actual[i])]));
   return {
-    title: "Lift — actual vs predicted by prediction bin",
+    title: "Lift",
     caption: "Bins of equal weight, lowest predictions first. A good model's two lines sit on top of each other and climb.",
     data,
     layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "prediction bin (low → high)" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "mean outcome" } },
@@ -67,8 +67,8 @@ function liftSpec(curves: LiftCurve[], models: string[]): ChartSpec {
 
 function doubleLiftSpec(c: DoubleLiftCurve, models: string[]): ChartSpec {
   return {
-    title: `Double lift — bins by ${c.label_a} / ${c.label_b}`,
-    caption: `Left: ${c.label_b} predicts more; right: ${c.label_a} predicts more. Whichever line tracks "actual" at the ends is the one to trust there.`,
+    title: `Double lift: ${c.label_a} vs ${c.label_b}`,
+    caption: `Rows are binned by ${c.label_a} / ${c.label_b}. On the left ${c.label_b} predicts more, on the right ${c.label_a} does. The line that tracks the actual line at the ends is the one to trust there.`,
     data: [
       line(c.bin, c.actual, "actual", "#000000", { line: { color: "#000000", width: 2.5 } }),
       line(c.bin, c.predicted_a, c.label_a, colourOf(models, c.label_a)),
@@ -85,8 +85,8 @@ function calibrationSpec(curves: CalibrationCurve[], models: string[]): ChartSpe
   const rows: (string | number)[][] = [];
   for (const c of curves) c.bin.forEach((b, i) => rows.push([c.label, b, fmt(c.weight[i]), fmt(c.predicted[i]), fmt(c.actual[i]), fmt(c.actual_over_expected[i], 3)]));
   return {
-    title: "Calibration — actual vs predicted per bin",
-    caption: "On the dashed line the number can be trusted. Above it the model under-predicts; below, it over-predicts. Hover for A/E.",
+    title: "Calibration",
+    caption: "On the dashed line the number can be trusted. Above it the model under-predicts, below it the model over-predicts. Hover a point for A/E.",
     data: [
       diagonal(hi * 1.05, "perfect"),
       ...curves.map((c) => line(c.predicted, c.actual, c.label, colourOf(models, c.label), {
@@ -101,8 +101,8 @@ function calibrationSpec(curves: CalibrationCurve[], models: string[]): ChartSpe
 
 function rocSpec(curves: RocCurve[], models: string[]): ChartSpec {
   return {
-    title: "ROC — true-positive rate vs false-positive rate",
-    caption: "0.5 is a coin flip. Under heavy imbalance a high AUC can hide a useless precision — read the PR curve too.",
+    title: "ROC",
+    caption: "True-positive rate against false-positive rate. 0.5 is a coin flip. Under heavy imbalance a high AUC can hide a useless precision, so read the PR curve too.",
     data: [diagonal(1, "random"), ...curves.map((c) => ({ ...line(c.fpr, c.tpr, `${c.label} (AUC ${fmt(c.auc, 3)})`, colourOf(models, c.label)), mode: "lines" }))],
     layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "false-positive rate", range: [0, 1] }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "true-positive rate", range: [0, 1] } },
     table: { columns: ["model", "AUC", "points"], rows: curves.map((c) => [c.label, fmt(c.auc), c.fpr.length]) },
@@ -112,8 +112,8 @@ function rocSpec(curves: RocCurve[], models: string[]): ChartSpec {
 function prSpec(curves: PrCurve[], models: string[]): ChartSpec {
   const base = curves[0]?.positive_rate ?? 0;
   return {
-    title: "Precision–recall",
-    caption: `The dashed line is the positive rate (${fmt(base, 3)}): what a random scorer achieves. Area above it is what the model adds.`,
+    title: "Precision and recall",
+    caption: `The dashed line is the positive rate (${fmt(base, 3)}), which is what a random scorer achieves. Everything above it is what the model adds.`,
     data: [
       { type: "scatter", mode: "lines", x: [0, 1], y: [base, base], name: "positive rate", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
       ...curves.map((c) => ({ ...line(c.recall, c.precision, `${c.label} (AP ${fmt(c.average_precision, 3)})`, colourOf(models, c.label)), mode: "lines" })),
@@ -130,7 +130,7 @@ function aeByFeatureSpec(tables: AEByFeature[], models: string[]): ChartSpec {
   for (const t of tables) t.level.forEach((lv, i) => rows.push([t.label, lv, fmt(t.weight[i]), fmt(t.predicted[i]), fmt(t.actual[i]), fmt(t.actual_over_expected[i], 3)]));
   return {
     title: `A/E by ${first ? first.feature : "feature"}`,
-    caption: "1 is calibrated for that segment. Above 1 the model under-predicts there; below, it over-predicts. Small-weight bins are noisy.",
+    caption: "1 means the model is right for that segment. Above 1 it under-predicts there, below 1 it over-predicts. Bins with little weight are noisy.",
     data: [
       { type: "scatter", mode: "lines", x: [levels[0] ?? "", levels[levels.length - 1] ?? ""], y: [1, 1], name: "A/E = 1", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
       ...tables.map((t) => ({ type: "bar", x: t.level, y: t.actual_over_expected, name: t.label, marker: { color: colourOf(models, t.label) }, text: t.weight.map((w) => `weight ${fmt(w)}`), hovertemplate: "%{x}<br>A/E %{y:.3f}<br>%{text}<extra></extra>" })),
@@ -150,7 +150,7 @@ function renderChart(root: HTMLElement, spec: ChartSpec): void {
   if (plotlyAvailable()) {
     Plotly!.newPlot(body, spec.data, { ...spec.layout, title: undefined }, { displaylogo: false, responsive: true, modeBarButtonsToRemove: ["lasso2d", "select2d"] });
   } else {
-    body.append(el("p", { class: "muted" }, ["Charts unavailable offline — the same numbers, as a table:"]));
+    body.append(el("p", { class: "muted" }, ["Charts are unavailable offline. The same numbers, as a table:"]));
     body.append(table(spec.table.columns, spec.table.rows));
   }
   root.append(el("p", { class: "caption" }, [spec.caption]));

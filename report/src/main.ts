@@ -47,7 +47,7 @@ function renderReport(doc: ReportDoc, root: HTMLElement): void {
   });
   root.append(header, nav, panes);
   screens[0]!.draw(doc, paneEls[0]!);
-  const dl = el("a", { class: "muted small", href: "#", download: `${doc.provenance.dataset}-report.json` }, ["download the JSON behind this report"]);
+  const dl = el("a", { class: "muted small", href: "#", download: `${doc.provenance.dataset}-report.json` }, ["Download the JSON behind this report"]);
   dl.addEventListener("click", (e) => {
     e.preventDefault();
     const blob = new Blob([JSON.stringify(doc)], { type: "application/json" });

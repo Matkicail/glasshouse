@@ -7,8 +7,13 @@ as a panel rather than a single number, and always measured against a naive base
 know whether your model is actually helping.
 
 Actuarial families (Poisson, gamma, Tweedie, offsets) are first-class, but they're rows in the
-table, not the identity: rare-event classification, churn, forecasting and general regression/classification go
-through the same machinery.
+table, not the identity: rare-event classification, churn, forecasting and general regression
+and classification go through the same machinery.
+
+FOSS is the benchmark. Every metric and model here is proven against statsmodels, scikit-learn
+and R in golden tests before it merges; we choose different implementations because of
+efficiency, and the goal is something workable and free that respects those who came before.
+The numbers in `benchmarks/` are pinned so they cannot drift silently.
 
 **Status:** pre-alpha. The first milestone (metrics → GLM → scorecard → benchmark report) is in
 progress. Not on PyPI yet.
