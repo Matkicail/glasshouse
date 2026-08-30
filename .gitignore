@@ -33,12 +33,36 @@ htmlcov/
 target/
 Cargo.lock.bak
 
-# --- data / benchmarks (raw data never committed; reports and split indices are) ---
-data/raw/
-data/cache/
+# --- data / benchmarks (raw data never committed; small fixtures and reports are) ---
+data/
 *.parquet
+*.feather
+*.arrow
+*.ipc
 *.csv
-!tests/fixtures/**/*.csv
+*.tsv
+*.json
+*.jsonl
+*.xlsx
+*.xls
+*.pkl
+*.pickle
+*.npy
+*.npz
+*.h5
+*.hdf5
+*.arff
+*.zip
+*.gz
+*.gzip
+*.zst
+*.zstd
+*.bz2
+*.xz
+*.7z
+*.tar
+!tests/fixtures/**
+!benchmarks/**/*.json
 !benchmarks/**/*.csv
 
 # --- editors / os ---

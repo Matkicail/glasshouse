@@ -1,0 +1,14 @@
+# Keeps the SHA-pinned actions and the Rust/Python deps fresh via PRs. Weekly, grouped, small.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: cargo
+    directory: /
+    schedule: { interval: weekly }
+    groups: { rust-deps: { patterns: ["*"] } }
+  - package-ecosystem: uv
+    directory: /
+    schedule: { interval: weekly }
+    groups: { python-deps: { patterns: ["*"] } }
