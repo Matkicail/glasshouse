@@ -1,5 +1,7 @@
 """Type stubs for the Rust extension. Keep in step with crates/py/src/lib.rs."""
 
+from typing import Any
+
 import numpy as np
 import numpy.typing as npt
 
@@ -65,3 +67,14 @@ def regression_metric(
     mu: npt.NDArray[np.float64],
     sample_weight: npt.NDArray[np.float64] | None = None,
 ) -> float: ...
+def glm_fit(
+    family: str,
+    link: str,
+    x: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    offset: npt.NDArray[np.float64] | None = None,
+    power: float | None = None,
+    max_iter: int = 100,
+    tol: float = 1e-10,
+) -> dict[str, Any]: ...

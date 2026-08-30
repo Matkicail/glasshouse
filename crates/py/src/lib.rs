@@ -7,9 +7,12 @@
 //! calls `glasshouse_core`, and maps `GlassError` to `ValueError`. No `if` about numbers here.
 
 use glasshouse_core::classification::Confusion;
+use glasshouse_core::glm::{self, Data, Settings, Stop};
 use glasshouse_core::regression::{self, RegressionMetric};
+use glasshouse_core::Link;
 use glasshouse_core::{calibration, classification, metrics, ranking, Family, GlassError};
-use numpy::PyReadonlyArray1;
+use numpy::PyReadonlyArray2;
+use numpy::{PyReadonlyArray1, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
@@ -180,8 +183,81 @@ fn regression_metric(
     regression::regression(which, y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
 }
 
+/// Fit a GLM by IRLS. See `glasshouse.glm.GLM`. Returns a dict of results.
+#[pyfunction]
+#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10))]
+#[allow(clippy::too_many_arguments)]
+fn glm_fit<'py>(
+    py: Python<'py>,
+    family: &str,
+    link: &str,
+    x: PyReadonlyArray2<'_, f64>,
+    y: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+    offset: Option<Arr<'_>>,
+    power: Option<f64>,
+    max_iter: usize,
+    tol: f64,
+) -> PyResult<Bound<'py, PyDict>> {
+    let fam = Family::parse(family, power).map_err(to_py)?;
+    let link_fn = Link::parse(link).map_err(to_py)?;
+    let shape = x.shape().to_vec();
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let o = offset.as_ref().map(|a| a.as_slice()).transpose()?;
+    let data = Data {
+        x: x.as_slice()?,
+        n_rows: shape[0],
+        n_features: shape[1],
+        y: y.as_slice()?,
+        weights: w,
+        offset: o,
+    };
+    let settings = Settings {
+        max_iter,
+        tol,
+        ..Settings::default()
+    };
+    let fit = glm::fit(fam, link_fn, data, settings).map_err(to_py)?;
+    let out = PyDict::new(py);
+    out.set_item("coef", fit.coef)?;
+    out.set_item("mu", fit.mu)?;
+    out.set_item("deviance", fit.deviance)?;
+    out.set_item("null_deviance", fit.null_deviance)?;
+    out.set_item("dispersion", fit.dispersion)?;
+    out.set_item("cov", fit.cov)?;
+    out.set_item("n_rows", fit.n_rows)?;
+    out.set_item("n_features", fit.n_features)?;
+    out.set_item("iterations", fit.iterations)?;
+    out.set_item(
+        "stop",
+        match fit.stop {
+            Stop::Converged => "converged",
+            Stop::MaxIter => "max_iter",
+            Stop::NoImprovement => "no_improvement",
+        },
+    )?;
+    out.set_item(
+        "trace_iteration",
+        fit.trace.iter().map(|t| t.iteration).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "trace_deviance",
+        fit.trace.iter().map(|t| t.deviance).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "trace_halvings",
+        fit.trace.iter().map(|t| t.halvings).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "trace_max_step",
+        fit.trace.iter().map(|t| t.max_step).collect::<Vec<_>>(),
+    )?;
+    Ok(out)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(glm_fit, m)?)?;
     m.add_function(wrap_pyfunction!(regression_metric, m)?)?;
     m.add_function(wrap_pyfunction!(threshold_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(roc_auc, m)?)?;

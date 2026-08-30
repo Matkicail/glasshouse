@@ -4,6 +4,7 @@
 //! The actuarial families (Poisson, gamma, Tweedie) are rows like any other.
 
 use crate::error::GlassError;
+use crate::link::Link;
 
 /// An exponential-dispersion family. Selects the deviance formula and the support of `y`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -120,6 +121,54 @@ impl Family {
             Self::Gaussian | Self::Tweedie { power: 0.0 } => "accepts any finite mu",
             Self::Binomial => "binomial needs 0 < mu < 1: pass probabilities, not labels or logits",
             _ => "predictions on the mean scale must be > 0; did you pass the linear predictor?",
+        }
+    }
+
+    /// The variance function `V(mu)` in `Var(Y) = phi * V(mu)`.
+    #[inline]
+    #[must_use]
+    pub fn variance(self, mu: f64) -> f64 {
+        match self {
+            Self::Gaussian => 1.0,
+            Self::Poisson => mu,
+            Self::Gamma => mu * mu,
+            Self::Tweedie { power } => mu.powf(power),
+            Self::Binomial => mu * (1.0 - mu),
+        }
+    }
+
+    /// The link that makes the GLM's score equations sum to zero (the balance property).
+    #[must_use]
+    pub const fn canonical_link(self) -> Link {
+        match self {
+            Self::Gaussian => Link::Identity,
+            Self::Poisson | Self::Gamma | Self::Tweedie { .. } => Link::Log,
+            Self::Binomial => Link::Logit,
+        }
+    }
+
+    /// Is the dispersion known (1) or estimated from the data?
+    #[must_use]
+    pub const fn fixed_dispersion(self) -> bool {
+        matches!(self, Self::Poisson | Self::Binomial)
+    }
+
+    /// A safe starting mean for IRLS, row by row (R's `mustart`): inside the support and
+    /// away from the boundary.
+    #[inline]
+    #[must_use]
+    pub fn mu_start(self, y: f64, w: f64) -> f64 {
+        match self {
+            Self::Gaussian | Self::Gamma => y,
+            Self::Poisson => y + 0.1,
+            Self::Tweedie { .. } => {
+                if y == 0.0 {
+                    0.1
+                } else {
+                    y
+                }
+            }
+            Self::Binomial => (w * y + 0.5) / (w + 1.0),
         }
     }
 
