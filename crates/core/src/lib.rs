@@ -4,6 +4,8 @@
 //! weights, and bad input fails early and clearly with reasons why.
 
 pub mod error;
+pub mod family;
 pub mod metrics;
 
 pub use error::GlassError;
+pub use family::Family;
