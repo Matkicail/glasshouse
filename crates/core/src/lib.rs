@@ -7,9 +7,13 @@ pub mod calibration;
 pub mod classification;
 pub mod error;
 pub mod family;
+pub mod glm;
+pub mod linalg;
+pub mod link;
 pub mod metrics;
 pub mod ranking;
 pub mod regression;
 
 pub use error::GlassError;
 pub use family::Family;
+pub use link::Link;

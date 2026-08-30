@@ -148,6 +148,23 @@ score is pinned by tests: `D² = R² = Gini = 0`, `balance = 1`; for binomial `R
 `AP = prevalence`, `Brier = p(1−p)`. `scorecard.compare` judges each metric by its direction
 (`HIGHER_IS_BETTER`); `balance` by distance from 1.
 
+## The GLM (IRLS)
+
+With design `X` (intercept column included), link `g`, offset `o` and prior weights `w`, each
+iteration forms the working response `z = (eta − o) + (y − mu) / g'(mu)⁻¹` and working weights
+`W = w · (dmu/deta)² / V(mu)`, solves `(XᵀWX) β = XᵀWz` by Cholesky, and accepts the step only
+if the total deviance did not increase — otherwise the step toward the proposal is halved
+(up to 20 times). Convergence is a relative deviance change below `tol` (default `1e-10`; R
+uses `1e-8`). Starting means follow R's `mustart`. Every iteration is kept in the trace.
+
+Covariance `= φ · (XᵀWX)⁻¹` at the final mean, with dispersion `φ` fixed at 1 for Poisson and
+binomial and otherwise the Pearson estimate `Σ w (y − mu)² / V(mu) / (n − p)`. The null
+deviance is a fresh intercept-only IRLS fit with the same offset and weights. A rank-deficient
+`XᵀWX` is reported with the column index (a relative pivot tolerance of `1e-12`).
+
+References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized Linear Models",
+*JRSS A* 135 (1972). Golden reference: `statsmodels.GLM` with `var_weights` and `offset`.
+
 ## Numerical notes
 
 - Sums are plain `f64` accumulations in row order. Against scikit-learn on ~5k rows they agree

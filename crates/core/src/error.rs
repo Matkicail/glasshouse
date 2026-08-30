@@ -27,6 +27,8 @@ pub enum GlassError {
     },
     /// Nothing to compute on.
     Empty { name: &'static str },
+    /// The design matrix is rank-deficient at this column (0-based, intercept included).
+    Singular { column: usize },
     /// A parameter (not data) that makes no sense, e.g. an unknown family name.
     BadArgument {
         name: &'static str,
@@ -55,6 +57,12 @@ impl fmt::Display for GlassError {
             } => write!(f, "{name} {rule}, but {count} row(s) are not — {fix}"),
             Self::Empty { name } => write!(f, "{name} is empty; nothing to compute"),
             Self::BadArgument { name, problem, fix } => write!(f, "{name}: {problem} — {fix}"),
+            Self::Singular { column } => write!(
+                f,
+                "design matrix is rank-deficient at column {column}: it is constant or a linear \
+                 combination of earlier columns — drop it (one-hot with a full set of levels and \
+                 an intercept is the usual cause)"
+            ),
         }
     }
 }

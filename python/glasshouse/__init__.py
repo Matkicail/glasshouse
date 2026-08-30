@@ -4,9 +4,8 @@ Glass-box models and metrics that tell the truth — weighted, exposure-aware, a
 measured against a naive baseline so you know whether the model is actually helping.
 """
 
-from glasshouse import classification, metrics, regression, scorecard
-from glasshouse.scorecard import compare
-from glasshouse.scorecard import scorecard as scorecard_fn
+from glasshouse import arrays, classification, glm, metrics, regression, scorecard
+from glasshouse.glm import GLM
 
-__all__ = ["classification", "compare", "metrics", "regression", "scorecard", "scorecard_fn"]
+__all__ = ["GLM", "arrays", "classification", "glm", "metrics", "regression", "scorecard"]
 __version__ = "0.0.1"
