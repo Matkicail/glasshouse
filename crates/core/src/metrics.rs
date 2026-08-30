@@ -79,6 +79,50 @@ pub fn d2(family: Family, y: &[f64], mu: &[f64], w: Option<&[f64]>) -> Result<f6
     Ok(1.0 - fitted / null)
 }
 
+/// Deviance residuals `sign(y - mu) * sqrt(w * d(y, mu))`: the family's own residual. For a
+/// well-specified model they are roughly symmetric with unit variance.
+///
+/// # Errors
+/// As [`deviance`].
+pub fn deviance_residuals(
+    family: Family,
+    y: &[f64],
+    mu: &[f64],
+    w: Option<&[f64]>,
+) -> Result<Vec<f64>, GlassError> {
+    validate(family, y, mu, w)?;
+    Ok(y.iter()
+        .zip(mu)
+        .enumerate()
+        .map(|(i, (&yi, &mi))| {
+            let wi = w.map_or(1.0, |w| w[i]);
+            (yi - mi).signum() * (wi * family.unit_deviance(yi, mi)).max(0.0).sqrt()
+        })
+        .collect())
+}
+
+/// Pearson residuals `(y - mu) * sqrt(w / V(mu))`: on the scale of the dispersion, so their
+/// squares sum to the Pearson chi-square.
+///
+/// # Errors
+/// As [`deviance`].
+pub fn pearson_residuals(
+    family: Family,
+    y: &[f64],
+    mu: &[f64],
+    w: Option<&[f64]>,
+) -> Result<Vec<f64>, GlassError> {
+    validate(family, y, mu, w)?;
+    Ok(y.iter()
+        .zip(mu)
+        .enumerate()
+        .map(|(i, (&yi, &mi))| {
+            let wi = w.map_or(1.0, |w| w[i]);
+            (yi - mi) * (wi / family.variance(mi)).sqrt()
+        })
+        .collect())
+}
+
 fn weighted_mean(y: &[f64], w: Option<&[f64]>) -> f64 {
     match w {
         None => {

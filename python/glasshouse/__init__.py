@@ -14,6 +14,7 @@ from glasshouse import (
     glm,
     metrics,
     regression,
+    residuals,
     scorecard,
     splits,
 )
@@ -30,6 +31,7 @@ __all__ = [
     "glm",
     "metrics",
     "regression",
+    "residuals",
     "scorecard",
     "splits",
 ]

@@ -90,3 +90,18 @@ def double_lift_table(
     sample_weight: npt.NDArray[np.float64] | None = None,
     n_bins: int = 10,
 ) -> dict[str, list[float] | list[int]]: ...
+def binned_table(
+    key: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    mu: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    n_bins: int = 10,
+) -> dict[str, list[float] | list[int]]: ...
+def residuals(
+    kind: str,
+    family: str,
+    y: npt.NDArray[np.float64],
+    mu: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    power: float | None = None,
+) -> list[float]: ...

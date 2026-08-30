@@ -179,6 +179,17 @@ AIC/BIC are deliberately not provided yet: they need the full per-family log-lik
 References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized Linear Models",
 *JRSS A* 135 (1972). Golden reference: `statsmodels.GLM` with `var_weights` and `offset`.
 
+## Residuals
+
+- **Deviance residual** `r_i = sign(y_i − mu_i) · sqrt(w_i · d(y_i, mu_i))`; `Σ r_i² = D`.
+- **Pearson residual** `r_i = (y_i − mu_i) · sqrt(w_i / V(mu_i))`; `Σ r_i² = X²`, the Pearson
+  chi-square behind the dispersion estimate.
+- **A/E by feature**: the calibration table with the rows binned by a feature instead of the
+  prediction — equal-weight bins (ties whole) for a numeric column, one row per level for a
+  categorical — reporting weight, mean prediction, mean outcome and their ratio per bin.
+
+Golden references: statsmodels `resid_deviance`, `resid_pearson` (with `var_weights`).
+
 ## Encoders and leakage
 
 Leakage is a property of the split, not the transform. Every encoder is fitted on the

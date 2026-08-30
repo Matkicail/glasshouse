@@ -17,6 +17,8 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 - `GLM`: IRLS in Rust with step-halving, offsets, weights, all five families, identity/log/
   logit links; standard errors, null deviance, dispersion, per-row contributions, a printable
   fit trace, JSON round-trip, HC1 robust standard errors. Golden-tested against statsmodels.
+- `residuals.deviance` / `pearson` (golden vs statsmodels) and `residuals.ae_by_feature`: actual /
+  expected sliced by a numeric (equal-weight bins) or categorical feature.
 - `bench.run` + `glasshouse bench <name>`: models × folds on one dataset, scored the same way,
   written to `report.json` / `report.md`; `benchmarks/fremtpl2_glm` committed and pinned.
 - `curves.lorenz` / `lift` / `double_lift` / `calibration` as data (the JSON contract), and
