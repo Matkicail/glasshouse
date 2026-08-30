@@ -78,3 +78,15 @@ def glm_fit(
     max_iter: int = 100,
     tol: float = 1e-10,
 ) -> dict[str, Any]: ...
+def lorenz_curve(
+    y: npt.NDArray[np.float64],
+    score: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> tuple[list[float], list[float]]: ...
+def double_lift_table(
+    y: npt.NDArray[np.float64],
+    mu_a: npt.NDArray[np.float64],
+    mu_b: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    n_bins: int = 10,
+) -> dict[str, list[float] | list[int]]: ...

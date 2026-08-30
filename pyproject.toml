@@ -25,6 +25,8 @@ dependencies = ["numpy>=1.26"]
 # datasets: fetch from OpenML, cache as parquet. Kept out of the core so `pip install glasshouse`
 # stays at numpy.
 data = ["pandas>=2.2", "pyarrow>=15", "scikit-learn>=1.5"]
+# plots: Plotly renderers over the curve data. Optional so the core stays numpy-only.
+plots = ["plotly>=5.20"]
 # research models (torch) come later, behind this extra, so the core install stays light.
 research = []
 
@@ -45,6 +47,7 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.11",
   "maturin>=1.9,<2",
+  "plotly>=5.20",
   "pandas>=3.0.5",
   "polars>=1.44.1",
   "pyarrow>=25.0.1",
@@ -84,7 +87,7 @@ python_version = "3.12"
 files = ["python", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pandas.*", "pyarrow.*", "statsmodels.*"]
+module = ["sklearn.*", "pandas.*", "pyarrow.*", "statsmodels.*", "plotly.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -71,6 +71,43 @@ pub fn sorted_tie_groups(key: &[f64]) -> (Vec<usize>, Vec<(usize, usize)>) {
     (order, groups)
 }
 
+/// The Lorenz curve itself: cumulative weight share (x) and cumulative `y` share (y), one
+/// point per tie group plus the origin. Same walk as [`gini`], so the two always agree.
+///
+/// # Errors
+/// As [`gini`].
+pub fn lorenz_curve(
+    y: &[f64],
+    score: &[f64],
+    w: Option<&[f64]>,
+) -> Result<(Vec<f64>, Vec<f64>), GlassError> {
+    validate(y, score, w)?;
+    let (order, groups) = sorted_tie_groups(score);
+    let weight = |row: usize| w.map_or(1.0, |w| w[row]);
+    let total_y: f64 = y.iter().sum();
+    let total_w: f64 = (0..y.len()).map(weight).sum();
+    let mut xs = Vec::with_capacity(groups.len() + 1);
+    let mut ys = Vec::with_capacity(groups.len() + 1);
+    xs.push(0.0);
+    ys.push(0.0);
+    let (mut cum_x, mut cum_y) = (0.0, 0.0);
+    for (start, end) in groups {
+        for &row in &order[start..end] {
+            cum_x += weight(row);
+            cum_y += y[row];
+        }
+        // shares live in [0, 1]; cumulative rounding can leave 1 ± 4e-16
+        xs.push((cum_x / total_w).clamp(0.0, 1.0));
+        ys.push((cum_y / total_y).clamp(0.0, 1.0));
+    }
+    // and the curve ends at exactly (1, 1) by definition
+    if let (Some(x), Some(y)) = (xs.last_mut(), ys.last_mut()) {
+        *x = 1.0;
+        *y = 1.0;
+    }
+    Ok((xs, ys))
+}
+
 /// Walk the Lorenz curve in score order, integrate with trapezoids, tie groups as one step.
 fn gini_unchecked(y: &[f64], score: &[f64], w: Option<&[f64]>) -> f64 {
     let (order, groups) = sorted_tie_groups(score);
