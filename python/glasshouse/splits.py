@@ -159,6 +159,39 @@ def time_ordered(time: ArrayLike, n_folds: int = 5, min_train_fraction: float = 
     return Splits(tuple(folds), "time", n_rows, spec)
 
 
+def stratified(labels: ArrayLike, k: int = 5, seed: int = 0) -> Splits:
+    """Stratified k-fold: every fold has (as near as possible) the overall class mix.
+
+    Use for classification with a rare class, so no test fold ends up with three positives.
+    Rows are still treated as exchangeable — this is ``kind="random"`` with a balanced draw;
+    for time or entity structure use :func:`time_ordered` or :func:`grouped`.
+
+    Examples
+    --------
+    >>> from glasshouse.splits import stratified
+    >>> s = stratified([0, 0, 0, 0, 1, 1, 0, 0, 1, 1], k=2, seed=0)
+    >>> [sorted(f.test_idx.tolist()) for f in s]  # two positives in each test fold
+    [[0, 3, 7, 8, 9], [1, 2, 4, 5, 6]]
+    """
+    codes, _ = _codes(labels)
+    n_rows = len(codes)
+    _check_k(k, n_rows)
+    rng = np.random.default_rng(seed)
+    row_fold = np.empty(n_rows, dtype=np.int64)
+    for code in np.unique(codes):
+        rows = np.flatnonzero(codes == code)
+        rows = rows[rng.permutation(len(rows))]
+        # deal this class's rows round-robin, starting at a random fold so small classes
+        # do not all land in fold 0
+        start = int(rng.integers(k))
+        row_fold[rows] = (np.arange(len(rows)) + start) % k
+    all_rows = np.arange(n_rows, dtype=np.int64)
+    folds = tuple(
+        Fold(all_rows[row_fold != i], all_rows[row_fold == i], "random", i) for i in range(k)
+    )
+    return Splits(folds, "random", n_rows, {"method": "stratified", "k": k, "seed": seed})
+
+
 def grouped(group: ArrayLike, k: int = 5, seed: int = 0) -> Splits:
     """Group k-fold: every row of a group lands on the same side.
 
@@ -213,4 +246,4 @@ def _codes(values: ArrayLike) -> tuple[Idx, list[Any]]:
     return codes.astype(np.int64), levels.tolist()
 
 
-__all__ = ["Fold", "Kind", "Splits", "grouped", "kfold", "time_ordered"]
+__all__ = ["Fold", "Kind", "Splits", "grouped", "kfold", "stratified", "time_ordered"]

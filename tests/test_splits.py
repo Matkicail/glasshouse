@@ -9,7 +9,7 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from glasshouse.splits import Fold, Splits, grouped, kfold, time_ordered
+from glasshouse.splits import Fold, Splits, grouped, kfold, stratified, time_ordered
 
 
 def _partition_ok(s: Splits) -> None:
@@ -75,3 +75,17 @@ def test_fold_refuses_overlap_and_round_trips() -> None:
     assert back.kind == "random" and len(back) == 4
     for a, b in zip(s, back, strict=True):
         assert a.train_idx.tolist() == b.train_idx.tolist()
+
+
+def test_stratified_keeps_the_class_mix_in_every_fold() -> None:
+    rng = np.random.default_rng(0)
+    labels = (rng.uniform(size=1000) < 0.05).astype(int)  # 5 % positives
+    s = stratified(labels, k=5, seed=1)
+    _partition_ok(s)
+    tests = np.concatenate([f.test_idx for f in s])
+    assert np.array_equal(np.sort(tests), np.arange(1000))
+    positives = labels.sum()
+    for f in s:
+        in_fold = labels[f.test_idx].sum()
+        assert abs(in_fold - positives / 5) <= 1  # as even as integers allow
+    assert stratified(labels, k=5, seed=1)[2].test_idx.tolist() == s[2].test_idx.tolist()
