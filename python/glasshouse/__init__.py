@@ -4,13 +4,24 @@ Glass-box models and metrics that tell the truth — weighted, exposure-aware, a
 measured against a naive baseline so you know whether the model is actually helping.
 """
 
-from glasshouse import arrays, classification, encoders, glm, metrics, regression, scorecard, splits
+from glasshouse import (
+    arrays,
+    classification,
+    data,
+    encoders,
+    glm,
+    metrics,
+    regression,
+    scorecard,
+    splits,
+)
 from glasshouse.glm import GLM
 
 __all__ = [
     "GLM",
     "arrays",
     "classification",
+    "data",
     "encoders",
     "glm",
     "metrics",
