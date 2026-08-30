@@ -68,6 +68,10 @@ class Report:
         p.write_text(json.dumps(self.doc, indent=1))
         return p
 
+    def to_html(self, path: str | Path) -> Path:
+        """Write the self-contained HTML report (see :func:`to_html`)."""
+        return to_html(self.doc, path)
+
 
 def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `task` are optional
     task: TaskType,
@@ -287,7 +291,50 @@ def validate(doc: dict[str, Any]) -> None:
 
 def schema_path() -> Path:
     """Where the checked-in JSON Schema lives."""
-    return Path(__file__).resolve().parents[2] / "report" / "schema.json"
+    return _report_dir() / "schema.json"
 
 
-__all__ = ["SCHEMA_VERSION", "Report", "TaskType", "build", "schema_path", "validate"]
+PLOTLY_SRI = "sha384-cCVCZkAjYNxaYKbM8lsArLznDF/SvMFr1jcZrvOpSTCa0W40ZAdLzHCEulnUa5i7"
+
+
+def to_html(doc: dict[str, Any], path: str | Path) -> Path:
+    """Write one self-contained HTML report: the viewer JS, this document, and the template.
+
+    Opens from a double-click, no server. Plotly is loaded from a pinned CDN URL with an
+    integrity hash; if it cannot load, every chart falls back to a table of the same numbers.
+
+    Examples
+    --------
+    >>> import tempfile, pathlib
+    >>> from glasshouse import report
+    >>> r = report.build("regression", [1.0, 2.0, 3.0, 4.0], {"m": [1.1, 1.9, 3.2, 3.9]})
+    >>> out = report.to_html(r.to_dict(), pathlib.Path(tempfile.mkdtemp()) / "r.html")
+    >>> "glasshouse-report/1" in out.read_text(encoding="utf-8")
+    True
+    """
+    template = (_report_dir() / "template.html").read_text(encoding="utf-8")
+    viewer = (_report_dir() / "dist" / "report.js").read_text(encoding="utf-8")
+    # `</script` inside the JSON would end the data block early; escape it the standard way.
+    payload = json.dumps(doc).replace("</", "<\\/")
+    html = (
+        template.replace("__GLASSHOUSE_PLOTLY_SRI__", PLOTLY_SRI)
+        .replace("__GLASSHOUSE_REPORT_JS__", viewer)
+        .replace("__GLASSHOUSE_REPORT_JSON__", payload)
+    )
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(html, encoding="utf-8")
+    return p
+
+
+def _report_dir() -> Path:
+    """Return the ``report/`` folder: schema, template, and the checked-in viewer build."""
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "report" / "template.html").exists():
+            return parent / "report"
+    msg = "report/ folder not found next to the package: is glasshouse installed from the repo?"
+    raise FileNotFoundError(msg)
+
+
+__all__ = ["SCHEMA_VERSION", "Report", "TaskType", "build", "schema_path", "to_html", "validate"]

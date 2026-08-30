@@ -17,6 +17,8 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 - `GLM`: IRLS in Rust with step-halving, offsets, weights, all five families, identity/log/
   logit links; standard errors, null deviance, dispersion, per-row contributions, a printable
   fit trace, JSON round-trip, HC1 robust standard errors. Golden-tested against statsmodels.
+- `report.to_html` and the `report/` TypeScript viewer (Overview, Compare, Curves; A/E by
+  feature; tables fallback when Plotly is unavailable): one self-contained HTML per report.
 - `report.build` / `report.validate` + `report/schema.json`: the whole comparison document for
   a declared task type (frequency, severity, pure_premium, binary, regression); `curves.roc` /
   `curves.pr`.

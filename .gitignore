@@ -82,3 +82,4 @@ scratch/
 
 # --- the report suite (schema, TypeScript source, checked-in build) is code, not data ---
 !report/**
+report/node_modules/
