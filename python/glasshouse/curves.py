@@ -20,6 +20,7 @@ import numpy as np
 import numpy.typing as npt
 
 from glasshouse import _core, metrics
+from glasshouse import classification as clf
 from glasshouse.arrays import F64, ArrayLike, to_vector
 
 
@@ -112,9 +113,8 @@ def lorenz(
     yy, ss, w = to_vector(y, "y"), to_vector(score, "score"), _w(sample_weight)
     xs, ys = _core.lorenz_curve(yy, ss, w)
     x_arr, y_arr = np.asarray(xs, dtype=np.float64), np.asarray(ys, dtype=np.float64)
-    if len(x_arr) > max_points:
-        keep = np.unique(np.linspace(0, len(x_arr) - 1, num=max_points).round().astype(np.int64))
-        x_arr, y_arr = x_arr[keep], y_arr[keep]
+    keep = _thin(len(x_arr), max_points)
+    x_arr, y_arr = x_arr[keep], y_arr[keep]
     return Lorenz(x=x_arr, y=y_arr, gini=metrics.gini(yy, ss, w), label=label)
 
 
@@ -212,6 +212,91 @@ def calibration(
     )
 
 
+@dataclass(frozen=True)
+class Roc:
+    """ROC points from the highest score down, plus the AUC they integrate to."""
+
+    fpr: F64
+    tpr: F64
+    threshold: F64
+    auc: float
+    label: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-ready."""
+        return {"kind": "roc", **_lists(asdict(self))}
+
+
+@dataclass(frozen=True)
+class PrecisionRecall:
+    """Precision-recall points from the highest score down, plus the average precision."""
+
+    recall: F64
+    precision: F64
+    threshold: F64
+    average_precision: float
+    positive_rate: float
+    label: str
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-ready."""
+        return {"kind": "pr", **_lists(asdict(self))}
+
+
+def roc(
+    y: ArrayLike,
+    score: ArrayLike,
+    sample_weight: ArrayLike | None = None,
+    label: str = "model",
+    max_points: int = 1000,
+) -> Roc:
+    """ROC curve; ties are one step; thinned to ``max_points`` (endpoints kept); AUC on all rows.
+
+    Examples
+    --------
+    >>> from glasshouse.curves import roc
+    >>> c = roc([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+    >>> c.fpr.tolist(), c.tpr.tolist(), c.auc
+    ([0.0, 0.0, 0.5, 0.5, 1.0], [0.0, 0.5, 0.5, 1.0, 1.0], 0.75)
+    """
+    yy, ss, w = to_vector(y, "y"), to_vector(score, "score"), _w(sample_weight)
+    fpr, tpr, thr = (np.asarray(v, dtype=np.float64) for v in _core.roc_curve(yy, ss, w))
+    keep = _thin(len(fpr), max_points)
+    return Roc(fpr[keep], tpr[keep], thr[keep], clf.roc_auc(yy, ss, w), label)
+
+
+def pr(
+    y: ArrayLike,
+    score: ArrayLike,
+    sample_weight: ArrayLike | None = None,
+    label: str = "model",
+    max_points: int = 1000,
+) -> PrecisionRecall:
+    """Precision-recall curve; the baseline a random scorer achieves is the positive rate.
+
+    Examples
+    --------
+    >>> from glasshouse.curves import pr
+    >>> c = pr([0, 0, 1, 1], [0.1, 0.4, 0.35, 0.8])
+    >>> c.recall.tolist(), c.precision.round(3).tolist(), round(c.average_precision, 4)
+    ([0.5, 0.5, 1.0, 1.0], [1.0, 0.5, 0.667, 0.5], 0.8333)
+    """
+    yy, ss, w = to_vector(y, "y"), to_vector(score, "score"), _w(sample_weight)
+    rec, prec, thr = (np.asarray(v, dtype=np.float64) for v in _core.pr_curve(yy, ss, w))
+    keep = _thin(len(rec), max_points)
+    ww = np.ones(len(yy)) if w is None else w
+    positive_rate = float(np.sum(ww * yy) / np.sum(ww))
+    return PrecisionRecall(
+        rec[keep], prec[keep], thr[keep], clf.average_precision(yy, ss, w), positive_rate, label
+    )
+
+
+def _thin(n: int, max_points: int) -> npt.NDArray[np.int64]:
+    if n <= max_points:
+        return np.arange(n, dtype=np.int64)
+    return np.unique(np.linspace(0, n - 1, num=max_points).round().astype(np.int64))
+
+
 def _lists(d: dict[str, Any]) -> dict[str, Any]:
     return {k: (v.tolist() if isinstance(v, np.ndarray) else v) for k, v in d.items()}
 
@@ -221,8 +306,12 @@ __all__ = [
     "DoubleLift",
     "Lift",
     "Lorenz",
+    "PrecisionRecall",
+    "Roc",
     "calibration",
     "double_lift",
     "lift",
     "lorenz",
+    "pr",
+    "roc",
 ]

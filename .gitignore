@@ -79,3 +79,6 @@ Thumbs.db
 
 # --- personal scratch: benchmarks, proofs, experiments. Never tracked. ---
 scratch/
+
+# --- the report suite (schema, TypeScript source, checked-in build) is code, not data ---
+!report/**

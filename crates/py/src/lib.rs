@@ -205,6 +205,30 @@ fn average_precision(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>)
     classification::average_precision(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
+/// ROC curve points. See `glasshouse.curves.roc`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn roc_curve(
+    y: Arr<'_>,
+    score: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    classification::roc_curve(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
+/// Precision-recall curve points. See `glasshouse.curves.pr`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn pr_curve(
+    y: Arr<'_>,
+    score: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>)> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    classification::pr_curve(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
 /// See `glasshouse.metrics.ks`.
 #[pyfunction]
 #[pyo3(signature = (y, score, sample_weight=None))]
@@ -370,6 +394,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(roc_auc, m)?)?;
     m.add_function(wrap_pyfunction!(average_precision, m)?)?;
     m.add_function(wrap_pyfunction!(ks, m)?)?;
+    m.add_function(wrap_pyfunction!(roc_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(pr_curve, m)?)?;
     m.add_function(wrap_pyfunction!(calibration_table, m)?)?;
     m.add_function(wrap_pyfunction!(binned_table, m)?)?;
     m.add_function(wrap_pyfunction!(residuals, m)?)?;

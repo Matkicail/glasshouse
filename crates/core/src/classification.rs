@@ -6,6 +6,9 @@
 use crate::error::{all_values, same_length, GlassError};
 use crate::ranking::sorted_tie_groups;
 
+/// Three parallel columns of curve points: (x, y, threshold at each step).
+pub type CurvePoints = (Vec<f64>, Vec<f64>, Vec<f64>);
+
 /// Weighted confusion counts at a threshold.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Confusion {
@@ -140,6 +143,58 @@ pub fn roc_auc(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<f64, Glass
         area += (fpr1 - fpr0) * (tpr0 + tpr1) / 2.0;
     }
     Ok(unit(area))
+}
+
+/// ROC curve points `(fpr, tpr)` from the highest score down, one per tie group plus the
+/// origin; the same walk as [`roc_auc`], so the trapezoid area of these points is the AUC.
+///
+/// # Errors
+/// As [`roc_auc`].
+pub fn roc_curve(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<CurvePoints, GlassError> {
+    let (pos, neg) = validate_ranking(y, score, w)?;
+    let weight = |row: usize| w.map_or(1.0, |w| w[row]);
+    let (order, groups) = sorted_tie_groups(score);
+    let (mut fpr, mut tpr, mut thr) = (vec![0.0], vec![0.0], vec![f64::INFINITY]);
+    let (mut tp, mut fp) = (0.0, 0.0);
+    for &(start, end) in groups.iter().rev() {
+        for &row in &order[start..end] {
+            if is_positive(y[row]) {
+                tp += weight(row);
+            } else {
+                fp += weight(row);
+            }
+        }
+        fpr.push((fp / neg).clamp(0.0, 1.0));
+        tpr.push((tp / pos).clamp(0.0, 1.0));
+        thr.push(score[order[start]]);
+    }
+    Ok((fpr, tpr, thr))
+}
+
+/// Precision–recall points `(recall, precision)` from the highest score down, one per tie
+/// group; the step-wise area under them is [`average_precision`].
+///
+/// # Errors
+/// As [`roc_auc`].
+pub fn pr_curve(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<CurvePoints, GlassError> {
+    let (pos, _) = validate_ranking(y, score, w)?;
+    let weight = |row: usize| w.map_or(1.0, |w| w[row]);
+    let (order, groups) = sorted_tie_groups(score);
+    let (mut recall, mut precision, mut thr) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut tp, mut fp) = (0.0, 0.0);
+    for &(start, end) in groups.iter().rev() {
+        for &row in &order[start..end] {
+            if is_positive(y[row]) {
+                tp += weight(row);
+            } else {
+                fp += weight(row);
+            }
+        }
+        recall.push((tp / pos).clamp(0.0, 1.0));
+        precision.push((tp / (tp + fp)).clamp(0.0, 1.0));
+        thr.push(score[order[start]]);
+    }
+    Ok((recall, precision, thr))
 }
 
 /// Average precision: the area under the precision–recall curve as a step function, the same
