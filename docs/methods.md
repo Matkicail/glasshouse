@@ -179,6 +179,22 @@ AIC/BIC are deliberately not provided yet: they need the full per-family log-lik
 References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized Linear Models",
 *JRSS A* 135 (1972). Golden reference: `statsmodels.GLM` with `var_weights` and `offset`.
 
+## Encoders and leakage
+
+Leakage is a property of the split, not the transform. Every encoder is fitted on the
+training rows only (the GLM's `fold=` guarantees it), and:
+
+- **One-hot**: levels learned on train, sorted, first level dropped as the reference; an
+  unseen level at prediction is refused by name (or encoded as the reference on request).
+- **Target encoding**: `(Σ w y + m · prior) / (Σ w + m)` per level, with `m` the smoothing
+  weight (in units of exposure) and `prior` the weighted mean of `y`. The training rows get
+  *out-of-fold* values (inner k-fold), or, when the fold is time-ordered, *past-only* values
+  with the running mean of the past as prior — a row with no past is encoded as 0, never the
+  global mean (which is the future). New rows get the full-training-data table; unseen levels
+  get the prior. Reference: Micci-Barreca, "A preprocessing scheme for high-cardinality
+  categorical attributes", *SIGKDD Explorations* 3 (2001).
+- **Standardize**: weighted mean and population standard deviation from the training rows.
+
 ## Numerical notes
 
 - Sums are plain `f64` accumulations in row order. Against scikit-learn on ~5k rows they agree

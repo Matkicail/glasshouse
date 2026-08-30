@@ -118,6 +118,9 @@ def time_ordered(time: ArrayLike, n_folds: int = 5, min_train_fraction: float = 
     window; the rest is cut into ``n_folds`` consecutive test blocks, each trained on
     everything before it. Rows with the same timestamp never straddle a boundary.
 
+    Invariant: ``train_idx`` and ``test_idx`` are returned **in time order**, not index order,
+    so anything cumulative (a past-only target encoding) can treat row order as time.
+
     Refuses NaN or non-finite times. Does not shuffle, ever.
 
     Examples
@@ -151,7 +154,7 @@ def time_ordered(time: ArrayLike, n_folds: int = 5, min_train_fraction: float = 
         lo, hi = edges[i], edges[i + 1]
         if hi <= lo:
             continue  # a block swallowed by a timestamp tie: fewer, honest folds
-        folds.append(Fold(np.sort(order[:lo]), np.sort(order[lo:hi]), "time", len(folds)))
+        folds.append(Fold(order[:lo].copy(), order[lo:hi].copy(), "time", len(folds)))
     if not folds:
         msg = "time: could not form a single fold; are all timestamps equal?"
         raise ValueError(msg)

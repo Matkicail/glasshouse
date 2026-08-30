@@ -13,9 +13,10 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
-from glasshouse import _core
-from glasshouse.arrays import F64, ArrayLike, to_matrix, to_vector
+from glasshouse import _core, encoders
+from glasshouse.arrays import F64, ArrayLike, columns, to_matrix, to_vector
 from glasshouse.metrics import FamilyName
+from glasshouse.splits import Fold
 
 LinkName = str  # "identity" | "log" | "logit"; None means the family's canonical link
 _CANONICAL: dict[str, str] = {
@@ -68,6 +69,11 @@ class GLM:
         total predicted equals total actual on the training data.
     power : float, optional
         Tweedie variance power (``1 < power < 2`` for pure premium). Required for tweedie.
+    terms : dict, optional
+        How to treat named columns of a frame: ``"onehot"``, ``"target"``, ``"standardize"``
+        or ``"linear"`` (the default for any column not listed). Encoders are fitted on the
+        training rows only; with a time-ordered ``fold`` target encoding is cumulative
+        (past-only) automatically. Columns not in a frame cannot have terms.
     fit_intercept : bool
         Prepend a column of ones. Turn off only if your design already has one.
     max_iter, tol : int, float
@@ -94,11 +100,14 @@ class GLM:
     family: FamilyName
     link: LinkName | None = None
     power: float | None = None
+    terms: dict[str, str] | None = None
     fit_intercept: bool = True
     max_iter: int = 100
     tol: float = 1e-10
     _fit: dict[str, Any] = field(default_factory=dict, repr=False)
     feature_names_in_: list[str] = field(default_factory=list, repr=False)
+    encoders_: dict[str, encoders.Encoder] = field(default_factory=dict, repr=False)
+    input_columns_: list[str] = field(default_factory=list, repr=False)
 
     # ------------------------------------------------------------------ fitting
 
@@ -108,13 +117,15 @@ class GLM:
         y: ArrayLike,
         sample_weight: ArrayLike | None = None,
         offset: ArrayLike | None = None,
+        fold: Fold | None = None,
     ) -> GLM:
         """Fit by IRLS. Returns ``self`` so calls chain.
 
         Parameters
         ----------
         X : frame or 2-D array
-            Numeric features. Encode categoricals first; the data door says so if you forget.
+            Features. Categorical columns need a ``terms`` entry (``"onehot"`` or
+            ``"target"``); the data door refuses them otherwise.
         y : 1-D
             Outcome inside the family's support.
         sample_weight : 1-D, optional
@@ -122,11 +133,21 @@ class GLM:
         offset : 1-D, optional
             Added to the linear predictor, on the link scale — ``log(exposure)`` for a
             Poisson count model, not the exposure itself.
+        fold : Fold, optional
+            Fit on ``fold.train_idx`` only. Encoders are fitted on those rows, and if
+            ``fold.kind == "time"`` target encoding is cumulative (past-only). Pass the whole
+            data and the fold; do not subset by hand.
         """
-        matrix, names = to_matrix(X)
         yy = to_vector(y, "y")
         w = None if sample_weight is None else to_vector(sample_weight, "sample_weight")
         o = None if offset is None else to_vector(offset, "offset")
+        rows = None if fold is None else fold.train_idx
+        cumulative = fold is not None and fold.kind == "time"
+        matrix, names = self._design_fit(X, yy, w, rows, cumulative=cumulative)
+        if rows is not None:
+            yy = yy[rows]
+            w = None if w is None else w[rows]
+            o = None if o is None else o[rows]
         if self.fit_intercept:
             matrix = np.ascontiguousarray(np.column_stack([np.ones(matrix.shape[0]), matrix]))
             names = ["intercept", *names]
@@ -144,6 +165,98 @@ class GLM:
         self._fit = result
         self.feature_names_in_ = names
         return self
+
+    # ------------------------------------------------------------------ design matrices
+
+    def _design_fit(
+        self,
+        X: ArrayLike,  # noqa: N803
+        y: F64,
+        w: F64 | None,
+        rows: npt.NDArray[np.int64] | None,
+        *,
+        cumulative: bool,
+    ) -> tuple[F64, list[str]]:
+        """Build the training design: fit encoders on the training rows, encode them."""
+        terms = self.terms or {}
+        cols = columns(X)
+        if cols is None:
+            if terms:
+                msg = "terms need named columns: pass a DataFrame, not a bare array"
+                raise ValueError(msg)
+            matrix, plain_names = to_matrix(X)
+            self.input_columns_ = plain_names
+            self.encoders_ = {}
+            return (matrix if rows is None else matrix[rows]), plain_names
+        unknown = sorted(set(terms) - {str(n) for n, _ in cols})
+        if unknown:
+            msg = f"terms name columns that are not in X: {unknown}"
+            raise ValueError(msg)
+        self.input_columns_ = [str(n) for n, _ in cols]
+        self.encoders_ = {}
+        y_train = y if rows is None else y[rows]
+        w_train = w if (w is None or rows is None) else w[rows]
+        blocks: list[F64] = []
+        names: list[str] = []
+        for col_name, col in cols:
+            block, block_names = self._fit_term(
+                str(col_name), _subset(col, rows), y_train, w_train, terms, cumulative=cumulative
+            )
+            blocks.append(block)
+            names.extend(block_names)
+        return np.ascontiguousarray(np.column_stack(blocks)), names
+
+    def _fit_term(
+        self,
+        name: str,
+        raw: Any,
+        y_train: F64,
+        w_train: F64 | None,
+        terms: dict[str, str],
+        *,
+        cumulative: bool,
+    ) -> tuple[F64, list[str]]:
+        """One column of the training design: linear passthrough or a fitted encoder."""
+        kind = terms.get(name, "linear")
+        if kind == "linear":
+            return to_vector(raw, name)[:, None], [name]
+        options = {"cumulative": True} if (kind == "target" and cumulative) else {}
+        enc = encoders.make(kind, name, **options)
+        block, block_names = enc.fit_transform(raw, y_train, w_train)
+        self.encoders_[name] = enc
+        return block, block_names
+
+    def _design_predict(self, X: ArrayLike) -> F64:  # noqa: N803
+        """Build a prediction design with the fitted encoders; check the columns line up."""
+        cols = columns(X)
+        if cols is None:
+            if self.encoders_:
+                msg = "this model was fitted with terms on a DataFrame: predict needs one too"
+                raise ValueError(msg)
+            matrix, _ = to_matrix(X)
+            if matrix.shape[1] != len(self.input_columns_):
+                msg = (
+                    f"X has {matrix.shape[1]} columns but the model was fitted on "
+                    f"{len(self.input_columns_)}"
+                )
+                raise ValueError(msg)
+            return self._with_intercept(matrix)
+        have = [str(n) for n, _ in cols]
+        if have != self.input_columns_:
+            msg = f"columns {have} do not match the columns fitted on {self.input_columns_}"
+            raise ValueError(msg)
+        blocks: list[F64] = []
+        for col_name, col in cols:
+            enc = self.encoders_.get(str(col_name))
+            blocks.append(
+                to_vector(col, str(col_name))[:, None] if enc is None else enc.transform(col)[0]
+            )
+        return self._with_intercept(np.column_stack(blocks))
+
+    def _with_intercept(self, matrix: F64) -> F64:
+        if self.fit_intercept:
+            matrix = np.column_stack([np.ones(matrix.shape[0]), matrix])
+        return np.ascontiguousarray(matrix)
 
     def _link_name(self) -> str:
         return self.link if self.link is not None else _CANONICAL[self.family]
@@ -234,23 +347,10 @@ class GLM:
 
     # ------------------------------------------------------------------ prediction
 
-    def _design(self, X: ArrayLike) -> F64:  # noqa: N803
-        matrix, names = to_matrix(X)
-        expected = self.feature_names_in_[1:] if self.fit_intercept else self.feature_names_in_
-        if names != expected and not all(n.startswith("x") for n in names):
-            msg = f"columns {names} do not match the columns fitted on {expected}"
-            raise ValueError(msg)
-        if matrix.shape[1] != len(expected):
-            msg = f"X has {matrix.shape[1]} columns but the model was fitted on {len(expected)}"
-            raise ValueError(msg)
-        if self.fit_intercept:
-            matrix = np.column_stack([np.ones(matrix.shape[0]), matrix])
-        return np.ascontiguousarray(matrix)
-
     def predict_linear(self, X: ArrayLike, offset: ArrayLike | None = None) -> F64:  # noqa: N803
         """Return the linear predictor ``eta = X beta + offset`` (link scale)."""
         coef = np.asarray(self._require_fit()["coef"], dtype=np.float64)
-        eta = self._design(X) @ coef
+        eta = self._design_predict(X) @ coef
         if offset is not None:
             eta = eta + to_vector(offset, "offset")
         return np.asarray(eta, dtype=np.float64)
@@ -272,7 +372,7 @@ class GLM:
         contribution is that feature's multiplicative relativity for the row.
         """
         coef = np.asarray(self._require_fit()["coef"], dtype=np.float64)
-        return self._design(X) * coef, list(self.feature_names_in_)
+        return self._design_predict(X) * coef, list(self.feature_names_in_)
 
     # ------------------------------------------------------------------ reporting
 
@@ -306,6 +406,9 @@ class GLM:
             "power": self.power,
             "fit_intercept": self.fit_intercept,
             "feature_names_in": list(self.feature_names_in_),
+            "input_columns": list(self.input_columns_),
+            "terms": dict(self.terms or {}),
+            "encoders": {k: v.to_dict() for k, v in self.encoders_.items()},
             "coef": list(map(float, r["coef"])),
             "cov": list(map(float, r["cov"])),
             "cov_robust": list(map(float, r["cov_robust"])),
@@ -328,6 +431,9 @@ class GLM:
             fit_intercept=payload["fit_intercept"],
         )
         model.feature_names_in_ = list(payload["feature_names_in"])
+        model.input_columns_ = list(payload["input_columns"])
+        model.terms = dict(payload["terms"]) or None
+        model.encoders_ = {k: encoders.from_dict(v) for k, v in payload["encoders"].items()}
         model._fit = {
             key: payload[key]
             for key in (
@@ -353,6 +459,14 @@ class GLM:
             }
         )
         return model
+
+
+def _subset(col: Any, rows: npt.NDArray[np.int64] | None) -> Any:
+    """Rows of one column, whatever container it came in."""
+    if rows is None:
+        return col
+    arr = np.asarray(col.to_numpy() if hasattr(col, "to_numpy") else col)
+    return arr[rows]
 
 
 __all__ = ["GLM", "FitTrace"]

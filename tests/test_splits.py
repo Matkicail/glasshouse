@@ -40,6 +40,8 @@ def test_time_ordered_never_looks_forward() -> None:
         assert t[perm][f.train_idx].max() < t[perm][f.test_idx].min()  # strictly before
         assert len(f.train_idx) >= 0.3 * len(t)
     assert len(s[-1].train_idx) > len(s[0].train_idx)  # expanding window
+    for f in s:  # invariant: time folds come back in time order, ties included
+        assert np.all(np.diff(t[perm][f.train_idx]) >= 0)
     covered = np.concatenate([f.test_idx for f in s])
     assert len(np.unique(covered)) == len(covered)  # each row tested at most once
 
