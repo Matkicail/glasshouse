@@ -4,7 +4,7 @@ Glass-box models and metrics that tell the truth — weighted, exposure-aware, a
 measured against a naive baseline so you know whether the model is actually helping.
 """
 
-from glasshouse import classification, metrics
+from glasshouse import classification, metrics, regression
 
-__all__ = ["classification", "metrics"]
+__all__ = ["classification", "metrics", "regression"]
 __version__ = "0.0.1"

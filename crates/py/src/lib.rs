@@ -7,6 +7,7 @@
 //! calls `glasshouse_core`, and maps `GlassError` to `ValueError`. No `if` about numbers here.
 
 use glasshouse_core::classification::Confusion;
+use glasshouse_core::regression::{self, RegressionMetric};
 use glasshouse_core::{calibration, classification, metrics, ranking, Family, GlassError};
 use numpy::PyReadonlyArray1;
 use pyo3::exceptions::PyValueError;
@@ -153,8 +154,35 @@ fn ks(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f6
     classification::ks(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
+/// One weighted regression error by name. See `glasshouse.regression`.
+#[pyfunction]
+#[pyo3(signature = (metric, y, mu, sample_weight=None))]
+fn regression_metric(
+    metric: &str,
+    y: Arr<'_>,
+    mu: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+) -> PyResult<f64> {
+    let which = match metric {
+        "rmse" => RegressionMetric::Rmse,
+        "mae" => RegressionMetric::Mae,
+        "mape" => RegressionMetric::Mape,
+        "smape" => RegressionMetric::Smape,
+        "msle" => RegressionMetric::Msle,
+        "r2" => RegressionMetric::R2,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "metric: unknown regression metric {other:?} — one of: rmse, mae, mape, smape, msle, r2"
+            )))
+        }
+    };
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    regression::regression(which, y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(regression_metric, m)?)?;
     m.add_function(wrap_pyfunction!(threshold_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(roc_auc, m)?)?;
     m.add_function(wrap_pyfunction!(average_precision, m)?)?;

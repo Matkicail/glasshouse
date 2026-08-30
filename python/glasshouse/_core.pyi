@@ -59,3 +59,9 @@ def ks(
     score: npt.NDArray[np.float64],
     sample_weight: npt.NDArray[np.float64] | None = None,
 ) -> float: ...
+def regression_metric(
+    metric: str,
+    y: npt.NDArray[np.float64],
+    mu: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> float: ...
