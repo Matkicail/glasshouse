@@ -70,3 +70,8 @@ data/
 .idea/
 .DS_Store
 Thumbs.db
+
+# --- build artifacts (the extension is built by uv sync / maturin, never committed) ---
+*.so
+*.pyd
+*.dylib
