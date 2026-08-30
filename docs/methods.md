@@ -164,10 +164,13 @@ deviance is a fresh intercept-only IRLS fit with the same offset and weights. A 
 
 **Robust (HC1) covariance** `= (XᵀWX)⁻¹ (Σᵢ sᵢsᵢᵀ) (XᵀWX)⁻¹ · n/(n−p)`, with row score
 `sᵢ = xᵢ · wᵢ (yᵢ − muᵢ) (dmu/deta) / V(muᵢ)`. The dispersion cancels, so these stand even when
-the variance function is wrong (over-dispersed counts fitted as Poisson). Note: statsmodels'
-GLM reports identical numbers for `HC0` and `HC1` — it omits the `n/(n−p)` factor — so the
-golden test scales its `HC0` by `√(n/(n−p))`; R's `sandwich::vcovHC(type = "HC1")` agrees with
-ours. Reference: MacKinnon & White, "Some heteroskedasticity-consistent covariance matrix
+the variance function is wrong (over-dispersed counts fitted as Poisson). The bread is the
+*expected* information `XᵀWX` — the same matrix behind `se_`, and what R's `sandwich` uses for
+`glm` objects; statsmodels uses the *observed* Hessian instead, which coincides only under a
+canonical link. Two further statsmodels notes: its GLM reports identical numbers for `HC0` and
+`HC1` (it omits the `n/(n−p)` factor). The golden tests therefore compare against statsmodels'
+`HC0 · √(n/(n−p))` for the canonical-link families, and against the formula written out in
+NumPy for all five. Reference: MacKinnon & White, "Some heteroskedasticity-consistent covariance matrix
 estimators with improved finite sample properties", *J. Econometrics* 29 (1985).
 
 AIC/BIC are deliberately not provided yet: they need the full per-family log-likelihood
