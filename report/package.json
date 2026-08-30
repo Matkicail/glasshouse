@@ -1,0 +1,19 @@
+{
+  "name": "glasshouse-report",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The glasshouse report suite: renders a glasshouse-report JSON into one self-contained HTML. No framework, no bundler; tsc output is checked in.",
+  "license": "MIT OR Apache-2.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "check": "npm run build && git diff --exit-code -- dist && npm test && npm run size && npm audit --audit-level=high",
+    "size": "node -e \"const s=require('fs').statSync('dist/report.js').size; console.log('dist/report.js', s, 'bytes'); if (s > 200*1024) { console.error('over the 200 KB budget'); process.exit(1) }\""
+  },
+  "devDependencies": {
+    "@types/jsdom": "30.0.0",
+    "jsdom": "30.0.1",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

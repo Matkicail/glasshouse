@@ -14,6 +14,9 @@ doc in the same PR as the fix — this file is the recipe, and a stale recipe is
 | `uv python install 3.12` | Installs Python 3.12 managed by uv | Floor is 3.12 (3.10 is EOL Oct 2026); CI runs 3.12 + 3.13 |
 | `uv sync` | Creates `.venv`, installs dev deps, compiles the Rust extension (`glasshouse._core`) | One command, whole environment. Re-run after changing `Cargo.toml`/`pyproject.toml` |
 
+| `curl -sSfO https://nodejs.org/dist/latest-v22.x/node-v22.x.y-linux-x64.tar.xz` then untar into `~/.local/node` and add `~/.local/node/bin` to PATH (verify the SHA256 from `SHASUMS256.txt`) | Installs Node 22 user-locally | Only needed to work on the report viewer (`report/`); Python users never need Node |
+| `cd report && npm ci` | Installs the pinned JS dev tools (TypeScript 5.9, vitest, jsdom) | Exact versions from `package-lock.json`; `npm audit` and OSV scan them in CI |
+
 You need a C compiler for the Rust build (`gcc` on Linux/WSL, Xcode CLT on macOS, MSVC Build
 Tools on Windows).
 
@@ -30,6 +33,8 @@ Tools on Windows).
 | `uv run python -c "import glasshouse; print(glasshouse.__version__)"` | Smoke test the install | Proves the extension loaded |
 | `uv run glasshouse list` | Lists the named benchmarks | Recipes anyone can rerun |
 | `uv run glasshouse bench fremtpl2_glm` | Runs a benchmark, writes `benchmarks/<name>/report.{json,md}` | First run fetches the data from OpenML (~70 s) into `~/.cache/glasshouse`; after that ~25 s |
+| `cd report && npm run check` | build → checked-in `dist/report.js` must be unchanged → vitest on the fixture → size budget → `npm audit` | The viewer's gate. If `dist` differs, you forgot to rebuild after editing `src/` |
+| `uv run python -c "from glasshouse import report; ..."; r.to_html('out.html')` | Writes one self-contained HTML report | Double-click to open; Plotly from a pinned CDN, tables if offline |
 | `uv run python tests/make_report_fixture.py` | Regenerates `tests/fixtures/report_small.json` | The document the TypeScript report tests render; regenerate when `report.build` changes shape (and bump `report/schema.json`) |
 | `GLASSHOUSE_NETWORK_TESTS=1 uv run pytest -k pinned` | Reruns the committed benchmark and checks the numbers match to 1e-6 | The regression test that stops numbers drifting silently; needs the cached data |
 
@@ -42,6 +47,8 @@ Tools on Windows).
   (`tests/test_stub_sync.py` fails if you forget).
 - `tests/` — pytest: golden tests vs scikit-learn/statsmodels/glum/R fixtures, hypothesis properties.
 - `docs/` — mkdocs-material (methods with citations, metrics guide, API). Tracked.
+- `report/` — the TypeScript viewer: `schema.json` (the JSON contract), `src/*.ts`, `dist/report.js`
+  (built, checked in), `template.html`, `test/`. Python `report.to_html` glues them.
 - `check.sh` — the gate. `COMMANDS.md` — this file. `CLAUDE.md` — the rules.
 - `*.md` at the top level other than the whitelisted ones (README, CLAUDE, COMMANDS, CHANGELOG)
   are **gitignored on purpose** — plans and session notes are internal.

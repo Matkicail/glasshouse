@@ -136,3 +136,22 @@ def test_fixture_for_the_typescript_side(tmp_path: Path) -> None:
     if fixture.exists():
         pinned = json.loads(fixture.read_text())
         assert pinned["schema"] == doc["schema"] and pinned["models"] == doc["models"]
+
+
+def test_to_html_is_self_contained(tmp_path: Path) -> None:
+    r = _freq_report()
+    out = r.to_html(tmp_path / "r.html")
+    html = out.read_text(encoding="utf-8")
+    assert html.count("GlasshouseReport") >= 2  # the viewer and the boot script
+    assert 'type="application/json"' in html and '"schema": "glasshouse-report/1"' in html
+    assert 'integrity="sha384-' in html and "plotly-2.35.2.min.js" in html
+    assert "__GLASSHOUSE_" not in html  # every placeholder filled
+    assert out.stat().st_size < 2_000_000  # the fixture is small; the viewer is ~25 KB
+    # a </script> inside the data cannot break out of the JSON block
+    doc = r.to_dict()
+    doc["provenance"]["describe"] = "evil </script><script>alert(1)</script>"
+    html2 = report.to_html(doc, tmp_path / "r2.html").read_text(encoding="utf-8")
+    assert (
+        "</script><script>alert"
+        not in html2.split('id="glasshouse-report-data"')[1].split("</script>")[0]
+    )
