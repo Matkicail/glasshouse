@@ -7,6 +7,7 @@ measured against a naive baseline so you know whether the model is actually help
 from glasshouse import (
     arrays,
     classification,
+    curves,
     data,
     encoders,
     glm,
@@ -21,6 +22,7 @@ __all__ = [
     "GLM",
     "arrays",
     "classification",
+    "curves",
     "data",
     "encoders",
     "glm",

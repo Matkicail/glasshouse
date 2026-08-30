@@ -256,8 +256,58 @@ fn glm_fit<'py>(
     Ok(out)
 }
 
+/// Lorenz curve points. See `glasshouse.curves.lorenz`.
+#[pyfunction]
+#[pyo3(signature = (y, score, sample_weight=None))]
+fn lorenz_curve(
+    y: Arr<'_>,
+    score: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+) -> PyResult<(Vec<f64>, Vec<f64>)> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    ranking::lorenz_curve(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
+}
+
+/// Double-lift table as a dict of columns. See `glasshouse.curves.double_lift`.
+#[pyfunction]
+#[pyo3(signature = (y, mu_a, mu_b, sample_weight=None, n_bins=10))]
+fn double_lift_table<'py>(
+    py: Python<'py>,
+    y: Arr<'_>,
+    mu_a: Arr<'_>,
+    mu_b: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+    n_bins: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let bins = calibration::double_lift_table(
+        y.as_slice()?,
+        mu_a.as_slice()?,
+        mu_b.as_slice()?,
+        w,
+        n_bins,
+    )
+    .map_err(to_py)?;
+    let out = PyDict::new(py);
+    out.set_item("n_rows", bins.iter().map(|b| b.n_rows).collect::<Vec<_>>())?;
+    out.set_item("weight", bins.iter().map(|b| b.weight).collect::<Vec<_>>())?;
+    out.set_item("ratio", bins.iter().map(|b| b.ratio).collect::<Vec<_>>())?;
+    out.set_item("actual", bins.iter().map(|b| b.actual).collect::<Vec<_>>())?;
+    out.set_item(
+        "predicted_a",
+        bins.iter().map(|b| b.predicted_a).collect::<Vec<_>>(),
+    )?;
+    out.set_item(
+        "predicted_b",
+        bins.iter().map(|b| b.predicted_b).collect::<Vec<_>>(),
+    )?;
+    Ok(out)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(lorenz_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(double_lift_table, m)?)?;
     m.add_function(wrap_pyfunction!(glm_fit, m)?)?;
     m.add_function(wrap_pyfunction!(regression_metric, m)?)?;
     m.add_function(wrap_pyfunction!(threshold_metrics, m)?)?;

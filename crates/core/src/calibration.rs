@@ -77,6 +77,109 @@ pub fn calibration_table(
     Ok(bins)
 }
 
+/// One row of a double-lift table.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DoubleLiftBin {
+    pub n_rows: usize,
+    pub weight: f64,
+    /// Weighted mean of `mu_a / mu_b` in the bin (the sort key).
+    pub ratio: f64,
+    pub actual: f64,
+    pub predicted_a: f64,
+    pub predicted_b: f64,
+}
+
+/// Double lift: sort rows by `mu_a / mu_b`, bin by equal weight, and in each bin compare both
+/// models' mean prediction to the mean outcome. Where the two models disagree most, which one
+/// is closer to reality? The most defensible chart in a model review.
+///
+/// # Errors
+/// As [`calibration_table`], plus `mu_b` must be `> 0` (it is a divisor).
+pub fn double_lift_table(
+    y: &[f64],
+    mu_a: &[f64],
+    mu_b: &[f64],
+    w: Option<&[f64]>,
+    n_bins: usize,
+) -> Result<Vec<DoubleLiftBin>, GlassError> {
+    validate(y, mu_a, w)?;
+    same_length("mu_a", mu_a, "mu_b", mu_b)?;
+    all_values(
+        "mu_b",
+        mu_b,
+        "must be finite and > 0",
+        "the double lift sorts by mu_a / mu_b, so the second model's predictions must be positive",
+        |v| v.is_finite() && v > 0.0,
+    )?;
+    if n_bins == 0 {
+        return Err(GlassError::BadArgument {
+            name: "n_bins",
+            problem: "must be at least 1",
+            fix: "10 gives deciles; use fewer bins on small data",
+        });
+    }
+    let ratio: Vec<f64> = mu_a.iter().zip(mu_b).map(|(a, b)| a / b).collect();
+    let weight = |row: usize| w.map_or(1.0, |w| w[row]);
+    let (order, groups) = sorted_tie_groups(&ratio);
+    let total_w: f64 = (0..y.len()).map(weight).sum();
+    #[allow(clippy::cast_precision_loss)]
+    let bin_width = total_w / n_bins as f64;
+    let mut bins: Vec<DoubleLiftBin> = Vec::with_capacity(n_bins);
+    let mut cur = DoubleAcc::default();
+    let mut cum_w = 0.0;
+    let mut next_edge = bin_width;
+    for (start, end) in groups {
+        let rows = &order[start..end];
+        let group_w: f64 = rows.iter().map(|&r| weight(r)).sum();
+        let midpoint = cum_w + group_w / 2.0;
+        while midpoint >= next_edge && cur.n_rows > 0 && bins.len() + 1 < n_bins {
+            bins.push(cur.finish());
+            cur = DoubleAcc::default();
+            next_edge += bin_width;
+        }
+        for &r in rows {
+            cur.add(y[r], mu_a[r], mu_b[r], ratio[r], weight(r));
+        }
+        cum_w += group_w;
+    }
+    if cur.n_rows > 0 {
+        bins.push(cur.finish());
+    }
+    Ok(bins)
+}
+
+#[derive(Default)]
+struct DoubleAcc {
+    n_rows: usize,
+    weight: f64,
+    wy: f64,
+    wa: f64,
+    wb: f64,
+    wr: f64,
+}
+
+impl DoubleAcc {
+    fn add(&mut self, actual: f64, pred_a: f64, pred_b: f64, ratio: f64, weight: f64) {
+        self.n_rows += 1;
+        self.weight += weight;
+        self.wy += weight * actual;
+        self.wa += weight * pred_a;
+        self.wb += weight * pred_b;
+        self.wr += weight * ratio;
+    }
+
+    fn finish(&self) -> DoubleLiftBin {
+        DoubleLiftBin {
+            n_rows: self.n_rows,
+            weight: self.weight,
+            ratio: self.wr / self.weight,
+            actual: self.wy / self.weight,
+            predicted_a: self.wa / self.weight,
+            predicted_b: self.wb / self.weight,
+        }
+    }
+}
+
 /// The balance property: `sum(w * y) / sum(w * mu)`. 1 means the model reproduces the total.
 ///
 /// A GLM with the canonical link is balanced on its training data by construction; anything
