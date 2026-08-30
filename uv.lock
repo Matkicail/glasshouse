@@ -115,6 +115,13 @@ dependencies = [
     { name = "numpy" },
 ]
 
+[package.optional-dependencies]
+data = [
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "scikit-learn" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "hypothesis" },
@@ -130,8 +137,13 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "numpy", specifier = ">=1.26" }]
-provides-extras = ["research"]
+requires-dist = [
+    { name = "numpy", specifier = ">=1.26" },
+    { name = "pandas", marker = "extra == 'data'", specifier = ">=2.2" },
+    { name = "pyarrow", marker = "extra == 'data'", specifier = ">=15" },
+    { name = "scikit-learn", marker = "extra == 'data'", specifier = ">=1.5" },
+]
+provides-extras = ["data", "research"]
 
 [package.metadata.requires-dev]
 dev = [

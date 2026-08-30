@@ -17,6 +17,8 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 - `GLM`: IRLS in Rust with step-halving, offsets, weights, all five families, identity/log/
   logit links; standard errors, null deviance, dispersion, per-row contributions, a printable
   fit trace, JSON round-trip, HC1 robust standard errors. Golden-tested against statsmodels.
+- `data.load` / `data.describe`: freMTPL2 frequency (documented Wüthrich–Merz cleaning) and the
+  ULB credit-card set, fetched from OpenML once and cached; needs `glasshouse[data]`.
 - `encoders.OneHot` / `TargetEncode` / `Standardize`, and `GLM(terms=...)` with `fit(fold=...)`:
   encoders fit on the training fold only; target encoding is out-of-fold, or past-only when
   the fold is time-ordered; no row ever sees its own outcome.
