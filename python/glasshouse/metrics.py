@@ -14,6 +14,7 @@ zero is perfect. Read it next to the null model's deviance: ``d2`` does that div
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import numpy as np
@@ -210,8 +211,97 @@ def normalized_gini(
     return float(_core.normalized_gini(_f64(y, "y"), _f64(score, "score"), w))
 
 
+@dataclass(frozen=True)
+class CalibrationTable:
+    """Actual vs expected by prediction bin. One row per bin, lowest predictions first.
+
+    ``actual_over_expected`` is the number to read: 1 is calibrated, above 1 the model
+    under-predicts in that bin, below 1 it over-predicts.
+    """
+
+    n_rows: npt.NDArray[np.int64]
+    weight: npt.NDArray[np.float64]
+    predicted: npt.NDArray[np.float64]
+    actual: npt.NDArray[np.float64]
+    actual_over_expected: npt.NDArray[np.float64]
+
+    def __len__(self) -> int:
+        """Return the number of bins produced (fewer than asked when predictions tie)."""
+        return len(self.n_rows)
+
+
+def calibration_table(
+    y: ArrayLike, mu: ArrayLike, sample_weight: ArrayLike | None = None, n_bins: int = 10
+) -> CalibrationTable:
+    """Compute actual / expected by prediction decile (can I trust the number, not just the order).
+
+    What it is for: anything where the prediction is a price, a reserve, or a probability
+    someone acts on. Rows are sorted by ``mu`` and cut into ``n_bins`` bins of equal total
+    weight (deciles by default); each bin reports the mean prediction, the mean outcome, and
+    their ratio. For a classifier this is the reliability table: ``mu`` is the probability and
+    ``actual`` is the observed rate.
+
+    When it lies: a perfectly calibrated model can have zero discrimination — predicting the
+    portfolio mean everywhere gives actual / expected = 1 in the only bin there is. Read it
+    next to :func:`gini`. Rows with the same ``mu`` never get split across bins, so heavily
+    tied predictions produce fewer, larger bins.
+
+    Parameters
+    ----------
+    y, mu : array-like of shape (n,)
+        Outcome and prediction on the same scale (counts vs expected counts, or rates vs rates
+        with exposure as ``sample_weight``).
+    sample_weight : array-like of shape (n,), optional
+        Exposure per row, ``> 0``.
+    n_bins : int, default 10
+        Bins of equal total weight. Fewer on small data.
+
+    Examples
+    --------
+    >>> from glasshouse.metrics import calibration_table
+    >>> t = calibration_table([0, 1, 1, 2, 2, 4], [0.5, 0.5, 1.5, 1.5, 3.0, 3.0], n_bins=3)
+    >>> t.actual_over_expected.round(3).tolist()
+    [1.0, 1.0, 1.0]
+    """
+    w = _weights(sample_weight)
+    raw = _core.calibration_table(_f64(y, "y"), _f64(mu, "mu"), w, n_bins)
+    return CalibrationTable(
+        n_rows=np.asarray(raw["n_rows"], dtype=np.int64),
+        weight=np.asarray(raw["weight"], dtype=np.float64),
+        predicted=np.asarray(raw["predicted"], dtype=np.float64),
+        actual=np.asarray(raw["actual"], dtype=np.float64),
+        actual_over_expected=np.asarray(raw["actual_over_expected"], dtype=np.float64),
+    )
+
+
+def balance(y: ArrayLike, mu: ArrayLike, sample_weight: ArrayLike | None = None) -> float:
+    """Compute the balance property, total actual / total expected. 1.0 means the book adds up.
+
+    What it is for: the one-number sanity check before any other metric. A GLM with the
+    canonical link is balanced on its training data by construction; a model trained by
+    gradient descent (boosting, nets) usually is not, and being 3 % under on the whole book is
+    a problem no Gini will show you.
+
+    When it lies: it is one number for the whole portfolio, so it hides segments that cancel
+    out — that is what :func:`calibration_table` is for.
+
+    Examples
+    --------
+    >>> from glasshouse.metrics import balance
+    >>> balance([1, 3], [2, 2])
+    1.0
+    >>> balance([1, 3], [2, 2], sample_weight=[1, 3])
+    1.25
+    """
+    w = _weights(sample_weight)
+    return float(_core.balance(_f64(y, "y"), _f64(mu, "mu"), w))
+
+
 __all__ = [
+    "CalibrationTable",
+    "balance",
     "binomial_deviance",
+    "calibration_table",
     "d2",
     "deviance",
     "gamma_deviance",

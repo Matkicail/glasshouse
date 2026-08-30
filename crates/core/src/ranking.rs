@@ -48,26 +48,39 @@ pub fn normalized_gini(y: &[f64], score: &[f64], w: Option<&[f64]>) -> Result<f6
     Ok(gini_unchecked(y, score, w) / ceiling)
 }
 
-/// Sort ascending by `score`, walk the curve, integrate with trapezoids, tie groups as one step.
-// A tie is exact equality of scores by definition, so the strict float comparison is the point.
+/// Rows sorted ascending by `key`, plus the `[start, end)` ranges of equal keys in that order.
+///
+/// Shared by every metric that ranks or bins on a prediction, so ties are handled one way.
+// A tie is exact equality of keys by definition, so the strict float comparison is the point.
 #[allow(clippy::float_cmp)]
-fn gini_unchecked(y: &[f64], score: &[f64], w: Option<&[f64]>) -> f64 {
-    let n_rows = y.len();
+#[must_use]
+pub fn sorted_tie_groups(key: &[f64]) -> (Vec<usize>, Vec<(usize, usize)>) {
+    let n_rows = key.len();
     let mut order: Vec<usize> = (0..n_rows).collect();
-    order.sort_by(|&a, &b| score[a].total_cmp(&score[b]));
+    order.sort_by(|&a, &b| key[a].total_cmp(&key[b]));
+    let mut groups = Vec::new();
+    let mut start = 0;
+    while start < n_rows {
+        let mut end = start + 1;
+        while end < n_rows && key[order[end]] == key[order[start]] {
+            end += 1;
+        }
+        groups.push((start, end));
+        start = end;
+    }
+    (order, groups)
+}
+
+/// Walk the Lorenz curve in score order, integrate with trapezoids, tie groups as one step.
+fn gini_unchecked(y: &[f64], score: &[f64], w: Option<&[f64]>) -> f64 {
+    let (order, groups) = sorted_tie_groups(score);
     let weight = |row: usize| w.map_or(1.0, |w| w[row]);
     let total_y: f64 = y.iter().sum();
-    let total_w: f64 = (0..n_rows).map(weight).sum();
+    let total_w: f64 = (0..y.len()).map(weight).sum();
 
     let mut area = 0.0;
     let (mut cum_x, mut cum_y) = (0.0, 0.0);
-    let mut start = 0;
-    while start < n_rows {
-        // one tie group [start, end)
-        let mut end = start + 1;
-        while end < n_rows && score[order[end]] == score[order[start]] {
-            end += 1;
-        }
+    for (start, end) in groups {
         let (mut dx, mut dy) = (0.0, 0.0);
         for &row in &order[start..end] {
             dx += weight(row);
@@ -80,7 +93,6 @@ fn gini_unchecked(y: &[f64], score: &[f64], w: Option<&[f64]>) -> f64 {
         let x1 = cum_x / total_w;
         let y1 = cum_y / total_y;
         area += (x1 - x0) * (y0 + y1) / 2.0;
-        start = end;
     }
     1.0 - 2.0 * area
 }
