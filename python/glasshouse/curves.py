@@ -91,9 +91,16 @@ class Calibration:
 
 
 def lorenz(
-    y: ArrayLike, score: ArrayLike, sample_weight: ArrayLike | None = None, label: str = "model"
+    y: ArrayLike,
+    score: ArrayLike,
+    sample_weight: ArrayLike | None = None,
+    label: str = "model",
+    max_points: int = 1000,
 ) -> Lorenz:
     """Lorenz curve ranked by ``score``; ties are one point, so row order never matters.
+
+    Long curves are thinned to ``max_points`` evenly spaced along the x-axis (the endpoints
+    are always kept). The Gini is computed on the full data, never on the thinned curve.
 
     Examples
     --------
@@ -104,12 +111,11 @@ def lorenz(
     """
     yy, ss, w = to_vector(y, "y"), to_vector(score, "score"), _w(sample_weight)
     xs, ys = _core.lorenz_curve(yy, ss, w)
-    return Lorenz(
-        x=np.asarray(xs, dtype=np.float64),
-        y=np.asarray(ys, dtype=np.float64),
-        gini=metrics.gini(yy, ss, w),
-        label=label,
-    )
+    x_arr, y_arr = np.asarray(xs, dtype=np.float64), np.asarray(ys, dtype=np.float64)
+    if len(x_arr) > max_points:
+        keep = np.unique(np.linspace(0, len(x_arr) - 1, num=max_points).round().astype(np.int64))
+        x_arr, y_arr = x_arr[keep], y_arr[keep]
+    return Lorenz(x=x_arr, y=y_arr, gini=metrics.gini(yy, ss, w), label=label)
 
 
 def lift(

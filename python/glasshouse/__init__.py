@@ -6,6 +6,7 @@ measured against a naive baseline so you know whether the model is actually help
 
 from glasshouse import (
     arrays,
+    bench,
     classification,
     curves,
     data,
@@ -21,6 +22,7 @@ from glasshouse.glm import GLM
 __all__ = [
     "GLM",
     "arrays",
+    "bench",
     "classification",
     "curves",
     "data",

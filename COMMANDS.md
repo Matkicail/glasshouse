@@ -28,6 +28,9 @@ Tools on Windows).
 | `cargo test -p glasshouse-core name` | Runs matching Rust tests | Rust unit tests live next to the code |
 | `uv run maturin develop` | Rebuilds only the extension into `.venv` | When you edit `crates/` and don't want a full `uv sync` |
 | `uv run python -c "import glasshouse; print(glasshouse.__version__)"` | Smoke test the install | Proves the extension loaded |
+| `uv run glasshouse list` | Lists the named benchmarks | Recipes anyone can rerun |
+| `uv run glasshouse bench fremtpl2_glm` | Runs a benchmark, writes `benchmarks/<name>/report.{json,md}` | First run fetches the data from OpenML (~70 s) into `~/.cache/glasshouse`; after that ~25 s |
+| `GLASSHOUSE_NETWORK_TESTS=1 uv run pytest -k pinned` | Reruns the committed benchmark and checks the numbers match to 1e-6 | The regression test that stops numbers drifting silently; needs the cached data |
 
 ## 2. Where things live
 

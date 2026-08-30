@@ -19,12 +19,21 @@ MU_B = np.full(N, RATE.mean())
 
 
 def test_lorenz_integrates_to_the_gini_and_is_a_real_curve() -> None:
-    c = curves.lorenz(Y, MU_A, EXPO, label="a")
+    c = curves.lorenz(Y, MU_A, EXPO, label="a", max_points=10_000)  # untinned: exact area
     assert (c.x[0], c.y[0], c.x[-1], c.y[-1]) == (0.0, 0.0, 1.0, 1.0)
     assert np.all(np.diff(c.x) >= 0) and np.all(np.diff(c.y) >= 0)
     area = np.trapezoid(c.y, c.x)
     assert 1 - 2 * area == pytest.approx(c.gini, abs=1e-12)
     assert c.gini == pytest.approx(metrics.gini(Y, MU_A, EXPO))
+
+
+def test_long_lorenz_curves_are_thinned_but_the_gini_is_not() -> None:
+    full = curves.lorenz(Y, MU_A, EXPO, max_points=10_000)
+    thin = curves.lorenz(Y, MU_A, EXPO, max_points=200)
+    assert len(full.x) > 200 and len(thin.x) == 200
+    assert thin.gini == full.gini  # exact, from all rows
+    assert (thin.x[0], thin.y[0], thin.x[-1], thin.y[-1]) == (0.0, 0.0, 1.0, 1.0)
+    assert np.trapezoid(thin.y, thin.x) == pytest.approx(np.trapezoid(full.y, full.x), abs=2e-3)
 
 
 def test_lift_and_calibration_are_the_calibration_table() -> None:
