@@ -45,6 +45,8 @@ licence MIT OR Apache-2.0.
 - `./check.sh` green before push (fmt, clippy, cargo test, ruff, mypy, pytest). If it can't run
   locally, CI is the gate — say so in the PR.
 - No pickle for save/load. Actions pinned by SHA. Trusted Publishing on tag.
+- Docstring example outputs are COMPUTED by running the code, never typed from memory; doctests
+  run under pytest and will catch you.
 - Docs and tests ship in the same PR as the code. "I'll come back to it" is not a plan.
 - `COMMANDS.md` explains every command: what, how, why — good enough for a person without Claude.
 

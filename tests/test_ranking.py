@@ -70,7 +70,8 @@ def test_ties_are_order_free() -> None:
 
 
 positive = st.floats(min_value=1e-3, max_value=1e3, allow_nan=False)
-nonneg = st.floats(min_value=0.0, max_value=1e3, allow_nan=False)
+# exactly zero or a normal positive: subnormal y makes y / w underflow to a spurious tie
+nonneg = st.one_of(st.just(0.0), positive)
 
 
 @settings(max_examples=150, deadline=None)

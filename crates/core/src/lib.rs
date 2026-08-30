@@ -9,6 +9,7 @@ pub mod error;
 pub mod family;
 pub mod metrics;
 pub mod ranking;
+pub mod regression;
 
 pub use error::GlassError;
 pub use family::Family;
