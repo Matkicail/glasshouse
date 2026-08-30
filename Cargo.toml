@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/py"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Matkicail/glasshouse"
+rust-version = "1.85"
+
+[workspace.lints.clippy]
+all = "deny"
+pedantic = "warn"

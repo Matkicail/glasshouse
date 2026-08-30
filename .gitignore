@@ -1,0 +1,48 @@
+# --- docs policy: every .md is internal unless whitelisted below ---
+*.md
+!README.md
+!CLAUDE.md
+!COMMANDS.md
+!CHANGELOG.md
+!docs/**/*.md
+# plan2-*.md and session*-addendum.md are covered by *.md above: never tracked.
+
+# --- secrets / local ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# --- python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- rust ---
+target/
+Cargo.lock.bak
+
+# --- data / benchmarks (raw data never committed; reports and split indices are) ---
+data/raw/
+data/cache/
+*.parquet
+*.csv
+!tests/fixtures/**/*.csv
+!benchmarks/**/*.csv
+
+# --- editors / os ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
