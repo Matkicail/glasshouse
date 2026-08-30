@@ -37,7 +37,31 @@ pub fn calibration_table(
     w: Option<&[f64]>,
     n_bins: usize,
 ) -> Result<Vec<CalibrationBin>, GlassError> {
+    binned_table(mu, y, mu, w, n_bins)
+}
+
+/// The calibration table binned by any `key` instead of the prediction: actual / expected by
+/// a *feature* (equal-weight bins of the feature, ties whole). This is the view that finds the
+/// segment a model gets wrong.
+///
+/// # Errors
+/// As [`calibration_table`], plus a non-finite `key` or a length mismatch.
+pub fn binned_table(
+    key: &[f64],
+    y: &[f64],
+    mu: &[f64],
+    w: Option<&[f64]>,
+    n_bins: usize,
+) -> Result<Vec<CalibrationBin>, GlassError> {
     validate(y, mu, w)?;
+    same_length("key", key, "y", y)?;
+    all_values(
+        "key",
+        key,
+        "must be finite",
+        "NaN or inf in the binning column",
+        f64::is_finite,
+    )?;
     if n_bins == 0 {
         return Err(GlassError::BadArgument {
             name: "n_bins",
@@ -46,7 +70,7 @@ pub fn calibration_table(
         });
     }
     let weight = |row: usize| w.map_or(1.0, |w| w[row]);
-    let (order, groups) = sorted_tie_groups(mu);
+    let (order, groups) = sorted_tie_groups(key);
     let total_w: f64 = (0..y.len()).map(weight).sum();
     #[allow(clippy::cast_precision_loss)]
     let bin_width = total_w / n_bins as f64;

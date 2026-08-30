@@ -99,6 +99,62 @@ fn calibration_table<'py>(
     Ok(out)
 }
 
+/// Calibration-style table binned by any column. See `glasshouse.residuals.ae_by_feature`.
+#[pyfunction]
+#[pyo3(signature = (key, y, mu, sample_weight=None, n_bins=10))]
+fn binned_table<'py>(
+    py: Python<'py>,
+    key: Arr<'_>,
+    y: Arr<'_>,
+    mu: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+    n_bins: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let bins = calibration::binned_table(key.as_slice()?, y.as_slice()?, mu.as_slice()?, w, n_bins)
+        .map_err(to_py)?;
+    let out = PyDict::new(py);
+    out.set_item("n_rows", bins.iter().map(|b| b.n_rows).collect::<Vec<_>>())?;
+    out.set_item("weight", bins.iter().map(|b| b.weight).collect::<Vec<_>>())?;
+    out.set_item(
+        "predicted",
+        bins.iter().map(|b| b.predicted).collect::<Vec<_>>(),
+    )?;
+    out.set_item("actual", bins.iter().map(|b| b.actual).collect::<Vec<_>>())?;
+    out.set_item(
+        "actual_over_expected",
+        bins.iter()
+            .map(|b| b.actual_over_expected)
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(out)
+}
+
+/// Deviance or Pearson residuals. See `glasshouse.residuals`.
+#[pyfunction]
+#[pyo3(signature = (kind, family, y, mu, sample_weight=None, power=None))]
+fn residuals(
+    kind: &str,
+    family: &str,
+    y: Arr<'_>,
+    mu: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+    power: Option<f64>,
+) -> PyResult<Vec<f64>> {
+    let fam = Family::parse(family, power).map_err(to_py)?;
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    match kind {
+        "deviance" => metrics::deviance_residuals(fam, y.as_slice()?, mu.as_slice()?, w),
+        "pearson" => metrics::pearson_residuals(fam, y.as_slice()?, mu.as_slice()?, w),
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "kind: unknown residual {other:?} — one of: deviance, pearson"
+            )))
+        }
+    }
+    .map_err(to_py)
+}
+
 /// Overall actual / expected. See `glasshouse.metrics.balance`.
 #[pyfunction]
 #[pyo3(signature = (y, mu, sample_weight=None))]
@@ -315,6 +371,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(average_precision, m)?)?;
     m.add_function(wrap_pyfunction!(ks, m)?)?;
     m.add_function(wrap_pyfunction!(calibration_table, m)?)?;
+    m.add_function(wrap_pyfunction!(binned_table, m)?)?;
+    m.add_function(wrap_pyfunction!(residuals, m)?)?;
     m.add_function(wrap_pyfunction!(balance, m)?)?;
     m.add_function(wrap_pyfunction!(deviance, m)?)?;
     m.add_function(wrap_pyfunction!(d2, m)?)?;
