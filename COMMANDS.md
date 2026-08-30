@@ -43,8 +43,12 @@ Tools on Windows).
 
 ## 3. Adding things (the recipe)
 
+**A family (distribution).** One row in `crates/core/src/family.rs`: its name in `parse`, the
+`y`/`mu` support rules (plain-English messages included), and its `unit_deviance`. Every metric
+picks it up automatically. Golden test vs scikit-learn/statsmodels in `tests/test_metrics.py`.
+
 **A metric.** (1) Formula + citation in `docs/methods.md`. (2) Rust: `crates/core/src/metrics.rs`
-using the shared weighted path; unit tests inline. (3) Binding: one `#[pyfunction]` in
+using the shared `validate` + weighted path; unit tests inline. (3) Binding: one `#[pyfunction]` in
 `crates/py/src/lib.rs`, add to the module, add to `_core.pyi`. (4) Python facade in
 `python/glasshouse/metrics.py` with a docstring: what it's for, when it's good, when it lies,
 runnable example. (5) `tests/`: golden vs a named reference + hypothesis properties. (6) `./check.sh`.

@@ -3,8 +3,17 @@
 import numpy as np
 import numpy.typing as npt
 
-def poisson_deviance(
+def deviance(
+    family: str,
     y: npt.NDArray[np.float64],
     mu: npt.NDArray[np.float64],
     sample_weight: npt.NDArray[np.float64] | None = None,
+    power: float | None = None,
+) -> float: ...
+def d2(
+    family: str,
+    y: npt.NDArray[np.float64],
+    mu: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    power: float | None = None,
 ) -> float: ...

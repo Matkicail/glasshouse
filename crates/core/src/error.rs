@@ -27,6 +27,12 @@ pub enum GlassError {
     },
     /// Nothing to compute on.
     Empty { name: &'static str },
+    /// A parameter (not data) that makes no sense, e.g. an unknown family name.
+    BadArgument {
+        name: &'static str,
+        problem: &'static str,
+        fix: &'static str,
+    },
 }
 
 impl fmt::Display for GlassError {
@@ -48,6 +54,7 @@ impl fmt::Display for GlassError {
                 fix,
             } => write!(f, "{name} {rule}, but {count} row(s) are not — {fix}"),
             Self::Empty { name } => write!(f, "{name} is empty; nothing to compute"),
+            Self::BadArgument { name, problem, fix } => write!(f, "{name}: {problem} — {fix}"),
         }
     }
 }
