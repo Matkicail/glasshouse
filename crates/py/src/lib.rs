@@ -6,10 +6,11 @@
 //! Rule: bindings own nothing. Each function converts arguments (zero-copy `NumPy` views),
 //! calls `glasshouse_core`, and maps `GlassError` to `ValueError`. No `if` about numbers here.
 
-use glasshouse_core::{metrics, ranking, Family, GlassError};
+use glasshouse_core::{calibration, metrics, ranking, Family, GlassError};
 use numpy::PyReadonlyArray1;
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 fn to_py(err: GlassError) -> PyErr {
     PyValueError::new_err(err.to_string())
@@ -63,8 +64,48 @@ fn normalized_gini(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -
     ranking::normalized_gini(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
+/// Calibration table as a dict of columns. See `glasshouse.metrics.calibration_table`.
+#[pyfunction]
+#[pyo3(signature = (y, mu, sample_weight=None, n_bins=10))]
+fn calibration_table<'py>(
+    py: Python<'py>,
+    y: Arr<'_>,
+    mu: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+    n_bins: usize,
+) -> PyResult<Bound<'py, PyDict>> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let bins =
+        calibration::calibration_table(y.as_slice()?, mu.as_slice()?, w, n_bins).map_err(to_py)?;
+    let out = PyDict::new(py);
+    out.set_item("n_rows", bins.iter().map(|b| b.n_rows).collect::<Vec<_>>())?;
+    out.set_item("weight", bins.iter().map(|b| b.weight).collect::<Vec<_>>())?;
+    out.set_item(
+        "predicted",
+        bins.iter().map(|b| b.predicted).collect::<Vec<_>>(),
+    )?;
+    out.set_item("actual", bins.iter().map(|b| b.actual).collect::<Vec<_>>())?;
+    out.set_item(
+        "actual_over_expected",
+        bins.iter()
+            .map(|b| b.actual_over_expected)
+            .collect::<Vec<_>>(),
+    )?;
+    Ok(out)
+}
+
+/// Overall actual / expected. See `glasshouse.metrics.balance`.
+#[pyfunction]
+#[pyo3(signature = (y, mu, sample_weight=None))]
+fn balance(y: Arr<'_>, mu: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
+    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    calibration::balance(y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(calibration_table, m)?)?;
+    m.add_function(wrap_pyfunction!(balance, m)?)?;
     m.add_function(wrap_pyfunction!(deviance, m)?)?;
     m.add_function(wrap_pyfunction!(d2, m)?)?;
     m.add_function(wrap_pyfunction!(gini, m)?)?;

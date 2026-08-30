@@ -27,3 +27,14 @@ def normalized_gini(
     score: npt.NDArray[np.float64],
     sample_weight: npt.NDArray[np.float64] | None = None,
 ) -> float: ...
+def calibration_table(
+    y: npt.NDArray[np.float64],
+    mu: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    n_bins: int = 10,
+) -> dict[str, list[float] | list[int]]: ...
+def balance(
+    y: npt.NDArray[np.float64],
+    mu: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> float: ...
