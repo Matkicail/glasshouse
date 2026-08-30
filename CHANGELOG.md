@@ -17,6 +17,8 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 - `GLM`: IRLS in Rust with step-halving, offsets, weights, all five families, identity/log/
   logit links; standard errors, null deviance, dispersion, per-row contributions, a printable
   fit trace, JSON round-trip, HC1 robust standard errors. Golden-tested against statsmodels.
+- `splits.kfold` / `splits.time_ordered` / `splits.grouped`: folds that carry the declared
+  kind of the data (random / time / group), stored as index arrays.
 - `arrays.to_vector` / `arrays.to_matrix`: the one data door — lists, NumPy, pandas, Polars
   and Arrow in; clean float64 out, or a message naming the column, the count and the fix.
 
