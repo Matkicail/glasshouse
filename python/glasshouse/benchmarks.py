@@ -25,6 +25,7 @@ class Benchmark:
     task: TaskSpec
     models: list[ModelSpec]
     make_splits: Callable[[Any], splits.Splits]
+    features: list[str] = ()  # type: ignore[assignment]
 
 
 def _fremtpl2_models() -> list[ModelSpec]:
@@ -67,16 +68,25 @@ BENCHMARKS: dict[str, Benchmark] = {
         task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
         models=_fremtpl2_models(),
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
+        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
     ),
 }
 
 
-def run_named(name: str) -> BenchResult:
+def run_named(name: str, *, progress: bool = False) -> BenchResult:
     """Load the data, build the split, run the recipe."""
     if name not in BENCHMARKS:
         msg = f"unknown benchmark {name!r}: one of {sorted(BENCHMARKS)}"
         raise ValueError(msg)
     b = BENCHMARKS[name]
+    if progress:
+        import sys  # noqa: PLC0415
+
+        from glasshouse.data import cache_dir  # noqa: PLC0415
+
+        cached = (cache_dir() / f"{b.dataset}.parquet").exists()
+        note = "from cache" if cached else "from OpenML, roughly a minute the first time"
+        sys.stderr.write(f"loading {b.dataset} ({note})\n")
     df = data.load(b.dataset)
     return run(
         df,
@@ -85,6 +95,8 @@ def run_named(name: str) -> BenchResult:
         b.make_splits(df),
         dataset=b.dataset,
         describe=data.describe(b.dataset),
+        features=list(b.features),
+        progress=progress,
     )
 
 

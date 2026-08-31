@@ -25,4 +25,4 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | mae | 0.18705 ± 0.00043 | **0.1868 ± 0.00047** | 0.18894 |
 | r2 | 0.0033886 ± 0.00015 | **0.0042698 ± 0.00023** | 5.5955e-15 |
 
-Fit time (all folds): glm_simple 5.5s, glm_full 13.1s.
+Fit time (all folds): glm_simple 5.1s, glm_full 12.2s.

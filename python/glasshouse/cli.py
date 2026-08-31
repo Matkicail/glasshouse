@@ -15,7 +15,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     bench = sub.add_parser("bench", help="run a named benchmark and write its report")
     bench.add_argument("name", help="benchmark name (see `glasshouse bench --list`)")
-    bench.add_argument("--out", default="benchmarks", help="directory for <name>/report.{json,md}")
+    bench.add_argument(
+        "--out", default="benchmarks", help="directory for <name>/report.{json,md,html}"
+    )
+    bench.add_argument("--quiet", action="store_true", help="no progress bar")
     sub.add_parser("list", help="list the named benchmarks")
     args = parser.parse_args(argv)
 
@@ -27,11 +30,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{name:<20} {b.dataset:<16} {b.task.family:<9} models: {models}")
         return 0
     t0 = time.perf_counter()
-    result = run_named(args.name)
+    result = run_named(args.name, progress=not args.quiet)
     out = result.write(f"{args.out}/{args.name}")
     print(result.to_markdown())
     print(
-        f"\nwrote {out}/report.json and report.md in {time.perf_counter() - t0:.1f}s",
+        f"\nwrote {out}/report.json, report.md and report.html in {time.perf_counter() - t0:.1f}s",
         file=sys.stderr,
     )
     return 0
