@@ -13,6 +13,7 @@ from typing import Any
 
 from glasshouse import data, splits
 from glasshouse.bench import BenchResult, ModelSpec, TaskSpec, run
+from glasshouse.foss import GlumPoisson, SklearnPoisson
 from glasshouse.glm import GLM
 
 
@@ -61,12 +62,50 @@ def _fremtpl2_models() -> list[ModelSpec]:
     ]
 
 
+_FOSS_ONEHOT = ["Area", "VehGas", "VehBrand", "Region"]
+_FOSS_COLUMNS = [
+    "Area",
+    "VehGas",
+    "VehBrand",
+    "Region",
+    "DrivAge",
+    "VehAge",
+    "VehPower",
+    "BonusMalus",
+    "LogDensity",
+]
+
+
+def _foss_models() -> list[ModelSpec]:
+    """Ours vs glum vs scikit-learn on the identical one-hot design: a solver comparison."""
+    terms = dict.fromkeys(_FOSS_ONEHOT, "onehot")
+    return [
+        ModelSpec(
+            "glasshouse",
+            lambda: GLM(family="poisson", terms=dict(terms)),
+            list(_FOSS_COLUMNS),
+        ),
+        ModelSpec("glum", lambda: GlumPoisson(onehot=list(_FOSS_ONEHOT)), list(_FOSS_COLUMNS)),
+        ModelSpec(
+            "sklearn", lambda: SklearnPoisson(onehot=list(_FOSS_ONEHOT)), list(_FOSS_COLUMNS)
+        ),
+    ]
+
+
 BENCHMARKS: dict[str, Benchmark] = {
     "fremtpl2_glm": Benchmark(
         name="fremtpl2_glm",
         dataset="fremtpl2_freq",
         task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
         models=_fremtpl2_models(),
+        make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
+        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+    ),
+    "fremtpl2_vs_foss": Benchmark(
+        name="fremtpl2_vs_foss",
+        dataset="fremtpl2_freq",
+        task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
+        models=_foss_models(),
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
     ),
