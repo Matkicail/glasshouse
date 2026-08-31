@@ -24,6 +24,8 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   `curves.pr`.
 - `residuals.deviance` / `pearson` (golden vs statsmodels) and `residuals.ae_by_feature`: actual /
   expected sliced by a numeric (equal-weight bins) or categorical feature.
+- `glasshouse bench <name>` now writes the full suite: `report.json` (glasshouse-report/1 with
+  a per-fold `bench` block), `report.md`, and the interactive `report.html`.
 - `bench.run` + `glasshouse bench <name>`: models × folds on one dataset, scored the same way,
   written to `report.json` / `report.md`; `benchmarks/fremtpl2_glm` committed and pinned.
 - `curves.lorenz` / `lift` / `double_lift` / `calibration` as data (the JSON contract), and

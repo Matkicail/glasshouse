@@ -32,7 +32,7 @@ Tools on Windows).
 | `uv run maturin develop` | Rebuilds only the extension into `.venv` | When you edit `crates/` and don't want a full `uv sync` |
 | `uv run python -c "import glasshouse; print(glasshouse.__version__)"` | Smoke test the install | Proves the extension loaded |
 | `uv run glasshouse list` | Lists the named benchmarks | Recipes anyone can rerun |
-| `uv run glasshouse bench fremtpl2_glm` | Runs a benchmark, writes `benchmarks/<name>/report.{json,md}` | First run fetches the data from OpenML (~70 s) into `~/.cache/glasshouse`; after that ~25 s |
+| `uv run glasshouse bench fremtpl2_glm` | Runs a benchmark, writes `benchmarks/<name>/report.{json,md,html}` — the html is the interactive suite | First run fetches the data from OpenML (~70 s) into `~/.cache/glasshouse`; after that ~25 s |
 | `cd report && npm run check` | build → checked-in `dist/report.js` must be unchanged → vitest on the fixture → size budget → `npm audit` | The viewer's gate. If `dist` differs, you forgot to rebuild after editing `src/` |
 | `uv run python -c "from glasshouse import report; ..."; r.to_html('out.html')` | Writes one self-contained HTML report | Double-click to open; Plotly from a pinned CDN, tables if offline |
 | `uv run python tests/make_report_fixture.py` | Regenerates `tests/fixtures/report_small.json` | The document the TypeScript report tests render; regenerate when `report.build` changes shape (and bump `report/schema.json`) |

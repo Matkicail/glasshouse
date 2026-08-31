@@ -39,7 +39,10 @@ licence MIT OR Apache-2.0.
 - Leakage is a property of the split, not the transform: datasets declare their kind (random /
   time / group) at the split; fit-time transforms fit on the training fold only and obey it;
   target encodings never let a row see its own y. Never auto-detect time series.
-- Seeds and split indices are stored artifacts; benchmark reports are committed and drift-tested.
+- Seeds and split indices are stored artifacts. Generated benchmark outputs (report.json,
+  report.html) are never committed — anyone can reproduce them from the seeded recipe; what is
+  committed is the small `report.md` and a `pinned.json` of summary numbers that a drift test
+  checks to 1e-6.
 
 ## Process rules
 - `main` + feature branch + PR. Never push to `main`. `git push -u origin HEAD`.

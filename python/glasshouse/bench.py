@@ -10,6 +10,7 @@ suite reads; ``to_markdown()`` is the human summary committed next to it.
 from __future__ import annotations
 
 import json
+import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -18,7 +19,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
-from glasshouse import curves
+from glasshouse import report as report_mod
 from glasshouse.arrays import F64, to_vector
 from glasshouse.metrics import FamilyName
 from glasshouse.scorecard import HIGHER_IS_BETTER, Scorecard, scorecard
@@ -79,9 +80,58 @@ class FoldResult:
     seconds: float
 
 
+class Progress:
+    """A tqdm-style one-line progress bar on stderr. Zero dependencies, honest about time.
+
+    Renders ``bench 60%|████████░░| 6/10 [12.3s < 8.2s] glm_full fold 2 (2.1s)`` and rewrites
+    the line in place on a terminal; on a non-terminal (CI logs) it prints one line per step.
+    """
+
+    def __init__(self, total: int, *, enabled: bool, label: str = "bench") -> None:
+        self.total = max(total, 1)
+        self.done = 0
+        self.enabled = enabled
+        self.label = label
+        self.start = time.perf_counter()
+        self.is_tty = enabled and sys.stderr.isatty()
+
+    def step(self, message: str, seconds: float | None = None) -> None:
+        """Mark one unit done and describe it."""
+        self.done += 1
+        if not self.enabled:
+            return
+        elapsed = time.perf_counter() - self.start
+        eta = elapsed / self.done * (self.total - self.done)
+        took = "" if seconds is None else f" ({seconds:.1f}s)"
+        filled = round(10 * self.done / self.total)
+        bar = "█" * filled + "░" * (10 - filled)
+        line = (
+            f"{self.label} {100 * self.done // self.total:3d}%|{bar}| "
+            f"{self.done}/{self.total} [{elapsed:.1f}s < {eta:.1f}s] {message}{took}"
+        )
+        end = "\r" if (self.is_tty and self.done < self.total) else "\n"
+        sys.stderr.write("\x1b[2K" + line + end if self.is_tty else line + "\n")
+        sys.stderr.flush()
+
+    def note(self, message: str) -> None:
+        """Print a plain status line without advancing the bar."""
+        if self.enabled:
+            sys.stderr.write(message + "\n")
+            sys.stderr.flush()
+
+
+_TASK_OF_FAMILY: dict[str, report_mod.TaskType] = {
+    "poisson": "frequency",
+    "gamma": "severity",
+    "tweedie": "pure_premium",
+    "binomial": "binary",
+    "gaussian": "regression",
+}
+
+
 @dataclass(frozen=True)
 class BenchResult:
-    """Everything a benchmark run produced. Serialisable, printable, comparable."""
+    """Everything a benchmark run produced. Serialisable, printable, renderable."""
 
     dataset: str
     describe: str
@@ -89,7 +139,7 @@ class BenchResult:
     splits_spec: dict[str, Any]
     n_rows: int
     folds: list[FoldResult]
-    curves: list[dict[str, Any]]
+    doc: dict[str, Any] = field(repr=False, default_factory=dict)
     labels: list[str] = field(default_factory=list)
 
     def naive_summary(self) -> dict[str, tuple[float, float]]:
@@ -115,32 +165,22 @@ class BenchResult:
         return out
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the report JSON, version 0 of the contract in docs/report-suite.md."""
-        return {
-            "schema": "glasshouse-report/0",
-            "dataset": self.dataset,
-            "describe": self.describe,
-            "task": {
-                "family": self.task.family,
-                "target": self.task.target,
-                "exposure": self.task.exposure,
-                "rate": self.task.rate,
-                "power": self.task.power,
-            },
-            "splits": self.splits_spec,
-            "n_rows": self.n_rows,
-            "models": self.labels,
+        """Return the report document (glasshouse-report/1) with the bench block attached."""
+        out = dict(self.doc)
+        out["bench"] = {
             "summary": {
                 label: {m: {"mean": mu, "std": sd} for m, (mu, sd) in metrics.items()}
                 for label, metrics in self.summary().items()
             },
-            "naive": {m: {"mean": mu, "std": sd} for m, (mu, sd) in self.naive_summary().items()},
+            "naive_summary": {
+                m: {"mean": mu, "std": sd} for m, (mu, sd) in self.naive_summary().items()
+            },
             "folds": [
-                {"label": r.label, "fold": r.fold, "seconds": r.seconds, **r.card.to_dict()}
+                {"label": r.label, "fold": r.fold, "seconds": round(r.seconds, 3)}
                 for r in self.folds
             ],
-            "curves": self.curves,
         }
+        return out
 
     def to_markdown(self) -> str:
         """Return a short report: the recipe, then mean ± std per metric per model."""
@@ -185,11 +225,19 @@ class BenchResult:
         return "\n".join(lines)
 
     def write(self, directory: str | Path) -> Path:
-        """Write ``report.json`` and ``report.md`` into ``directory``; return it."""
+        """Write the suite into ``directory``.
+
+        ``report.json`` and ``report.html`` are local artifacts (gitignored; rerun the recipe
+        to reproduce them). ``report.md`` and ``pinned.json`` (the summary numbers the drift
+        test checks) are small and committed.
+        """
         out = Path(directory)
         out.mkdir(parents=True, exist_ok=True)
-        (out / "report.json").write_text(json.dumps(self.to_dict(), indent=1))
+        doc = self.to_dict()
+        (out / "report.json").write_text(json.dumps(doc, indent=1))
         (out / "report.md").write_text(self.to_markdown() + "\n")
+        (out / "pinned.json").write_text(json.dumps(doc["bench"], indent=1) + "\n")
+        report_mod.to_html(doc, out / "report.html")
         return out
 
 
@@ -202,8 +250,10 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
     dataset: str = "dataset",
     describe: str = "",
     n_bins: int = 10,
+    features: list[str] | None = None,
+    progress: bool = False,
 ) -> BenchResult:
-    """Fit every model on every fold, score every held-out fold, pool the curves.
+    """Fit every model on every fold, score every held-out fold, build the report.
 
     Parameters
     ----------
@@ -213,6 +263,10 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
         The recipe. Folds must have been made on this frame (same row count).
     dataset, describe
         Provenance strings for the report.
+    features
+        Column names to slice A/E and residuals by in the report.
+    progress
+        Show a progress bar on stderr (one unit per model-fold, plus the report build).
     """
     y = to_vector(frame[task.target], task.target)
     if len(y) != folds.n_rows:
@@ -223,6 +277,7 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
     weight_fit = None if task.rate else expo  # a rate model carries exposure in the offset
     results: list[FoldResult] = []
     pooled: dict[str, F64] = {m.label: np.full(len(y), np.nan) for m in models}
+    bar = Progress(len(models) * len(folds) + 1, enabled=progress)
     for spec in models:
         for fold in folds:
             t0 = time.perf_counter()
@@ -244,15 +299,36 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
                 threshold=task.threshold,
                 label=spec.label,
             )
-            results.append(FoldResult(spec.label, fold.number, card, time.perf_counter() - t0))
+            took = time.perf_counter() - t0
+            results.append(FoldResult(spec.label, fold.number, card, took))
+            bar.step(f"{spec.label} fold {fold.number}", took)
     scored = ~np.isnan(next(iter(pooled.values())))  # rows that were in some test fold
-    curve_data = _pooled_curves(
-        task,
-        y[scored],
-        {k: v[scored] for k, v in pooled.items()},
-        None if expo is None else expo[scored],
-        n_bins,
+    y_s, _, w_s = _scoring_scale(task, y[scored], y[scored], None if expo is None else expo[scored])
+    preds_s = {
+        label: _scoring_scale(task, y[scored], p[scored], None if expo is None else expo[scored])[1]
+        for label, p in pooled.items()
+    }
+    feature_cols = {
+        name: np.asarray(
+            frame[name].to_numpy() if hasattr(frame[name], "to_numpy") else frame[name]
+        )[scored]
+        for name in (features or [])
+    }
+    t_report = time.perf_counter()
+    built = report_mod.build(
+        _TASK_OF_FAMILY[task.family],
+        y_s,
+        preds_s,
+        weight=w_s,
+        features=feature_cols,
+        power=task.power,
+        threshold=task.threshold,
+        n_bins=n_bins,
+        dataset=dataset,
+        describe=describe,
+        split={"kind": folds.kind, **folds.spec},
     )
+    bar.step("building the report", time.perf_counter() - t_report)
     return BenchResult(
         dataset=dataset,
         describe=describe,
@@ -260,7 +336,7 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
         splits_spec={"kind": folds.kind, **folds.spec},
         n_rows=len(y),
         folds=results,
-        curves=curve_data,
+        doc=built.to_dict(),
         labels=[m.label for m in models],
     )
 
@@ -272,30 +348,6 @@ def _scoring_scale(
     if task.rate and expo is not None:
         return y / expo, mu / expo, expo
     return y, mu, expo
-
-
-def _pooled_curves(
-    task: TaskSpec, y: F64, preds: dict[str, F64], expo: F64 | None, n_bins: int
-) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    scaled = {k: _scoring_scale(task, y, v, expo) for k, v in preds.items()}
-    for label, (ys, mus, ws) in scaled.items():
-        if task.family != "binomial" and ys.min() >= 0:
-            out.append(curves.lorenz(ys, mus, ws, label=label).to_dict())
-        out.append(curves.lift(ys, mus, ws, n_bins=n_bins, label=label).to_dict())
-        out.append(curves.calibration(ys, mus, ws, n_bins=n_bins, label=label).to_dict())
-    labels = list(scaled)
-    for i, a in enumerate(labels):
-        for b in labels[i + 1 :]:
-            ys, mu_a, ws = scaled[a]
-            _, mu_b, _ = scaled[b]
-            if mu_b.min() > 0:
-                out.append(
-                    curves.double_lift(
-                        ys, mu_a, mu_b, ws, n_bins=n_bins, label_a=a, label_b=b
-                    ).to_dict()
-                )
-    return out
 
 
 __all__ = ["BenchResult", "FoldResult", "Model", "ModelSpec", "TaskSpec", "run"]

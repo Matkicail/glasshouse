@@ -4,67 +4,202 @@
   "title": "glasshouse report",
   "description": "Everything the report suite shows about several models on one dataset. Produced by glasshouse.report.build; read by report/src (TypeScript). Nothing is recomputed in the browser.",
   "type": "object",
-  "required": ["schema", "task", "provenance", "models", "scorecards", "naive", "comparisons", "curves", "residuals"],
+  "required": [
+    "schema",
+    "task",
+    "provenance",
+    "models",
+    "scorecards",
+    "naive",
+    "comparisons",
+    "curves",
+    "residuals"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schema": { "const": "glasshouse-report/1" },
+    "schema": {
+      "const": "glasshouse-report/1"
+    },
     "task": {
       "type": "object",
-      "required": ["type", "family", "primary_metric", "n_bins"],
+      "required": [
+        "type",
+        "family",
+        "primary_metric",
+        "n_bins"
+      ],
       "properties": {
-        "type": { "enum": ["frequency", "severity", "pure_premium", "binary", "regression"] },
-        "family": { "enum": ["gaussian", "poisson", "gamma", "tweedie", "binomial"] },
-        "power": { "type": ["number", "null"] },
-        "threshold": { "type": ["number", "null"] },
-        "primary_metric": { "type": "string" },
-        "n_bins": { "type": "integer", "minimum": 1 }
+        "type": {
+          "enum": [
+            "frequency",
+            "severity",
+            "pure_premium",
+            "binary",
+            "regression"
+          ]
+        },
+        "family": {
+          "enum": [
+            "gaussian",
+            "poisson",
+            "gamma",
+            "tweedie",
+            "binomial"
+          ]
+        },
+        "power": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "threshold": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "primary_metric": {
+          "type": "string"
+        },
+        "n_bins": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
     "provenance": {
       "type": "object",
-      "required": ["dataset", "describe", "n_rows", "weight_sum", "sample_rows", "sample_seed"],
+      "required": [
+        "dataset",
+        "describe",
+        "n_rows",
+        "weight_sum",
+        "sample_rows",
+        "sample_seed"
+      ],
       "properties": {
-        "dataset": { "type": "string" },
-        "describe": { "type": "string" },
-        "split": { "type": ["object", "null"] },
-        "n_rows": { "type": "integer", "minimum": 1 },
-        "weight_sum": { "type": "number" },
-        "sample_rows": { "type": "integer", "minimum": 0 },
-        "sample_seed": { "type": "integer" }
+        "dataset": {
+          "type": "string"
+        },
+        "describe": {
+          "type": "string"
+        },
+        "split": {
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "n_rows": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "weight_sum": {
+          "type": "number"
+        },
+        "sample_rows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sample_seed": {
+          "type": "integer"
+        }
       }
     },
-    "models": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+    "models": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
     "scorecards": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["label", "family", "n_rows", "metrics", "naive", "calibration"],
+        "required": [
+          "label",
+          "family",
+          "n_rows",
+          "metrics",
+          "naive",
+          "calibration"
+        ],
         "properties": {
-          "label": { "type": "string" },
-          "family": { "type": "string" },
-          "n_rows": { "type": "integer" },
-          "weight_sum": { "type": "number" },
-          "naive_prediction": { "type": "number" },
-          "metrics": { "type": "object", "additionalProperties": { "type": "number" } },
-          "naive": { "type": "object", "additionalProperties": { "type": "number" } },
-          "calibration": { "$ref": "#/$defs/binned" }
+          "label": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string"
+          },
+          "n_rows": {
+            "type": "integer"
+          },
+          "weight_sum": {
+            "type": "number"
+          },
+          "naive_prediction": {
+            "type": "number"
+          },
+          "metrics": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "naive": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "calibration": {
+            "$ref": "#/$defs/binned"
+          }
         }
       }
     },
-    "naive": { "type": "object", "additionalProperties": { "type": "number" } },
+    "naive": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
     "comparisons": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["a", "b", "rows"],
+        "required": [
+          "a",
+          "b",
+          "rows"
+        ],
         "properties": {
-          "a": { "type": "string" },
-          "b": { "type": "string" },
+          "a": {
+            "type": "string"
+          },
+          "b": {
+            "type": "string"
+          },
           "rows": {
             "type": "array",
             "items": {
               "type": "array",
-              "prefixItems": [{ "type": "string" }, { "type": "number" }, { "type": "number" }, { "type": "string" }],
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ],
               "minItems": 4,
               "maxItems": 4
             }
@@ -76,10 +211,23 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "properties": {
-          "kind": { "enum": ["lorenz", "lift", "double_lift", "calibration", "roc", "pr"] },
-          "label": { "type": "string" }
+          "kind": {
+            "enum": [
+              "lorenz",
+              "lift",
+              "double_lift",
+              "calibration",
+              "roc",
+              "pr"
+            ]
+          },
+          "label": {
+            "type": "string"
+          }
         }
       }
     },
@@ -87,68 +235,250 @@
       "type": "object",
       "additionalProperties": {
         "type": "object",
-        "required": ["definition", "summary", "histogram", "scatter", "by_feature"],
+        "required": [
+          "definition",
+          "summary",
+          "histogram",
+          "scatter",
+          "by_feature"
+        ],
         "properties": {
-          "definition": { "type": "object" },
+          "definition": {
+            "type": "object"
+          },
           "summary": {
             "type": "object",
-            "required": ["deviance", "pearson"],
-            "additionalProperties": { "$ref": "#/$defs/stats" }
+            "required": [
+              "deviance",
+              "pearson"
+            ],
+            "additionalProperties": {
+              "$ref": "#/$defs/stats"
+            }
           },
           "histogram": {
             "type": "object",
-            "required": ["edges", "counts"],
+            "required": [
+              "edges",
+              "counts"
+            ],
             "properties": {
-              "edges": { "$ref": "#/$defs/numbers" },
-              "counts": { "type": "array", "items": { "type": "integer" } }
+              "edges": {
+                "$ref": "#/$defs/numbers"
+              },
+              "counts": {
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
             }
           },
           "scatter": {
             "type": "object",
-            "required": ["fitted", "deviance", "actual"],
+            "required": [
+              "fitted",
+              "deviance",
+              "actual"
+            ],
             "properties": {
-              "fitted": { "$ref": "#/$defs/numbers" },
-              "deviance": { "$ref": "#/$defs/numbers" },
-              "actual": { "$ref": "#/$defs/numbers" }
+              "fitted": {
+                "$ref": "#/$defs/numbers"
+              },
+              "deviance": {
+                "$ref": "#/$defs/numbers"
+              },
+              "actual": {
+                "$ref": "#/$defs/numbers"
+              }
             }
           },
-          "by_feature": { "type": "array", "items": { "$ref": "#/$defs/ae_by_feature" } },
-          "over_time": { "oneOf": [{ "type": "null" }, { "$ref": "#/$defs/ae_by_feature" }] }
+          "by_feature": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ae_by_feature"
+            }
+          },
+          "over_time": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/$defs/ae_by_feature"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "bench": {
+      "type": "object",
+      "description": "Present when the document was produced by `glasshouse bench`: per-fold scorecards and timings.",
+      "required": [
+        "summary",
+        "folds"
+      ],
+      "properties": {
+        "summary": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "mean",
+                "std"
+              ],
+              "properties": {
+                "mean": {
+                  "type": "number"
+                },
+                "std": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        "naive_summary": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "mean",
+              "std"
+            ],
+            "properties": {
+              "mean": {
+                "type": "number"
+              },
+              "std": {
+                "type": "number"
+              }
+            }
+          }
+        },
+        "folds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "label",
+              "fold",
+              "seconds"
+            ],
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "fold": {
+                "type": "integer"
+              },
+              "seconds": {
+                "type": "number"
+              }
+            }
+          }
         }
       }
     }
   },
   "$defs": {
-    "numbers": { "type": "array", "items": { "type": "number" } },
+    "numbers": {
+      "type": "array",
+      "items": {
+        "type": "number"
+      }
+    },
     "stats": {
       "type": "object",
-      "required": ["mean", "std", "median"],
-      "additionalProperties": { "type": "number" }
+      "required": [
+        "mean",
+        "std",
+        "median"
+      ],
+      "additionalProperties": {
+        "type": "number"
+      }
     },
     "binned": {
       "type": "object",
-      "required": ["n_rows", "weight", "predicted", "actual", "actual_over_expected"],
+      "required": [
+        "n_rows",
+        "weight",
+        "predicted",
+        "actual",
+        "actual_over_expected"
+      ],
       "properties": {
-        "n_rows": { "type": "array", "items": { "type": "integer" } },
-        "weight": { "$ref": "#/$defs/numbers" },
-        "predicted": { "$ref": "#/$defs/numbers" },
-        "actual": { "$ref": "#/$defs/numbers" },
-        "actual_over_expected": { "$ref": "#/$defs/numbers" }
+        "n_rows": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "weight": {
+          "$ref": "#/$defs/numbers"
+        },
+        "predicted": {
+          "$ref": "#/$defs/numbers"
+        },
+        "actual": {
+          "$ref": "#/$defs/numbers"
+        },
+        "actual_over_expected": {
+          "$ref": "#/$defs/numbers"
+        }
       }
     },
     "ae_by_feature": {
       "type": "object",
-      "required": ["kind", "feature", "label", "level", "n_rows", "weight", "predicted", "actual", "actual_over_expected"],
+      "required": [
+        "kind",
+        "feature",
+        "label",
+        "level",
+        "n_rows",
+        "weight",
+        "predicted",
+        "actual",
+        "actual_over_expected"
+      ],
       "properties": {
-        "kind": { "const": "ae_by_feature" },
-        "feature": { "type": "string" },
-        "label": { "type": "string" },
-        "level": { "type": "array", "items": { "type": "string" } },
-        "n_rows": { "type": "array", "items": { "type": "integer" } },
-        "weight": { "$ref": "#/$defs/numbers" },
-        "predicted": { "$ref": "#/$defs/numbers" },
-        "actual": { "$ref": "#/$defs/numbers" },
-        "actual_over_expected": { "$ref": "#/$defs/numbers" }
+        "kind": {
+          "const": "ae_by_feature"
+        },
+        "feature": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "level": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "n_rows": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "weight": {
+          "$ref": "#/$defs/numbers"
+        },
+        "predicted": {
+          "$ref": "#/$defs/numbers"
+        },
+        "actual": {
+          "$ref": "#/$defs/numbers"
+        },
+        "actual_over_expected": {
+          "$ref": "#/$defs/numbers"
+        }
       }
     }
   }

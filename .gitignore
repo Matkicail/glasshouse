@@ -63,8 +63,9 @@ data/
 *.7z
 *.tar
 !tests/fixtures/**
-!benchmarks/**/*.json
-!benchmarks/**/*.csv
+# generated benchmark outputs (report.json / report.html) stay local: reproducibility comes
+# from seeds and recipes, not committed blobs. Only the tiny pin survives.
+!benchmarks/**/pinned.json
 
 # --- editors / os ---
 .vscode/
@@ -83,3 +84,4 @@ scratch/
 # --- the report suite (schema, TypeScript source, checked-in build) is code, not data ---
 !report/**
 report/node_modules/
+benchmarks/**/report.html
