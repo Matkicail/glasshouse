@@ -24,6 +24,8 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   `curves.pr`.
 - `residuals.deviance` / `pearson` (golden vs statsmodels) and `residuals.ae_by_feature`: actual /
   expected sliced by a numeric (equal-weight bins) or categorical feature.
+- `foss.GlumPoisson` / `foss.SklearnPoisson` adapters and the `fremtpl2_vs_foss` benchmark:
+  ours vs glum vs scikit-learn on identical designs and folds, deviance agreeing to 5 decimals.
 - `glasshouse bench <name>` now writes the full suite: `report.json` (glasshouse-report/1 with
   a per-fold `bench` block), `report.md`, and the interactive `report.html`.
 - `bench.run` + `glasshouse bench <name>`: models × folds on one dataset, scored the same way,
