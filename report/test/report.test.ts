@@ -50,7 +50,7 @@ describe("glasshouse report viewer", () => {
     expect(metrics).toContain("gini");
     expect(root.querySelector("tr.primary th")?.textContent).toContain("deviance");
     expect(root.querySelector(".provenance pre")?.textContent).toContain("made up");
-    expect(root.querySelectorAll("nav.tabs button").length).toBe(3);
+    expect(root.querySelectorAll("nav.tabs button").length).toBe(4);
   });
 
   it("compare screen draws the pair's table and two charts", () => {
@@ -69,9 +69,23 @@ describe("glasshouse report viewer", () => {
     (root.querySelectorAll("nav.tabs button")[2] as HTMLButtonElement).click();
     const pane = root.querySelector("#pane-curves") as HTMLElement;
     const options = Array.from(pane.querySelectorAll("select option")).map((o) => (o as HTMLOptionElement).value);
-    expect(options).toEqual(expect.arrayContaining(["lorenz", "lift", "calibration", "ae:region", "ae:age", "ae:time"]));
+    expect(options).toEqual(
+      expect.arrayContaining(["lorenz", "lift", "calibration", "oneway:region", "ae:region", "ae:age", "ae:time"]),
+    );
     expect(pane.querySelector("[data-plotly]")).not.toBeNull();
     expect(pane.querySelectorAll(".toggles input").length).toBe(2);
+  });
+
+  it("residuals tab shows the summary and two charts per model", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    (root.querySelectorAll("nav.tabs button")[3] as HTMLButtonElement).click();
+    const pane = root.querySelector("#pane-residuals") as HTMLElement;
+    expect(pane.hidden).toBe(false);
+    const rows = Array.from(pane.querySelectorAll("table.panel tbody tr > th")).map((n) => n.textContent);
+    expect(rows).toEqual(["deviance", "pearson"]);
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
+    expect(pane.textContent).toContain("Residual vs fitted");
   });
 
   it("falls back to tables when Plotly is not available", () => {
