@@ -14,6 +14,7 @@ from typing import Any
 from glasshouse import data, splits
 from glasshouse.bench import BenchResult, ModelSpec, TaskSpec, run
 from glasshouse.foss import GlumPoisson, SklearnPoisson
+from glasshouse.gbdt import LightGBM
 from glasshouse.glm import GLM
 
 
@@ -98,6 +99,33 @@ BENCHMARKS: dict[str, Benchmark] = {
         dataset="fremtpl2_freq",
         task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
         models=_fremtpl2_models(),
+        make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
+        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+    ),
+    "fremtpl2_challengers": Benchmark(
+        name="fremtpl2_challengers",
+        dataset="fremtpl2_freq",
+        task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
+        models=[
+            _fremtpl2_models()[1],  # glm_full
+            ModelSpec(
+                "lightgbm",
+                lambda: LightGBM(
+                    family="poisson", categorical=["Area", "VehGas", "VehBrand", "Region"]
+                ),
+                [
+                    "Area",
+                    "VehGas",
+                    "VehBrand",
+                    "Region",
+                    "DrivAge",
+                    "VehAge",
+                    "VehPower",
+                    "BonusMalus",
+                    "LogDensity",
+                ],
+            ),
+        ],
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
     ),
