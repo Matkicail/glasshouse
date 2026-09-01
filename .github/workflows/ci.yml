@@ -35,6 +35,10 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: ${{ matrix.python }}
+      # No brew libomp here on purpose: lightgbm wants it, but a second OpenMP runtime next
+      # to the one glum/tabmat bundle segfaults on macOS. CI covers OUR code on macOS; the
+      # lightgbm tests skip themselves there (the skip message names `brew install libomp`
+      # for users who want it locally).
       - run: uv sync
       - run: uv run ruff format --check python tests
       - run: uv run ruff check python tests

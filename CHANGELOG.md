@@ -24,6 +24,9 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   `curves.pr`.
 - `residuals.deviance` / `pearson` (golden vs statsmodels) and `residuals.ae_by_feature`: actual /
   expected sliced by a numeric (equal-weight bins) or categorical feature.
+- `gbdt.LightGBM`: gradient-boosted trees behind the same bench protocol — GLM-family
+  objectives, offsets via init_score, fold-safe early stopping, native categoricals; the
+  `fremtpl2_challengers` benchmark pits it against the GLM.
 - `foss.GlumPoisson` / `foss.SklearnPoisson` adapters and the `fremtpl2_vs_foss` benchmark:
   ours vs glum vs scikit-learn on identical designs and folds, deviance agreeing to 5 decimals.
 - `glasshouse bench <name>` now writes the full suite: `report.json` (glasshouse-report/1 with
