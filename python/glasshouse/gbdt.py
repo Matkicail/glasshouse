@@ -159,8 +159,11 @@ def _imports() -> tuple[Any, Any]:
     try:
         import lightgbm as lgb  # noqa: PLC0415 — dev dependency
         import pandas as pd  # noqa: PLC0415
-    except ImportError as err:  # pragma: no cover
-        msg = "the LightGBM adapter needs lightgbm and pandas: uv add --group dev lightgbm pandas"
+    except (ImportError, OSError) as err:  # pragma: no cover — OSError: libomp missing on macOS
+        msg = (
+            "the LightGBM adapter needs lightgbm and pandas (uv add --group dev lightgbm pandas); "
+            "on macOS lightgbm also needs OpenMP: brew install libomp"
+        )
         raise ImportError(msg) from err
     return lgb, pd
 

@@ -11,6 +11,13 @@ from glasshouse.bench import ModelSpec, TaskSpec
 from glasshouse.gbdt import LightGBM
 from glasshouse.metrics import deviance
 
+try:  # lightgbm needs libomp at load time; without it, skip with the fix named
+    import lightgbm  # noqa: F401
+except (ImportError, OSError) as _err:
+    pytest.skip(
+        f"lightgbm unavailable: {_err} (macOS: brew install libomp)", allow_module_level=True
+    )
+
 rng = np.random.default_rng(14)
 N = 6000
 df = pd.DataFrame(
