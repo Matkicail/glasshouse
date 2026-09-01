@@ -110,10 +110,20 @@ function curvesScreen(doc: ReportDoc, root: HTMLElement): void {
   const kinds = Array.from(new Set(doc.curves.map((c) => c.kind))).filter((k) => k !== "double_lift");
   const features = Array.from(new Set(Object.values(doc.residuals).flatMap((r) => r.by_feature.map((t) => t.feature))));
   const hasTime = Object.values(doc.residuals).some((r) => r.over_time !== null);
-  const options = [...kinds, ...features.map((f) => `ae:${f}`), ...(hasTime ? ["ae:time"] : [])];
+  const options = [
+    ...kinds,
+    ...features.map((f) => `oneway:${f}`),
+    ...features.map((f) => `ae:${f}`),
+    ...(hasTime ? ["ae:time"] : []),
+  ];
   const labels: Record<string, string> = { lorenz: "Lorenz", lift: "Lift", calibration: "Calibration", roc: "ROC", pr: "Precision–recall" };
   const sel = el("select");
-  for (const o of options) sel.append(el("option", { value: o }, [o.startsWith("ae:") ? `A/E by ${o.slice(3)}` : (labels[o] ?? o)]));
+  const optionLabel = (o: string): string => {
+    if (o.startsWith("oneway:")) return `One-way: ${o.slice(7)}`;
+    if (o.startsWith("ae:")) return `A/E by ${o.slice(3)}`;
+    return labels[o] ?? o;
+  };
+  for (const o of options) sel.append(el("option", { value: o }, [optionLabel(o)]));
   const toggles = el("span", { class: "toggles" });
   const shown = new Set(doc.models);
   for (const m of doc.models) {
@@ -128,8 +138,9 @@ function curvesScreen(doc: ReportDoc, root: HTMLElement): void {
   const draw = () => {
     const k = sel.value;
     const on = (label: string) => shown.has(label);
-    if (k.startsWith("ae:")) {
-      const f = k.slice(3);
+    if (k.startsWith("ae:") || k.startsWith("oneway:")) {
+      const oneway = k.startsWith("oneway:");
+      const f = oneway ? k.slice(7) : k.slice(3);
       const tables: AEByFeature[] = [];
       for (const m of doc.models) {
         if (!on(m)) continue;
@@ -138,7 +149,7 @@ function curvesScreen(doc: ReportDoc, root: HTMLElement): void {
         const t = f === "time" ? r.over_time : r.by_feature.find((x) => x.feature === f) ?? null;
         if (t) tables.push(t);
       }
-      renderChart(chart, aeByFeatureSpec(tables, doc.models));
+      renderChart(chart, oneway ? onewaySpec(tables, doc.models) : aeByFeatureSpec(tables, doc.models));
       return;
     }
     const pick = doc.curves.filter((c) => c.kind === k && "label" in c && on(c.label));
@@ -150,6 +161,46 @@ function curvesScreen(doc: ReportDoc, root: HTMLElement): void {
       case "pr": renderChart(chart, prSpec(pick as PrCurve[], doc.models)); break;
       default: clear(chart); chart.append(el("p", { class: "muted" }, [`No renderer for ${k}.`]));
     }
+  };
+  sel.addEventListener("change", draw);
+  draw();
+}
+
+function residualsScreen(doc: ReportDoc, root: HTMLElement): void {
+  clear(root);
+  const sel = select(doc.models, doc.models[0]!);
+  root.append(el("div", { class: "controls" }, ["Model ", sel]));
+  const out = el("div");
+  root.append(out);
+  const draw = () => {
+    clear(out);
+    const label = sel.value;
+    const r = doc.residuals[label];
+    if (!r) { out.append(el("p", { class: "muted" }, ["No residuals stored for this model."])); return; }
+    const stats = el("table", { class: "grid panel" }, [
+      el("thead", {}, [el("tr", {}, [el("th", {}, ["residual"]), el("th", {}, ["mean"]), el("th", {}, ["std"]), el("th", {}, ["q05"]), el("th", {}, ["median"]), el("th", {}, ["q95"])])]),
+      el("tbody", {}, (["deviance", "pearson"] as const).map((kind) => {
+        const q = r.summary[kind];
+        return el("tr", {}, [
+          el("th", { title: r.definition[kind] ?? "" }, [kind]),
+          el("td", { class: "num" }, [fmt(q.mean, 3)]),
+          el("td", { class: "num" }, [fmt(q.std, 3)]),
+          el("td", { class: "num" }, [fmt(q["q05"], 3)]),
+          el("td", { class: "num" }, [fmt(q.median, 3)]),
+          el("td", { class: "num" }, [fmt(q["q95"], 3)]),
+        ]);
+      })),
+    ]);
+    out.append(stats);
+    out.append(el("p", { class: "caption" }, [
+      "Deviance residuals are the family's own residual: sign(y − mu) times the square root of that row's weighted deviance. Hover a row for the formula.",
+    ]));
+    const charts = el("div", { class: "charts two" });
+    const c1 = el("div", { class: "chart" }), c2 = el("div", { class: "chart" });
+    charts.append(c1, c2);
+    out.append(charts);
+    renderChart(c1, histogramSpec(r, label, doc.models));
+    renderChart(c2, scatterSpec(r, label, doc.models, doc.provenance.sample_rows));
   };
   sel.addEventListener("change", draw);
   draw();

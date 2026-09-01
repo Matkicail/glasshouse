@@ -85,6 +85,12 @@ interface ResidualDoc {
   over_time: AEByFeature | null;
 }
 
+interface BenchBlock {
+  summary: Record<string, Record<string, { mean: number; std: number }>>;
+  naive_summary?: Record<string, { mean: number; std: number }>;
+  folds: { label: string; fold: number; seconds: number }[];
+}
+
 interface ReportDoc {
   schema: "glasshouse-report/1";
   task: TaskInfo;
@@ -95,6 +101,7 @@ interface ReportDoc {
   comparisons: Comparison[];
   curves: Curve[];
   residuals: Record<string, ResidualDoc>;
+  bench?: BenchBlock;
 }
 
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.

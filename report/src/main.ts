@@ -22,6 +22,7 @@ function renderReport(doc: ReportDoc, root: HTMLElement): void {
     { id: "overview", title: "Overview", draw: overviewScreen },
     { id: "compare", title: "Compare", draw: compareScreen },
     { id: "curves", title: "Curves", draw: curvesScreen },
+    { id: "residuals", title: "Residuals", draw: residualsScreen },
   ];
   const header = el("header", {}, [
     el("h1", {}, [`glasshouse report · ${doc.provenance.dataset}`]),

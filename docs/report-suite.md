@@ -151,6 +151,23 @@ the Python report builder. Nothing is computed in TypeScript.
 Go/no-go after step 3: if the single-file report is not obviously more useful than the
 Plotly HTMLs Python already writes, stop there and keep the JSON contract only.
 
+## Adopted from M's reference benchmarker (Downloads/examples, 2026-09-01)
+
+A rustystats-based nine-model benchmark with a 7-tab report served as a reference. Already
+aligned: deviance conventions, weighted Gini, A/E by decile, double lift, stable model
+colours. Adopted into the viewer (the JSON already carried the data): the one-way analysis
+(actual vs predicted by feature bin with exposure bars), fit seconds on the leaderboard, and
+the residuals tab. Adopted into the backlog, in order of value:
+
+1. **Profit matrix / tournament** — for each model pair, the "win set" (policies where A
+   prices below B), its profit (predicted minus actual on the set), market share, and A/P;
+   plus an all-models tournament with ties split. The most decision-shaped view in the
+   reference; needs a new computation and a schema block.
+2. **Two-feature A/P heatmap** — A/E on a bins-times-bins grid of two features, cells under a
+   weight floor greyed out. Finds interaction segments one-way views miss.
+3. **Data overview tab** — per-feature distributions with the outcome rate overlaid.
+4. **SHAP for tree models** — waits for GBDT wrappers in the bench.
+
 ## Out of scope, on purpose
 
 Multi-dataset dashboards; live model serving; anything that recomputes a metric in the

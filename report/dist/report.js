@@ -184,6 +184,65 @@ function aeByFeatureSpec(tables, models) {
         table: { columns: ["model", "level", "weight", "predicted", "actual", "A/E"], rows },
     };
 }
+function onewaySpec(tables, models) {
+    const first = tables[0];
+    const data = [];
+    if (first) {
+        data.push({
+            type: "bar", x: first.level, y: first.weight, name: "exposure", yaxis: "y2",
+            marker: { color: "#ececec" }, hovertemplate: "%{x}<br>weight %{y:.4g}<extra></extra>",
+        });
+        data.push({
+            type: "scatter", mode: "lines+markers", x: first.level, y: first.actual, name: "actual",
+            line: { color: "#000000", width: 2.5 }, marker: { size: 5 },
+        });
+    }
+    for (const t of tables) {
+        data.push({
+            type: "scatter", mode: "lines+markers", x: t.level, y: t.predicted, name: t.label,
+            line: { color: colourOf(models, t.label), width: 2 }, marker: { size: 5 },
+        });
+    }
+    const rows = [];
+    for (const t of tables)
+        t.level.forEach((lv, i) => rows.push([t.label, lv, fmt(t.weight[i]), fmt(t.actual[i]), fmt(t.predicted[i])]));
+    return {
+        title: `One-way: ${first ? first.feature : "feature"}`,
+        caption: "The black line is the actual mean per bin, the grey bars are the weight there. A model's line should track the black one where the bars are tall; thin bins are noise.",
+        data,
+        layout: {
+            ...LAYOUT_BASE,
+            xaxis: { ...LAYOUT_BASE.xaxis, title: first ? first.feature : "", type: "category" },
+            yaxis: { ...LAYOUT_BASE.yaxis, title: "mean outcome" },
+            yaxis2: { overlaying: "y", side: "right", showgrid: false, title: "weight", rangemode: "tozero" },
+            legend: { orientation: "h", y: -0.25 },
+        },
+        table: { columns: ["model", "level", "weight", "actual", "predicted"], rows },
+    };
+}
+function histogramSpec(r, label, models) {
+    const edges = r.histogram.edges;
+    const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
+    return {
+        title: "Deviance residuals",
+        caption: "For a well-specified family this is roughly symmetric around zero with unit spread. A heavy shoulder or a shifted centre says the family or the mean model is off.",
+        data: [{ type: "bar", x: centers, y: r.histogram.counts, name: label, marker: { color: colourOf(models, label) }, hovertemplate: "residual %{x:.3f}<br>rows %{y}<extra></extra>" }],
+        layout: { ...LAYOUT_BASE, bargap: 0.05, xaxis: { ...LAYOUT_BASE.xaxis, title: "deviance residual" }, yaxis: { ...LAYOUT_BASE.yaxis, title: "rows" } },
+        table: { columns: ["bin centre", "rows"], rows: centers.map((c, i) => [fmt(c), r.histogram.counts[i] ?? 0]) },
+    };
+}
+function scatterSpec(r, label, models, sampleRows) {
+    return {
+        title: "Residual vs fitted",
+        caption: `A structureless cloud around zero is what a right model leaves behind; a funnel or a bend is a lead. Sampled to ${sampleRows.toLocaleString("en")} rows for drawing only.`,
+        data: [
+            { type: "scatter", mode: "lines", x: [Math.min(...r.scatter.fitted), Math.max(...r.scatter.fitted)], y: [0, 0], name: "zero", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
+            { type: "scattergl", mode: "markers", x: r.scatter.fitted, y: r.scatter.deviance, name: label, marker: { color: colourOf(models, label), size: 3, opacity: 0.35 }, hovertemplate: "fitted %{x:.4g}<br>residual %{y:.3f}<extra></extra>" },
+        ],
+        layout: { ...LAYOUT_BASE, xaxis: { ...LAYOUT_BASE.xaxis, title: "fitted mean" }, yaxis: { ...LAYOUT_BASE.yaxis, title: "deviance residual" } },
+        table: { columns: ["shown"], rows: [[`${r.scatter.fitted.length} sampled points (open with Plotly to see them)`]] },
+    };
+}
 // Render a spec into `root`: Plotly if present, else the table. Always adds the caption.
 function renderChart(root, spec) {
     clear(root);
@@ -321,11 +380,23 @@ function curvesScreen(doc, root) {
     const kinds = Array.from(new Set(doc.curves.map((c) => c.kind))).filter((k) => k !== "double_lift");
     const features = Array.from(new Set(Object.values(doc.residuals).flatMap((r) => r.by_feature.map((t) => t.feature))));
     const hasTime = Object.values(doc.residuals).some((r) => r.over_time !== null);
-    const options = [...kinds, ...features.map((f) => `ae:${f}`), ...(hasTime ? ["ae:time"] : [])];
+    const options = [
+        ...kinds,
+        ...features.map((f) => `oneway:${f}`),
+        ...features.map((f) => `ae:${f}`),
+        ...(hasTime ? ["ae:time"] : []),
+    ];
     const labels = { lorenz: "Lorenz", lift: "Lift", calibration: "Calibration", roc: "ROC", pr: "Precision–recall" };
     const sel = el("select");
+    const optionLabel = (o) => {
+        if (o.startsWith("oneway:"))
+            return `One-way: ${o.slice(7)}`;
+        if (o.startsWith("ae:"))
+            return `A/E by ${o.slice(3)}`;
+        return labels[o] ?? o;
+    };
     for (const o of options)
-        sel.append(el("option", { value: o }, [o.startsWith("ae:") ? `A/E by ${o.slice(3)}` : (labels[o] ?? o)]));
+        sel.append(el("option", { value: o }, [optionLabel(o)]));
     const toggles = el("span", { class: "toggles" });
     const shown = new Set(doc.models);
     for (const m of doc.models) {
@@ -343,8 +414,9 @@ function curvesScreen(doc, root) {
     const draw = () => {
         const k = sel.value;
         const on = (label) => shown.has(label);
-        if (k.startsWith("ae:")) {
-            const f = k.slice(3);
+        if (k.startsWith("ae:") || k.startsWith("oneway:")) {
+            const oneway = k.startsWith("oneway:");
+            const f = oneway ? k.slice(7) : k.slice(3);
             const tables = [];
             for (const m of doc.models) {
                 if (!on(m))
@@ -356,7 +428,7 @@ function curvesScreen(doc, root) {
                 if (t)
                     tables.push(t);
             }
-            renderChart(chart, aeByFeatureSpec(tables, doc.models));
+            renderChart(chart, oneway ? onewaySpec(tables, doc.models) : aeByFeatureSpec(tables, doc.models));
             return;
         }
         const pick = doc.curves.filter((c) => c.kind === k && "label" in c && on(c.label));
@@ -380,6 +452,48 @@ function curvesScreen(doc, root) {
                 clear(chart);
                 chart.append(el("p", { class: "muted" }, [`No renderer for ${k}.`]));
         }
+    };
+    sel.addEventListener("change", draw);
+    draw();
+}
+function residualsScreen(doc, root) {
+    clear(root);
+    const sel = select(doc.models, doc.models[0]);
+    root.append(el("div", { class: "controls" }, ["Model ", sel]));
+    const out = el("div");
+    root.append(out);
+    const draw = () => {
+        clear(out);
+        const label = sel.value;
+        const r = doc.residuals[label];
+        if (!r) {
+            out.append(el("p", { class: "muted" }, ["No residuals stored for this model."]));
+            return;
+        }
+        const stats = el("table", { class: "grid panel" }, [
+            el("thead", {}, [el("tr", {}, [el("th", {}, ["residual"]), el("th", {}, ["mean"]), el("th", {}, ["std"]), el("th", {}, ["q05"]), el("th", {}, ["median"]), el("th", {}, ["q95"])])]),
+            el("tbody", {}, ["deviance", "pearson"].map((kind) => {
+                const q = r.summary[kind];
+                return el("tr", {}, [
+                    el("th", { title: r.definition[kind] ?? "" }, [kind]),
+                    el("td", { class: "num" }, [fmt(q.mean, 3)]),
+                    el("td", { class: "num" }, [fmt(q.std, 3)]),
+                    el("td", { class: "num" }, [fmt(q["q05"], 3)]),
+                    el("td", { class: "num" }, [fmt(q.median, 3)]),
+                    el("td", { class: "num" }, [fmt(q["q95"], 3)]),
+                ]);
+            })),
+        ]);
+        out.append(stats);
+        out.append(el("p", { class: "caption" }, [
+            "Deviance residuals are the family's own residual: sign(y − mu) times the square root of that row's weighted deviance. Hover a row for the formula.",
+        ]));
+        const charts = el("div", { class: "charts two" });
+        const c1 = el("div", { class: "chart" }), c2 = el("div", { class: "chart" });
+        charts.append(c1, c2);
+        out.append(charts);
+        renderChart(c1, histogramSpec(r, label, doc.models));
+        renderChart(c2, scatterSpec(r, label, doc.models, doc.provenance.sample_rows));
     };
     sel.addEventListener("change", draw);
     draw();
@@ -408,6 +522,7 @@ function renderReport(doc, root) {
         { id: "overview", title: "Overview", draw: overviewScreen },
         { id: "compare", title: "Compare", draw: compareScreen },
         { id: "curves", title: "Curves", draw: curvesScreen },
+        { id: "residuals", title: "Residuals", draw: residualsScreen },
     ];
     const header = el("header", {}, [
         el("h1", {}, [`glasshouse report · ${doc.provenance.dataset}`]),

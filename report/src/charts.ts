@@ -140,6 +140,67 @@ function aeByFeatureSpec(tables: AEByFeature[], models: string[]): ChartSpec {
   };
 }
 
+function onewaySpec(tables: AEByFeature[], models: string[]): ChartSpec {
+  const first = tables[0];
+  const data: Record<string, unknown>[] = [];
+  if (first) {
+    data.push({
+      type: "bar", x: first.level, y: first.weight, name: "exposure", yaxis: "y2",
+      marker: { color: "#ececec" }, hovertemplate: "%{x}<br>weight %{y:.4g}<extra></extra>",
+    });
+    data.push({
+      type: "scatter", mode: "lines+markers", x: first.level, y: first.actual, name: "actual",
+      line: { color: "#000000", width: 2.5 }, marker: { size: 5 },
+    });
+  }
+  for (const t of tables) {
+    data.push({
+      type: "scatter", mode: "lines+markers", x: t.level, y: t.predicted, name: t.label,
+      line: { color: colourOf(models, t.label), width: 2 }, marker: { size: 5 },
+    });
+  }
+  const rows: (string | number)[][] = [];
+  for (const t of tables) t.level.forEach((lv, i) => rows.push([t.label, lv, fmt(t.weight[i]), fmt(t.actual[i]), fmt(t.predicted[i])]));
+  return {
+    title: `One-way: ${first ? first.feature : "feature"}`,
+    caption: "The black line is the actual mean per bin, the grey bars are the weight there. A model's line should track the black one where the bars are tall; thin bins are noise.",
+    data,
+    layout: {
+      ...LAYOUT_BASE,
+      xaxis: { ...(LAYOUT_BASE.xaxis as object), title: first ? first.feature : "", type: "category" },
+      yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "mean outcome" },
+      yaxis2: { overlaying: "y", side: "right", showgrid: false, title: "weight", rangemode: "tozero" },
+      legend: { orientation: "h", y: -0.25 },
+    },
+    table: { columns: ["model", "level", "weight", "actual", "predicted"], rows },
+  };
+}
+
+function histogramSpec(r: ResidualDoc, label: string, models: string[]): ChartSpec {
+  const edges = r.histogram.edges;
+  const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
+  return {
+    title: "Deviance residuals",
+    caption: "For a well-specified family this is roughly symmetric around zero with unit spread. A heavy shoulder or a shifted centre says the family or the mean model is off.",
+    data: [{ type: "bar", x: centers, y: r.histogram.counts, name: label, marker: { color: colourOf(models, label) }, hovertemplate: "residual %{x:.3f}<br>rows %{y}<extra></extra>" }],
+    layout: { ...LAYOUT_BASE, bargap: 0.05, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "deviance residual" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "rows" } },
+    table: { columns: ["bin centre", "rows"], rows: centers.map((c, i) => [fmt(c), r.histogram.counts[i] ?? 0]) },
+  };
+}
+
+function scatterSpec(r: ResidualDoc, label: string, models: string[], sampleRows: number): ChartSpec {
+  return {
+    title: "Residual vs fitted",
+    caption: `A structureless cloud around zero is what a right model leaves behind; a funnel or a bend is a lead. Sampled to ${sampleRows.toLocaleString("en")} rows for drawing only.`,
+    data: [
+      { type: "scatter", mode: "lines", x: [Math.min(...r.scatter.fitted), Math.max(...r.scatter.fitted)], y: [0, 0], name: "zero", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
+      { type: "scattergl", mode: "markers", x: r.scatter.fitted, y: r.scatter.deviance, name: label, marker: { color: colourOf(models, label), size: 3, opacity: 0.35 }, hovertemplate: "fitted %{x:.4g}<br>residual %{y:.3f}<extra></extra>" },
+    ],
+    layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "fitted mean" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "deviance residual" } },
+    table: { columns: ["shown"], rows: [[`${r.scatter.fitted.length} sampled points (open with Plotly to see them)`]] },
+  };
+}
+
 // Render a spec into `root`: Plotly if present, else the table. Always adds the caption.
 function renderChart(root: HTMLElement, spec: ChartSpec): void {
   clear(root);
