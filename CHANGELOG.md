@@ -24,6 +24,9 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   `curves.pr`.
 - `residuals.deviance` / `pearson` (golden vs statsmodels) and `residuals.ae_by_feature`: actual /
   expected sliced by a numeric (equal-weight bins) or categorical feature.
+- Binary reports carry a precomputed 101-point threshold grid and the viewer gains a
+  Threshold tab (slider, workload table, precision/recall/MCC chart); NaN metrics now
+  serialize as null so every report parses in the browser; `creditcard_glm` benchmark.
 - `gbdt.LightGBM`: gradient-boosted trees behind the same bench protocol — GLM-family
   objectives, offsets via init_score, fold-safe early stopping, native categoricals; the
   `fremtpl2_challengers` benchmark pits it against the GLM.

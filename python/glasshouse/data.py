@@ -110,7 +110,7 @@ DATASETS: dict[str, Dataset] = {
             "'Calibrating probability with undersampling for unbalanced classification', "
             "IEEE CIDM 2015). "
             "284 807 transactions over two days, 492 frauds; features V1-V28 are PCA components, "
-            "plus Time and Amount. OpenML 1597."
+            "plus Amount (the OpenML copy carries no Time column). OpenML 1597."
         ),
         cleaning=("Class parsed to 0/1 float; nothing else touched",),
         clean=clean_creditcard,

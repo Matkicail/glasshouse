@@ -68,6 +68,11 @@ def test_report_json_markdown_and_html(tmp_path: Path) -> None:
     assert set(pinned["summary"]) == {"age_only", "full"}
 
 
+def test_refuses_missing_columns_by_name() -> None:
+    with pytest.raises(ValueError, match=r"missing column\(s\) \['Time'\]"):
+        bench.run(df, TASK, MODELS, splits.kfold(N, k=2), features=["Time"])
+
+
 def test_refuses_folds_from_another_frame() -> None:
     with pytest.raises(ValueError, match="folds were made for"):
         bench.run(df, TASK, MODELS, splits.kfold(10, k=2))

@@ -268,6 +268,14 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
     progress
         Show a progress bar on stderr (one unit per model-fold, plus the report build).
     """
+    have = {str(c) for c in getattr(frame, "columns", [])}
+    wanted = {task.target, *((task.exposure and [task.exposure]) or []), *(features or [])}
+    for spec in models:
+        wanted.update(spec.columns)
+    missing = sorted(wanted - have)
+    if have and missing:
+        msg = f"the frame is missing column(s) {missing}; it has {sorted(have)[:12]}..."
+        raise ValueError(msg)
     y = to_vector(frame[task.target], task.target)
     if len(y) != folds.n_rows:
         msg = f"folds were made for {folds.n_rows} rows but the frame has {len(y)}"
@@ -275,33 +283,9 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
     expo = None if task.exposure is None else to_vector(frame[task.exposure], task.exposure)
     offset = np.log(expo) if (task.rate and expo is not None) else None
     weight_fit = None if task.rate else expo  # a rate model carries exposure in the offset
-    results: list[FoldResult] = []
-    pooled: dict[str, F64] = {m.label: np.full(len(y), np.nan) for m in models}
-    bar = Progress(len(models) * len(folds) + 1, enabled=progress)
-    for spec in models:
-        for fold in folds:
-            t0 = time.perf_counter()
-            model = spec.make()
-            model.fit(frame[spec.columns], y, sample_weight=weight_fit, offset=offset, fold=fold)
-            te = fold.test_idx
-            mu = model.predict(
-                frame[spec.columns].iloc[te], offset=None if offset is None else offset[te]
-            )
-            pooled[spec.label][te] = mu
-            y_s, mu_s, w_s = _scoring_scale(task, y[te], mu, None if expo is None else expo[te])
-            card = scorecard(
-                y_s,
-                mu_s,
-                family=task.family,
-                sample_weight=w_s,
-                power=task.power,
-                n_bins=n_bins,
-                threshold=task.threshold,
-                label=spec.label,
-            )
-            took = time.perf_counter() - t0
-            results.append(FoldResult(spec.label, fold.number, card, took))
-            bar.step(f"{spec.label} fold {fold.number}", took)
+    results, pooled, bar = _fit_folds(
+        frame, task, models, folds, n_bins, weight_fit, offset, y, expo, progress=progress
+    )
     scored = ~np.isnan(next(iter(pooled.values())))  # rows that were in some test fold
     y_s, _, w_s = _scoring_scale(task, y[scored], y[scored], None if expo is None else expo[scored])
     preds_s = {
@@ -339,6 +323,65 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
         doc=built.to_dict(),
         labels=[m.label for m in models],
     )
+
+
+def _fit_folds(  # noqa: PLR0913, PLR0917 — internal plumbing shared by run()
+    frame: Any,
+    task: TaskSpec,
+    models: list[ModelSpec],
+    folds: Splits,
+    n_bins: int,
+    weight_fit: F64 | None,
+    offset: F64 | None,
+    y: F64,
+    expo: F64 | None,
+    *,
+    progress: bool,
+) -> tuple[list[FoldResult], dict[str, F64], Progress]:
+    """Fit every model on every fold; return the fold scorecards and pooled OOF predictions."""
+    results: list[FoldResult] = []
+    pooled: dict[str, F64] = {m.label: np.full(len(y), np.nan) for m in models}
+    bar = Progress(len(models) * len(folds) + 1, enabled=progress)
+    for spec in models:
+        for fold in folds:
+            t0 = time.perf_counter()
+            model = spec.make()
+            model.fit(frame[spec.columns], y, sample_weight=weight_fit, offset=offset, fold=fold)
+            te = fold.test_idx
+            off_te = None if offset is None else offset[te]
+            mu = model.predict(frame[spec.columns].iloc[te], offset=off_te)
+            pooled[spec.label][te] = mu
+            y_s, mu_s, w_s = _scoring_scale(task, y[te], mu, None if expo is None else expo[te])
+            card = scorecard(
+                y_s,
+                mu_s,
+                family=task.family,
+                sample_weight=w_s,
+                power=task.power,
+                n_bins=n_bins,
+                threshold=task.threshold,
+                label=spec.label,
+            )
+            took = time.perf_counter() - t0
+            results.append(FoldResult(spec.label, fold.number, card, took))
+            bar.step(f"{spec.label} fold {fold.number}", took)
+    return results, pooled, bar
+
+
+def _check_columns(
+    frame: Any, task: TaskSpec, models: list[ModelSpec], features: list[str] | None
+) -> None:
+    """Refuse with the missing columns named, before any fitting starts."""
+    have = {str(c) for c in getattr(frame, "columns", [])}
+    if not have:
+        return
+    wanted = {task.target, *([task.exposure] if task.exposure else []), *(features or [])}
+    for spec in models:
+        wanted.update(spec.columns)
+    missing = sorted(wanted - have)
+    if missing:
+        msg = f"the frame is missing column(s) {missing}; it has {sorted(have)[:12]}..."
+        raise ValueError(msg)
 
 
 def _scoring_scale(

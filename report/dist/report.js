@@ -498,6 +498,60 @@ function residualsScreen(doc, root) {
     sel.addEventListener("change", draw);
     draw();
 }
+function thresholdScreen(doc, root) {
+    clear(root);
+    const grids = doc.thresholds;
+    if (!grids) {
+        root.append(el("p", { class: "muted" }, ["Threshold analysis applies to binary tasks only."]));
+        return;
+    }
+    const sel = select(doc.models.filter((m) => m in grids), doc.models[0]);
+    const slider = el("input", { type: "range", min: "0", max: "100", value: "50", step: "1" });
+    const readout = el("strong", {}, ["0.5"]);
+    root.append(el("div", { class: "controls" }, ["Model ", sel, " threshold ", slider, " ", readout]));
+    const cards = el("div");
+    const chartBox = el("div", { class: "chart" });
+    root.append(cards, chartBox);
+    const draw = () => {
+        const g = grids[sel.value];
+        if (!g)
+            return;
+        const i = Number(slider.value);
+        readout.textContent = String(g.threshold[i] ?? "");
+        clear(cards);
+        const per = g.alerts_per_tp[i];
+        const rows = [
+            ["flagged (tp + fp)", fmt(g.alerts[i]), "what the team must work through at this cut"],
+            ["true positives", fmt(g.tp[i]), "cases caught"],
+            ["false negatives", fmt(g.fn[i]), "cases missed"],
+            ["alerts per catch", per === null || per === undefined ? "—" : fmt(per, 3), "workload per true positive; the fraud team's number"],
+            ["precision", fmt(g.precision[i], 3), "of the flagged, how many were real"],
+            ["recall", fmt(g.recall[i], 3), "of the real, how many were flagged"],
+            ["F1", fmt(g.f1[i], 3), "harmonic mean of the two above"],
+            ["MCC", fmt(g.mcc[i], 3), "high only when all four confusion cells are right"],
+        ];
+        cards.append(el("table", { class: "grid panel" }, [
+            el("thead", {}, [el("tr", {}, [el("th", {}, ["at this threshold"]), el("th", {}, ["value"]), el("th", {}, ["how to read it"])])]),
+            el("tbody", {}, rows.map(([name, v, help]) => el("tr", {}, [el("th", {}, [name]), el("td", { class: "num" }, [v]), el("td", { class: "muted" }, [help])]))),
+        ]));
+        const marker = g.threshold[i] ?? 0.5;
+        renderChart(chartBox, {
+            title: "Precision, recall and MCC against the threshold",
+            caption: "Every point is precomputed; the slider only moves the marker. Pick the cut where the trade the team can live with happens, not where a metric peaks.",
+            data: [
+                { type: "scatter", mode: "lines", x: g.threshold, y: g.precision, name: "precision", line: { color: "#0072B2", width: 2 } },
+                { type: "scatter", mode: "lines", x: g.threshold, y: g.recall, name: "recall", line: { color: "#D55E00", width: 2 } },
+                { type: "scatter", mode: "lines", x: g.threshold, y: g.mcc, name: "MCC", line: { color: "#009E73", width: 2 } },
+                { type: "scatter", mode: "lines", x: [marker, marker], y: [0, 1], name: "chosen", line: { color: "#1a1a1a", dash: "dot", width: 1 }, hoverinfo: "skip" },
+            ],
+            layout: { ...LAYOUT_BASE, xaxis: { ...LAYOUT_BASE.xaxis, title: "threshold", range: [0, 1] }, yaxis: { ...LAYOUT_BASE.yaxis, range: [0, 1] } },
+            table: { columns: ["threshold", "precision", "recall", "mcc"], rows: g.threshold.map((t, j) => [t, fmt(g.precision[j], 3), fmt(g.recall[j], 3), fmt(g.mcc[j], 3)]) },
+        });
+    };
+    sel.addEventListener("change", draw);
+    slider.addEventListener("input", draw);
+    draw();
+}
 function select(options, value) {
     const s = el("select");
     for (const o of options)
@@ -523,6 +577,7 @@ function renderReport(doc, root) {
         { id: "compare", title: "Compare", draw: compareScreen },
         { id: "curves", title: "Curves", draw: curvesScreen },
         { id: "residuals", title: "Residuals", draw: residualsScreen },
+        ...(doc.thresholds ? [{ id: "threshold", title: "Threshold", draw: thresholdScreen }] : []),
     ];
     const header = el("header", {}, [
         el("h1", {}, [`glasshouse report · ${doc.provenance.dataset}`]),

@@ -129,6 +129,20 @@ BENCHMARKS: dict[str, Benchmark] = {
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
     ),
+    "creditcard_glm": Benchmark(
+        name="creditcard_glm",
+        dataset="creditcard",
+        task=TaskSpec(family="binomial", target="Class"),
+        models=[
+            ModelSpec(
+                "logistic",
+                lambda: GLM(family="binomial"),
+                [f"V{i}" for i in range(1, 29)] + ["Amount"],
+            ),
+        ],
+        make_splits=lambda df: splits.stratified(df.Class.astype(int), k=5, seed=0),
+        features=["Amount"],
+    ),
     "fremtpl2_vs_foss": Benchmark(
         name="fremtpl2_vs_foss",
         dataset="fremtpl2_freq",
