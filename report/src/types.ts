@@ -91,6 +91,21 @@ interface BenchBlock {
   folds: { label: string; fold: number; seconds: number }[];
 }
 
+interface ThresholdGrid {
+  threshold: number[];
+  tp: number[];
+  fp: number[];
+  fn: number[];
+  tn: number[];
+  accuracy: number[];
+  precision: number[];
+  recall: number[];
+  f1: number[];
+  mcc: number[];
+  alerts: number[];
+  alerts_per_tp: (number | null)[];
+}
+
 interface ReportDoc {
   schema: "glasshouse-report/1";
   task: TaskInfo;
@@ -102,6 +117,7 @@ interface ReportDoc {
   curves: Curve[];
   residuals: Record<string, ResidualDoc>;
   bench?: BenchBlock;
+  thresholds?: Record<string, ThresholdGrid>;
 }
 
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.

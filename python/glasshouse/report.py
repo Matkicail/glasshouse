@@ -26,6 +26,7 @@ from typing import Any, Literal
 
 import numpy as np
 
+from glasshouse import classification as clf
 from glasshouse import curves, residuals
 from glasshouse.arrays import F64, ArrayLike, to_vector
 from glasshouse.metrics import FamilyName
@@ -180,7 +181,58 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
         "curves": _curves(task, yy, preds, w, n_bins),
         "residuals": _residuals(family, yy, preds, w, power, keep, feats, time, n_bins),
     }
-    return Report(doc=doc, cards=cards)
+    if task == "binary":
+        doc["thresholds"] = {label: _threshold_grid(yy, p, w) for label, p in preds.items()}
+    return Report(doc=_clean(doc), cards=cards)
+
+
+def _threshold_grid(y: F64, prob: F64, w: F64 | None, n: int = 101) -> dict[str, Any]:
+    """Every decision metric at ``n`` evenly spaced thresholds, precomputed for the viewer.
+
+    Nothing is recomputed in the browser: the threshold slider walks this grid. Undefined
+    ratios are null (never NaN, which JSON.parse rejects).
+    """
+    grid: dict[str, list[Any]] = {
+        "threshold": [],
+        "tp": [],
+        "fp": [],
+        "fn": [],
+        "tn": [],
+        "accuracy": [],
+        "precision": [],
+        "recall": [],
+        "f1": [],
+        "mcc": [],
+        "alerts": [],
+        "alerts_per_tp": [],
+    }
+    for t in np.linspace(0.0, 1.0, n):
+        m = clf.threshold_metrics(y, prob, sample_weight=w, threshold=float(t))
+        grid["threshold"].append(round(float(t), 4))
+        grid["tp"].append(m.tp)
+        grid["fp"].append(m.fp)
+        grid["fn"].append(m.fn)
+        grid["tn"].append(m.tn)
+        grid["accuracy"].append(m.accuracy)
+        grid["precision"].append(m.precision)
+        grid["recall"].append(m.recall)
+        grid["f1"].append(m.f1)
+        grid["mcc"].append(m.mcc)
+        alerts = m.tp + m.fp
+        grid["alerts"].append(alerts)
+        grid["alerts_per_tp"].append(alerts / m.tp if m.tp > 0 else None)
+    return grid
+
+
+def _clean(value: Any) -> Any:
+    """Replace NaN and infinities with null, recursively: JSON.parse rejects literal NaN."""
+    if isinstance(value, float) and not np.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _clean(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_clean(v) for v in value]
+    return value
 
 
 def _curves(

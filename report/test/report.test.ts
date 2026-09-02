@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = resolve(__dirname, "..");
 const FIXTURE = resolve(ROOT, "..", "tests", "fixtures", "report_small.json");
+const BINARY_FIXTURE = resolve(ROOT, "..", "tests", "fixtures", "report_binary_small.json");
 const DIST = resolve(ROOT, "dist", "report.js");
 
 interface Api {
@@ -30,6 +31,7 @@ function boot(withPlotly: boolean): { dom: JSDOM; api: Api; root: HTMLElement } 
 }
 
 const text = readFileSync(FIXTURE, "utf8");
+const binaryText = readFileSync(BINARY_FIXTURE, "utf8");
 
 describe("glasshouse report viewer", () => {
   it("parses the fixture and refuses other schemas", () => {
@@ -86,6 +88,31 @@ describe("glasshouse report viewer", () => {
     expect(rows).toEqual(["deviance", "pearson"]);
     expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
     expect(pane.textContent).toContain("Residual vs fitted");
+  });
+
+  it("binary reports get a Threshold tab whose slider walks the precomputed grid", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(binaryText), root);
+    const tabs = Array.from(root.querySelectorAll("nav.tabs button")).map((b) => b.textContent);
+    expect(tabs).toContain("Threshold");
+    (root.querySelectorAll("nav.tabs button")[4] as HTMLButtonElement).click();
+    const pane = root.querySelector("#pane-threshold") as HTMLElement;
+    expect(pane.hidden).toBe(false);
+    expect(pane.textContent).toContain("alerts per catch");
+    const slider = pane.querySelector("input[type=range]") as HTMLInputElement;
+    const before = pane.querySelector("table.panel tbody tr td")?.textContent;
+    slider.value = "90";
+    slider.dispatchEvent(new (pane.ownerDocument.defaultView as any).Event("input"));
+    const after = pane.querySelector("table.panel tbody tr td")?.textContent;
+    expect(after).not.toBe(before); // flagged count moves with the threshold
+    expect(pane.querySelector("strong")?.textContent).toBe("0.9");
+  });
+
+  it("non-binary reports have no Threshold tab", () => {
+    const { api, root } = boot(false);
+    api.render(api.parse(text), root);
+    const tabs = Array.from(root.querySelectorAll("nav.tabs button")).map((b) => b.textContent);
+    expect(tabs).not.toContain("Threshold");
   });
 
   it("falls back to tables when Plotly is not available", () => {

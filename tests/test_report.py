@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 
 from glasshouse import curves, report
-from glasshouse.classification import average_precision, roc_auc
+from glasshouse.classification import average_precision, roc_auc, threshold_metrics
 
 rng = np.random.default_rng(12)
 N = 1500
@@ -66,6 +66,13 @@ def test_frequency_report_is_complete_and_valid() -> None:
 def test_binary_report_uses_roc_and_pr_and_the_prior() -> None:
     doc = report.build("binary", LABEL, {"m": PROB, "flat": np.full(N, 0.3)}).to_dict()
     report.validate(doc)
+    grid = doc["thresholds"]["m"]
+    assert len(grid["threshold"]) == 101 and grid["threshold"][50] == 0.5
+    at_half = threshold_metrics(LABEL, PROB, threshold=0.5)
+    assert grid["mcc"][50] == pytest.approx(at_half.mcc)
+    assert grid["alerts"][50] == pytest.approx(at_half.tp + at_half.fp)
+    assert grid["alerts_per_tp"][100] is None  # threshold 1.0 flags nothing: undefined, null
+    assert "thresholds" not in report.build("regression", PROB, {"m": PROB}).to_dict()
     kinds = {c["kind"] for c in doc["curves"]}
     assert {"roc", "pr", "lift", "calibration"} <= kinds and "lorenz" not in kinds
     assert doc["task"]["threshold"] == 0.5 and doc["task"]["primary_metric"] == "average_precision"

@@ -145,13 +145,19 @@
           "metrics": {
             "type": "object",
             "additionalProperties": {
-              "type": "number"
+              "type": [
+                "number",
+                "null"
+              ]
             }
           },
           "naive": {
             "type": "object",
             "additionalProperties": {
-              "type": "number"
+              "type": [
+                "number",
+                "null"
+              ]
             }
           },
           "calibration": {
@@ -163,7 +169,10 @@
     "naive": {
       "type": "object",
       "additionalProperties": {
-        "type": "number"
+        "type": [
+          "number",
+          "null"
+        ]
       }
     },
     "comparisons": {
@@ -379,6 +388,35 @@
                 "type": "number"
               }
             }
+          }
+        }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "description": "Binary tasks only: every decision metric precomputed at evenly spaced thresholds; the viewer's slider walks this grid.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "threshold",
+          "tp",
+          "fp",
+          "fn",
+          "tn",
+          "precision",
+          "recall",
+          "f1",
+          "mcc",
+          "alerts",
+          "alerts_per_tp"
+        ],
+        "additionalProperties": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         }
       }
