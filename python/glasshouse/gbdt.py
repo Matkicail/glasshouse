@@ -27,6 +27,7 @@ from typing import Any
 
 import numpy as np
 
+from glasshouse._rows import as_array, subset_column, subset_vector
 from glasshouse.arrays import F64, ArrayLike, columns, to_vector
 from glasshouse.metrics import FamilyName
 from glasshouse.splits import Fold
@@ -70,9 +71,9 @@ class LightGBM:
             raise ValueError(msg)
         rows = None if fold is None else fold.train_idx
         frame = self._fit_frame(pd, X, rows)
-        yy = _pick(y, "y", rows)
-        w = None if sample_weight is None else _pick(sample_weight, "sample_weight", rows)
-        o = None if offset is None else _pick(offset, "offset", rows)
+        yy = subset_vector(y, "y", rows)
+        w = None if sample_weight is None else subset_vector(sample_weight, "sample_weight", rows)
+        o = None if offset is None else subset_vector(offset, "offset", rows)
 
         rng = np.random.default_rng(self.seed)
         n = len(yy)
@@ -129,7 +130,7 @@ class LightGBM:
         self.levels_ = {}
         data = {}
         for name, col in cols:
-            raw = _subset(col, rows)
+            raw = subset_column(col, rows)
             if str(name) in self.categorical:
                 labels = np.asarray(raw).astype(str)
                 levels = sorted(set(labels.tolist()))
@@ -147,7 +148,7 @@ class LightGBM:
         data = {}
         for name, col in cols:
             if str(name) in self.levels_:
-                labels = np.asarray(col.to_numpy() if hasattr(col, "to_numpy") else col).astype(str)
+                labels = as_array(col).astype(str)
                 # unseen levels become missing, which LightGBM handles natively
                 data[str(name)] = pd.Categorical(labels, categories=self.levels_[str(name)])
             else:
@@ -166,18 +167,6 @@ def _imports() -> tuple[Any, Any]:
         )
         raise ImportError(msg) from err
     return lgb, pd
-
-
-def _subset(col: Any, rows: np.ndarray | None) -> Any:
-    if rows is None:
-        return col
-    arr = np.asarray(col.to_numpy() if hasattr(col, "to_numpy") else col)
-    return arr[rows]
-
-
-def _pick(values: ArrayLike, name: str, rows: np.ndarray | None) -> F64:
-    v = to_vector(values, name)
-    return v if rows is None else v[rows]
 
 
 __all__ = ["LightGBM"]

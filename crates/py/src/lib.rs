@@ -23,6 +23,13 @@ fn to_py(err: GlassError) -> PyErr {
 
 type Arr<'a> = PyReadonlyArray1<'a, f64>;
 
+/// The optional-weights dance, once: borrow the slice out of an optional array.
+fn opt_slice<'py>(arr: Option<&'py Arr<'py>>) -> PyResult<Option<&'py [f64]>> {
+    arr.map(numpy::PyReadonlyArray1::as_slice)
+        .transpose()
+        .map_err(Into::into)
+}
+
 /// Weighted mean deviance under `family`. See `glasshouse.metrics.deviance`.
 #[pyfunction]
 #[pyo3(signature = (family, y, mu, sample_weight=None, power=None))]
@@ -34,7 +41,7 @@ fn deviance(
     power: Option<f64>,
 ) -> PyResult<f64> {
     let fam = Family::parse(family, power).map_err(to_py)?;
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     metrics::deviance(fam, y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
 }
 
@@ -49,7 +56,7 @@ fn d2(
     power: Option<f64>,
 ) -> PyResult<f64> {
     let fam = Family::parse(family, power).map_err(to_py)?;
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     metrics::d2(fam, y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
 }
 
@@ -57,7 +64,7 @@ fn d2(
 #[pyfunction]
 #[pyo3(signature = (y, score, sample_weight=None))]
 fn gini(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     ranking::gini(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -65,7 +72,7 @@ fn gini(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<
 #[pyfunction]
 #[pyo3(signature = (y, score, sample_weight=None))]
 fn normalized_gini(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     ranking::normalized_gini(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -79,7 +86,7 @@ fn calibration_table<'py>(
     sample_weight: Option<Arr<'_>>,
     n_bins: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     let bins =
         calibration::calibration_table(y.as_slice()?, mu.as_slice()?, w, n_bins).map_err(to_py)?;
     let out = PyDict::new(py);
@@ -110,7 +117,7 @@ fn binned_table<'py>(
     sample_weight: Option<Arr<'_>>,
     n_bins: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     let bins = calibration::binned_table(key.as_slice()?, y.as_slice()?, mu.as_slice()?, w, n_bins)
         .map_err(to_py)?;
     let out = PyDict::new(py);
@@ -142,7 +149,7 @@ fn residuals(
     power: Option<f64>,
 ) -> PyResult<Vec<f64>> {
     let fam = Family::parse(family, power).map_err(to_py)?;
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     match kind {
         "deviance" => metrics::deviance_residuals(fam, y.as_slice()?, mu.as_slice()?, w),
         "pearson" => metrics::pearson_residuals(fam, y.as_slice()?, mu.as_slice()?, w),
@@ -159,7 +166,7 @@ fn residuals(
 #[pyfunction]
 #[pyo3(signature = (y, mu, sample_weight=None))]
 fn balance(y: Arr<'_>, mu: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     calibration::balance(y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
 }
 
@@ -173,7 +180,7 @@ fn threshold_metrics<'py>(
     sample_weight: Option<Arr<'_>>,
     threshold: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     let c = Confusion::at(y.as_slice()?, score.as_slice()?, w, threshold).map_err(to_py)?;
     let out = PyDict::new(py);
     out.set_item("tp", c.tp)?;
@@ -193,7 +200,7 @@ fn threshold_metrics<'py>(
 #[pyfunction]
 #[pyo3(signature = (y, score, sample_weight=None))]
 fn roc_auc(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     classification::roc_auc(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -201,7 +208,7 @@ fn roc_auc(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResu
 #[pyfunction]
 #[pyo3(signature = (y, score, sample_weight=None))]
 fn average_precision(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     classification::average_precision(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -213,7 +220,7 @@ fn roc_curve(
     score: Arr<'_>,
     sample_weight: Option<Arr<'_>>,
 ) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>)> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     classification::roc_curve(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -225,7 +232,7 @@ fn pr_curve(
     score: Arr<'_>,
     sample_weight: Option<Arr<'_>>,
 ) -> PyResult<(Vec<f64>, Vec<f64>, Vec<f64>)> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     classification::pr_curve(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -233,7 +240,7 @@ fn pr_curve(
 #[pyfunction]
 #[pyo3(signature = (y, score, sample_weight=None))]
 fn ks(y: Arr<'_>, score: Arr<'_>, sample_weight: Option<Arr<'_>>) -> PyResult<f64> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     classification::ks(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -259,7 +266,7 @@ fn regression_metric(
             )))
         }
     };
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     regression::regression(which, y.as_slice()?, mu.as_slice()?, w).map_err(to_py)
 }
 
@@ -282,8 +289,8 @@ fn glm_fit<'py>(
     let fam = Family::parse(family, power).map_err(to_py)?;
     let link_fn = Link::parse(link).map_err(to_py)?;
     let shape = x.shape().to_vec();
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
-    let o = offset.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
+    let o = opt_slice(offset.as_ref())?;
     let data = Data {
         x: x.as_slice()?,
         n_rows: shape[0],
@@ -344,7 +351,7 @@ fn lorenz_curve(
     score: Arr<'_>,
     sample_weight: Option<Arr<'_>>,
 ) -> PyResult<(Vec<f64>, Vec<f64>)> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     ranking::lorenz_curve(y.as_slice()?, score.as_slice()?, w).map_err(to_py)
 }
 
@@ -359,7 +366,7 @@ fn double_lift_table<'py>(
     sample_weight: Option<Arr<'_>>,
     n_bins: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let w = sample_weight.as_ref().map(|a| a.as_slice()).transpose()?;
+    let w = opt_slice(sample_weight.as_ref())?;
     let bins = calibration::double_lift_table(
         y.as_slice()?,
         mu_a.as_slice()?,
