@@ -14,6 +14,7 @@ import numpy as np
 import numpy.typing as npt
 
 from glasshouse import _core, encoders
+from glasshouse._rows import subset_column
 from glasshouse.arrays import F64, ArrayLike, columns, to_matrix, to_vector
 from glasshouse.metrics import FamilyName
 from glasshouse.splits import Fold
@@ -201,7 +202,12 @@ class GLM:
         names: list[str] = []
         for col_name, col in cols:
             block, block_names = self._fit_term(
-                str(col_name), _subset(col, rows), y_train, w_train, terms, cumulative=cumulative
+                str(col_name),
+                subset_column(col, rows),
+                y_train,
+                w_train,
+                terms,
+                cumulative=cumulative,
             )
             blocks.append(block)
             names.extend(block_names)
@@ -471,14 +477,6 @@ class GLM:
             }
         )
         return model
-
-
-def _subset(col: Any, rows: npt.NDArray[np.int64] | None) -> Any:
-    """Rows of one column, whatever container it came in."""
-    if rows is None:
-        return col
-    arr = np.asarray(col.to_numpy() if hasattr(col, "to_numpy") else col)
-    return arr[rows]
 
 
 __all__ = ["GLM", "FitTrace"]

@@ -22,12 +22,13 @@ from typing import Any
 import numpy as np
 
 from glasshouse import _core
+from glasshouse._rows import as_array
 from glasshouse.arrays import F64, ArrayLike, to_vector
 
 
 def _labels(x: ArrayLike, name: str) -> np.ndarray:
     """Return any column as an array of string labels."""
-    arr = np.asarray(x.to_numpy() if hasattr(x, "to_numpy") else x)
+    arr = as_array(x)
     if arr.ndim != 1:
         msg = f"{name} must be one column, got shape {arr.shape}"
         raise ValueError(msg)

@@ -23,6 +23,7 @@ from typing import Any
 
 import numpy as np
 
+from glasshouse._rows import subset_column, subset_vector
 from glasshouse.arrays import F64, ArrayLike, columns, to_vector
 from glasshouse.encoders import OneHot
 from glasshouse.splits import Fold
@@ -50,7 +51,7 @@ class FossDesign:
         self.encoders_ = {}
         blocks: list[F64] = []
         for name, col in cols:
-            raw = _subset(col, rows)
+            raw = subset_column(col, rows)
             if str(name) in self.onehot:
                 enc = OneHot(name=str(name))
                 block, _ = enc.fit_transform(raw)
@@ -73,13 +74,6 @@ class FossDesign:
             for n, c in cols
         ]
         return np.ascontiguousarray(np.column_stack(blocks))
-
-
-def _subset(col: Any, rows: np.ndarray | None) -> Any:
-    if rows is None:
-        return col
-    arr = np.asarray(col.to_numpy() if hasattr(col, "to_numpy") else col)
-    return arr[rows]
 
 
 @dataclass
@@ -109,8 +103,8 @@ class GlumPoisson:
         matrix = design.fit_transform(X, rows)
         yy = to_vector(y, "y")
         yy = yy if rows is None else yy[rows]
-        w = None if sample_weight is None else _pick(sample_weight, rows)
-        o = None if offset is None else _pick(offset, rows)
+        w = None if sample_weight is None else subset_vector(sample_weight, "sample_weight", rows)
+        o = None if offset is None else subset_vector(offset, "offset", rows)
         self.design_ = design
         self.model_ = GeneralizedLinearRegressor(
             family="poisson", alpha=0.0, gradient_tol=1e-8
@@ -155,9 +149,9 @@ class SklearnPoisson:
         matrix = design.fit_transform(X, rows)
         yy = to_vector(y, "y")
         yy = yy if rows is None else yy[rows]
-        w = None if sample_weight is None else _pick(sample_weight, rows)
+        w = None if sample_weight is None else subset_vector(sample_weight, "sample_weight", rows)
         if offset is not None:
-            expo = np.exp(_pick(offset, rows))
+            expo = np.exp(subset_vector(offset, "offset", rows))
             yy = yy / expo
             w = expo if w is None else w * expo
         self.design_ = design
@@ -172,11 +166,6 @@ class SklearnPoisson:
         if offset is not None:
             rate = rate * np.exp(to_vector(offset, "offset"))
         return rate
-
-
-def _pick(values: ArrayLike, rows: np.ndarray | None) -> F64:
-    v = to_vector(values, "values")
-    return v if rows is None else v[rows]
 
 
 __all__ = ["FossDesign", "GlumPoisson", "SklearnPoisson"]
