@@ -21,6 +21,7 @@ from typing import Any
 
 import numpy as np
 
+from glasshouse import _core
 from glasshouse.arrays import F64, ArrayLike, to_vector
 
 
@@ -326,12 +327,93 @@ class Standardize:
         return enc
 
 
-Encoder = OneHot | TargetEncode | Standardize
+@dataclass
+class BSpline:
+    """A cubic B-spline expansion of one numeric column: the GLM's smooth term.
+
+    ``df`` columns come out (the first basis function is dropped, R's ``bs()`` convention, so
+    the expansion does not fight the intercept). Interior knots sit at quantiles of the
+    *training* rows; tied quantiles collapse, so heavily tied data yields fewer columns than
+    ``df``. At transform time values outside the training range are clamped to the boundary —
+    a polynomial tail extrapolated silently is how spline models go wrong quietly.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from glasshouse.encoders import BSpline
+    >>> m, names = BSpline(df=4, name="age").fit_transform(np.linspace(0.0, 1.0, 9))
+    >>> m.shape, names[0]
+    ((9, 4), 'age_bs1')
+    """
+
+    df: int = 6
+    degree: int = 3
+    name: str = "x"
+    knots_: list[float] = field(default_factory=list, repr=False)
+
+    def fit(
+        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
+    ) -> BSpline:
+        """Place interior knots at quantiles of the training rows."""
+        _ = y, sample_weight
+        if self.df <= self.degree:
+            msg = (
+                f"{self.name}: df must exceed the degree ({self.degree}); df=6 is the usual choice"
+            )
+            raise ValueError(msg)
+        v = to_vector(x, self.name)
+        lo, hi = float(v.min()), float(v.max())
+        if hi <= lo:
+            msg = f"{self.name} is constant on the training rows: nothing to spline; drop it"
+            raise ValueError(msg)
+        n_interior = self.df - self.degree
+        qs = np.linspace(0.0, 1.0, n_interior + 2)[1:-1]
+        # heavily tied data (a value holding half the column) makes quantiles coincide with
+        # each other or with a boundary; duplicate or boundary knots would create degenerate
+        # basis columns and a rank-deficient design, so they collapse — you get fewer columns
+        # than df, which is the honest answer for data this tied
+        interior = sorted({float(q) for q in np.quantile(v, qs)} - {lo, hi})
+        self.knots_ = [lo] * (self.degree + 1) + interior + [hi] * (self.degree + 1)
+        return self
+
+    def transform(self, x: ArrayLike) -> tuple[F64, list[str]]:
+        """Evaluate the basis (Rust), drop the first column, name the rest."""
+        v = to_vector(x, self.name)
+        flat, p = _core.bspline_design(v, self.knots_, self.degree)
+        design = np.asarray(flat, dtype=np.float64).reshape(len(v), p)[:, 1:]
+        return np.ascontiguousarray(design), [f"{self.name}_bs{i}" for i in range(1, p)]
+
+    def fit_transform(
+        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
+    ) -> tuple[F64, list[str]]:
+        """``fit`` then ``transform`` on the same rows."""
+        return self.fit(x, y, sample_weight).transform(x)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-ready state."""
+        return {
+            "kind": "spline",
+            "name": self.name,
+            "df": self.df,
+            "degree": self.degree,
+            "knots": list(self.knots_),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> BSpline:
+        """Rebuild from :meth:`to_dict`."""
+        enc = cls(df=d["df"], degree=d["degree"], name=d["name"])
+        enc.knots_ = [float(k) for k in d["knots"]]
+        return enc
+
+
+Encoder = OneHot | TargetEncode | Standardize | BSpline
 
 _KINDS: dict[str, type[Encoder]] = {
     "onehot": OneHot,
     "target": TargetEncode,
     "standardize": Standardize,
+    "spline": BSpline,
 }
 
 
@@ -355,4 +437,4 @@ def from_dict(d: dict[str, Any]) -> Encoder:
     return _KINDS[d["kind"]].from_dict(d)
 
 
-__all__ = ["Encoder", "OneHot", "Standardize", "TargetEncode", "from_dict", "make"]
+__all__ = ["BSpline", "Encoder", "OneHot", "Standardize", "TargetEncode", "from_dict", "make"]

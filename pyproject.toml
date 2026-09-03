@@ -58,6 +58,7 @@ dev = [
   "jsonschema>=4.26.0",
   "glum>=3.4.1",
   "lightgbm>=4.7.0",
+  "scipy>=1.18.1",
 ]
 
 [tool.uv]
@@ -93,7 +94,7 @@ python_version = "3.12"
 files = ["python", "tests"]
 
 [[tool.mypy.overrides]]
-module = ["sklearn.*", "pandas.*", "pyarrow.*", "statsmodels.*", "plotly.*", "jsonschema.*", "glum.*", "lightgbm.*"]
+module = ["sklearn.*", "pandas.*", "pyarrow.*", "statsmodels.*", "plotly.*", "jsonschema.*", "glum.*", "lightgbm.*", "scipy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

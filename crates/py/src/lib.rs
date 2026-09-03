@@ -10,7 +10,7 @@ use glasshouse_core::classification::Confusion;
 use glasshouse_core::glm::{self, Data, Settings, Stop};
 use glasshouse_core::regression::{self, RegressionMetric};
 use glasshouse_core::Link;
-use glasshouse_core::{calibration, classification, metrics, ranking, Family, GlassError};
+use glasshouse_core::{calibration, classification, metrics, ranking, splines, Family, GlassError};
 use numpy::PyReadonlyArray2;
 use numpy::{PyReadonlyArray1, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
@@ -384,8 +384,17 @@ fn double_lift_table<'py>(
     Ok(out)
 }
 
+/// B-spline design matrix, row-major. See `glasshouse.encoders.BSpline`.
+#[pyfunction]
+#[pyo3(signature = (x, knots, degree))]
+fn bspline_design(x: Arr<'_>, knots: Vec<f64>, degree: usize) -> PyResult<(Vec<f64>, usize)> {
+    let design = splines::bspline_design(x.as_slice()?, &knots, degree).map_err(to_py)?;
+    Ok((design, splines::n_basis(&knots, degree)))
+}
+
 #[pymodule]
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(bspline_design, m)?)?;
     m.add_function(wrap_pyfunction!(lorenz_curve, m)?)?;
     m.add_function(wrap_pyfunction!(double_lift_table, m)?)?;
     m.add_function(wrap_pyfunction!(glm_fit, m)?)?;

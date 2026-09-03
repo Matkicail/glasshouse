@@ -24,6 +24,9 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   `curves.pr`.
 - `residuals.deviance` / `pearson` (golden vs statsmodels) and `residuals.ae_by_feature`: actual /
   expected sliced by a numeric (equal-weight bins) or categorical feature.
+- `encoders.BSpline` and GLM `terms={"age": BSpline(df=8)}` (or `"spline"`): cubic B-spline
+  terms with training-fold quantile knots, clamped extrapolation, Rust Cox–de Boor kernel
+  golden against scipy.
 - Binary reports carry a precomputed 101-point threshold grid and the viewer gains a
   Threshold tab (slider, workload table, precision/recall/MCC chart); NaN metrics now
   serialize as null so every report parses in the browser; `creditcard_glm` benchmark.
