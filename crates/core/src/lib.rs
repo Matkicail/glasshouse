@@ -13,6 +13,7 @@ pub mod link;
 pub mod metrics;
 pub mod ranking;
 pub mod regression;
+pub mod splines;
 
 pub use error::GlassError;
 pub use family::Family;

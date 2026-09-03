@@ -70,9 +70,10 @@ class GLM:
     power : float, optional
         Tweedie variance power (``1 < power < 2`` for pure premium). Required for tweedie.
     terms : dict, optional
-        How to treat named columns of a frame: ``"onehot"``, ``"target"``, ``"standardize"``
-        or ``"linear"`` (the default for any column not listed). Encoders are fitted on the
-        training rows only; with a time-ordered ``fold`` target encoding is cumulative
+        How to treat named columns of a frame: ``"onehot"``, ``"target"``, ``"spline"``,
+        ``"standardize"`` or ``"linear"`` (the default for any column not listed) — or a
+        configured encoder instance, e.g. ``{"age": BSpline(df=8)}``. Encoders are fitted on
+        the training rows only; with a time-ordered ``fold`` target encoding is cumulative
         (past-only) automatically. Columns not in a frame cannot have terms.
     fit_intercept : bool
         Prepend a column of ones. Turn off only if your design already has one.
@@ -100,7 +101,7 @@ class GLM:
     family: FamilyName
     link: LinkName | None = None
     power: float | None = None
-    terms: dict[str, str] | None = None
+    terms: dict[str, str | encoders.Encoder] | None = None
     fit_intercept: bool = True
     max_iter: int = 100
     tol: float = 1e-10
@@ -212,7 +213,7 @@ class GLM:
         raw: Any,
         y_train: F64,
         w_train: F64 | None,
-        terms: dict[str, str],
+        terms: dict[str, str | encoders.Encoder],
         *,
         cumulative: bool,
     ) -> tuple[F64, list[str]]:
@@ -220,8 +221,14 @@ class GLM:
         kind = terms.get(name, "linear")
         if kind == "linear":
             return to_vector(raw, name)[:, None], [name]
-        options = {"cumulative": True} if (kind == "target" and cumulative) else {}
-        enc = encoders.make(kind, name, **options)
+        if isinstance(kind, str):
+            options = {"cumulative": True} if (kind == "target" and cumulative) else {}
+            enc = encoders.make(kind, name, **options)
+        else:  # a configured encoder instance, e.g. BSpline(df=8); fitted here, on train rows
+            enc = kind
+            enc.name = name
+            if cumulative and isinstance(enc, encoders.TargetEncode):
+                enc.cumulative = True
         block, block_names = enc.fit_transform(raw, y_train, w_train)
         self.encoders_[name] = enc
         return block, block_names
@@ -407,7 +414,9 @@ class GLM:
             "fit_intercept": self.fit_intercept,
             "feature_names_in": list(self.feature_names_in_),
             "input_columns": list(self.input_columns_),
-            "terms": dict(self.terms or {}),
+            "terms": {
+                k: (v if isinstance(v, str) else v.to_dict()) for k, v in (self.terms or {}).items()
+            },
             "encoders": {k: v.to_dict() for k, v in self.encoders_.items()},
             "coef": list(map(float, r["coef"])),
             "cov": list(map(float, r["cov"])),
@@ -432,7 +441,10 @@ class GLM:
         )
         model.feature_names_in_ = list(payload["feature_names_in"])
         model.input_columns_ = list(payload["input_columns"])
-        model.terms = dict(payload["terms"]) or None
+        model.terms = {
+            k: (v if isinstance(v, str) else encoders.from_dict(v))
+            for k, v in payload["terms"].items()
+        } or None
         model.encoders_ = {k: encoders.from_dict(v) for k, v in payload["encoders"].items()}
         model._fit = {
             key: payload[key]

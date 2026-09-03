@@ -34,6 +34,40 @@
     "std": 0.00022863455554571037
    }
   },
+  "glm_splines": {
+   "deviance": {
+    "mean": 0.5927880020441952,
+    "std": 0.0020740502925803038
+   },
+   "d2": {
+    "mean": 0.05135461156410588,
+    "std": 0.0010668311426145344
+   },
+   "gini": {
+    "mean": 0.4887896949248013,
+    "std": 0.016144629499510173
+   },
+   "normalized_gini": {
+    "mean": 0.4937117328279556,
+    "std": 0.016229953274301472
+   },
+   "balance": {
+    "mean": 1.0000408258590758,
+    "std": 0.0037297471488476276
+   },
+   "rmse": {
+    "mean": 0.7336662526042105,
+    "std": 0.01162835067178062
+   },
+   "mae": {
+    "mean": 0.18577259005594204,
+    "std": 0.0005532215686486068
+   },
+   "r2": {
+    "mean": 0.007783341325519766,
+    "std": 0.0005196661625843442
+   }
+  },
   "lightgbm": {
    "deviance": {
     "mean": 0.5723956066407831,
@@ -107,52 +141,77 @@
   {
    "label": "glm_full",
    "fold": 0,
-   "seconds": 2.563
+   "seconds": 2.558
   },
   {
    "label": "glm_full",
    "fold": 1,
-   "seconds": 2.522
+   "seconds": 2.503
   },
   {
    "label": "glm_full",
    "fold": 2,
-   "seconds": 2.475
+   "seconds": 2.464
   },
   {
    "label": "glm_full",
    "fold": 3,
-   "seconds": 2.466
+   "seconds": 2.511
   },
   {
    "label": "glm_full",
    "fold": 4,
-   "seconds": 2.554
+   "seconds": 2.638
+  },
+  {
+   "label": "glm_splines",
+   "fold": 0,
+   "seconds": 4.055
+  },
+  {
+   "label": "glm_splines",
+   "fold": 1,
+   "seconds": 4.313
+  },
+  {
+   "label": "glm_splines",
+   "fold": 2,
+   "seconds": 4.322
+  },
+  {
+   "label": "glm_splines",
+   "fold": 3,
+   "seconds": 4.094
+  },
+  {
+   "label": "glm_splines",
+   "fold": 4,
+   "seconds": 3.942
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 11.02
+   "seconds": 10.655
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 6.555
+   "seconds": 6.173
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 5.049
+   "seconds": 4.409
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 6.979
+   "seconds": 6.26
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 6.603
+   "seconds": 6.143
   }
  ]
 }

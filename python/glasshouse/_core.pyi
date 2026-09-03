@@ -115,3 +115,8 @@ def pr_curve(
     score: npt.NDArray[np.float64],
     sample_weight: npt.NDArray[np.float64] | None = None,
 ) -> tuple[list[float], list[float], list[float]]: ...
+def bspline_design(
+    x: npt.NDArray[np.float64],
+    knots: list[float],
+    degree: int,
+) -> tuple[list[float], int]: ...

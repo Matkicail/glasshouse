@@ -13,6 +13,7 @@ from typing import Any
 
 from glasshouse import data, splits
 from glasshouse.bench import BenchResult, ModelSpec, TaskSpec, run
+from glasshouse.encoders import BSpline
 from glasshouse.foss import GlumPoisson, SklearnPoisson
 from glasshouse.gbdt import LightGBM
 from glasshouse.glm import GLM
@@ -108,6 +109,33 @@ BENCHMARKS: dict[str, Benchmark] = {
         task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
         models=[
             _fremtpl2_models()[1],  # glm_full
+            ModelSpec(
+                "glm_splines",
+                lambda: GLM(
+                    family="poisson",
+                    terms={
+                        "Area": "onehot",
+                        "VehGas": "onehot",
+                        "VehBrand": "onehot",
+                        "Region": "target",
+                        "DrivAge": BSpline(df=6),
+                        "VehAge": BSpline(df=5),
+                        "BonusMalus": BSpline(df=5),
+                        "LogDensity": BSpline(df=4),
+                    },
+                ),
+                [
+                    "Area",
+                    "VehGas",
+                    "VehBrand",
+                    "Region",
+                    "DrivAge",
+                    "VehAge",
+                    "VehPower",
+                    "BonusMalus",
+                    "LogDensity",
+                ],
+            ),
             ModelSpec(
                 "lightgbm",
                 lambda: LightGBM(

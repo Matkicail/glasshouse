@@ -11,18 +11,18 @@ cleaning:
   - quotes stripped from the string columns OpenML ships ('Diesel' -> Diesel)
   - NOT applied: the Wüthrich-Merz Appendix A.1 de-duplication of near-identical policies
 
-Split: {'kind': 'random', 'method': 'stratified', 'k': 5, 'seed': 0}. Rows: 678,013. Models: glm_full, lightgbm.
+Split: {'kind': 'random', 'method': 'stratified', 'k': 5, 'seed': 0}. Rows: 678,013. Models: glm_full, glm_splines, lightgbm.
 Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is the weighted mean of y (class prior for binomial), same folds.
 
-| metric | glm_full | lightgbm | naive |
-|---|---|---|---|
-| deviance | 0.60493 ± 0.0025 | **0.5724 ± 0.0026** | 0.62488 |
-| d2 | 0.03192 ± 0.00033 | **0.08399 ± 0.0023** | 2.3381e-14 |
-| gini | 0.39515 ± 0.016 | **0.53505 ± 0.021** | 0 |
-| normalized_gini | 0.39913 ± 0.016 | **0.54044 ± 0.022** | 0 |
-| balance | **1 ± 0.0049** | 0.99912 ± 0.0037 | 1 |
-| rmse | 0.73496 ± 0.012 | **0.72948 ± 0.012** | 0.73654 |
-| mae | 0.1868 ± 0.00047 | **0.18221 ± 0.00066** | 0.18894 |
-| r2 | 0.0042698 ± 0.00023 | **0.019076 ± 0.00078** | 5.5955e-15 |
+| metric | glm_full | glm_splines | lightgbm | naive |
+|---|---|---|---|---|
+| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | **0.5724 ± 0.0026** | 0.62488 |
+| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | **0.08399 ± 0.0023** | 2.3381e-14 |
+| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | **0.53505 ± 0.021** | 0 |
+| normalized_gini | 0.39913 ± 0.016 | 0.49371 ± 0.016 | **0.54044 ± 0.022** | 0 |
+| balance | **1 ± 0.0049** | 1 ± 0.0037 | 0.99912 ± 0.0037 | 1 |
+| rmse | 0.73496 ± 0.012 | 0.73367 ± 0.012 | **0.72948 ± 0.012** | 0.73654 |
+| mae | 0.1868 ± 0.00047 | 0.18577 ± 0.00055 | **0.18221 ± 0.00066** | 0.18894 |
+| r2 | 0.0042698 ± 0.00023 | 0.0077833 ± 0.00052 | **0.019076 ± 0.00078** | 5.5955e-15 |
 
-Fit time (all folds): glm_full 12.6s, lightgbm 36.2s.
+Fit time (all folds): glm_full 12.7s, glm_splines 20.7s, lightgbm 33.6s.

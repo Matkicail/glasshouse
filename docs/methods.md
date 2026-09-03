@@ -190,6 +190,19 @@ References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized L
 
 Golden references: statsmodels `resid_deviance`, `resid_pearson` (with `var_weights`).
 
+## B-spline terms
+
+A spline term expands one numeric column into ``df`` cubic B-spline basis columns. Interior
+knots sit at quantiles of the training rows (``df − degree`` of them, evenly spaced in
+probability); boundary knots are the training min and max, repeated ``degree + 1`` times; the
+first basis function is dropped so the expansion does not duplicate the intercept (R's
+``bs()`` convention). At prediction time values outside the training range are evaluated at
+the clamped boundary — a cubic tail extrapolated silently is how spline models go wrong
+quietly. The basis is evaluated in Rust by the Cox–de Boor recursion.
+
+Reference: de Boor, *A Practical Guide to Splines* (2001). Golden reference:
+``scipy.interpolate.BSpline.design_matrix`` on identical knot vectors.
+
 ## Encoders and leakage
 
 Leakage is a property of the split, not the transform. Every encoder is fitted on the
