@@ -63,10 +63,14 @@ class Report:
         return copy
 
     def write(self, path: str | Path) -> Path:
-        """Write the JSON to ``path`` and return it."""
+        """Write the JSON to ``path`` and return it.
+
+        Compact, one line: a report is read by the viewer, not by eye, and the committed
+        test fixtures stay one-line diffs when they regenerate.
+        """
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(json.dumps(self.doc, indent=1))
+        p.write_text(json.dumps(self.doc, separators=(",", ":")))
         return p
 
     def to_html(self, path: str | Path) -> Path:
