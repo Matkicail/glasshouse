@@ -77,8 +77,10 @@ def test_properties(data: st.DataObject, n_bins: int) -> None:
     perm = np.random.default_rng(0).permutation(n)
     t2 = calibration_table(y[perm], mu[perm], sample_weight=w[perm], n_bins=n_bins)
     np.testing.assert_allclose(t.predicted, t2.predicted, rtol=1e-9)  # order-free
-    # a perfectly calibrated prediction (mu == y) scores 1 in every bin
-    if y.sum() > 0:
+    # a perfectly calibrated prediction (mu == y) scores 1 in every bin. The guard is on the
+    # *weighted* total, which is what the table divides by: a denormal y (5e-324) can pass
+    # y.sum() > 0 yet underflow w * y to an exactly-zero expected total, which is refused.
+    if float(np.sum(w * y)) > 0:
         p = calibration_table(y, y, sample_weight=w, n_bins=n_bins)
         ok = p.predicted > 0
         np.testing.assert_allclose(p.actual_over_expected[ok], 1.0, rtol=1e-9)
