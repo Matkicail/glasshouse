@@ -271,8 +271,10 @@ fn regression_metric(
 }
 
 /// Fit a GLM by IRLS. See `glasshouse.glm.GLM`. Returns a dict of results.
+/// `penalty` is a row-major symmetric `p x p` matrix, already scaled by the smoothing
+/// parameter — the penalised deviance `D + beta' S beta` is what gets minimised.
 #[pyfunction]
-#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10))]
+#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10, penalty=None))]
 #[allow(clippy::too_many_arguments)]
 fn glm_fit<'py>(
     py: Python<'py>,
@@ -285,12 +287,17 @@ fn glm_fit<'py>(
     power: Option<f64>,
     max_iter: usize,
     tol: f64,
+    penalty: Option<PyReadonlyArray2<'_, f64>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let fam = Family::parse(family, power).map_err(to_py)?;
     let link_fn = Link::parse(link).map_err(to_py)?;
     let shape = x.shape().to_vec();
     let w = opt_slice(sample_weight.as_ref())?;
     let o = opt_slice(offset.as_ref())?;
+    let pen = match penalty.as_ref() {
+        Some(arr) => Some(arr.as_slice()?),
+        None => None,
+    };
     let data = Data {
         x: x.as_slice()?,
         n_rows: shape[0],
@@ -304,13 +311,14 @@ fn glm_fit<'py>(
         tol,
         ..Settings::default()
     };
-    let fit = glm::fit(fam, link_fn, data, settings).map_err(to_py)?;
+    let fit = glm::fit(fam, link_fn, data, pen, settings).map_err(to_py)?;
     let out = PyDict::new(py);
     out.set_item("coef", fit.coef)?;
     out.set_item("mu", fit.mu)?;
     out.set_item("deviance", fit.deviance)?;
     out.set_item("null_deviance", fit.null_deviance)?;
     out.set_item("dispersion", fit.dispersion)?;
+    out.set_item("edf", fit.edf)?;
     out.set_item("cov", fit.cov)?;
     out.set_item("cov_robust", fit.cov_robust)?;
     out.set_item("n_rows", fit.n_rows)?;

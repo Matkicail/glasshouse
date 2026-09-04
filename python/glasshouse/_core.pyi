@@ -77,6 +77,7 @@ def glm_fit(
     power: float | None = None,
     max_iter: int = 100,
     tol: float = 1e-10,
+    penalty: npt.NDArray[np.float64] | None = None,
 ) -> dict[str, Any]: ...
 def lorenz_curve(
     y: npt.NDArray[np.float64],

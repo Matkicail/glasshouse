@@ -408,13 +408,106 @@ class BSpline:
         return enc
 
 
-Encoder = OneHot | TargetEncode | Standardize | BSpline
+@dataclass
+class Smooth:
+    """A penalised cubic B-spline (P-spline): the smooth that picks its own wiggliness.
+
+    The basis is a cubic B-spline on *evenly spaced* interior knots over the training range —
+    Eilers & Marx's P-spline construction, where the companion penalty (squared second
+    differences of the coefficients, :meth:`penalty_matrix`) is the natural measure of
+    wiggliness. The first basis column is dropped so the term does not fight the intercept.
+
+    The penalty weight is what makes this different from :class:`BSpline`: the GLM chooses it
+    by GCV unless ``lam`` pins it, so ``df`` is a budget, not a dial — generous is fine,
+    because the penalty decides how much of it gets spent (read ``edf_`` afterwards to see).
+    Out-of-range values at transform time are clamped, like every spline here.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> from glasshouse.encoders import Smooth
+    >>> enc = Smooth(df=6, name="age").fit(np.linspace(0.0, 1.0, 50))
+    >>> m, names = enc.transform(np.linspace(0.0, 1.0, 50))
+    >>> m.shape, names[0], enc.penalty_matrix().shape
+    ((50, 6), 'age_s1', (6, 6))
+    """
+
+    df: int = 9
+    degree: int = 3
+    lam: float | None = None
+    name: str = "x"
+    knots_: list[float] = field(default_factory=list, repr=False)
+
+    def fit(
+        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
+    ) -> Smooth:
+        """Place evenly spaced interior knots over the training range."""
+        _ = y, sample_weight
+        if self.df <= self.degree:
+            msg = f"{self.name}: df must exceed the degree ({self.degree}); the default df is 9"
+            raise ValueError(msg)
+        v = to_vector(x, self.name)
+        lo, hi = float(v.min()), float(v.max())
+        if hi <= lo:
+            msg = f"{self.name} is constant on the training rows: nothing to smooth; drop it"
+            raise ValueError(msg)
+        interior = np.linspace(lo, hi, self.df - self.degree + 2)[1:-1]
+        self.knots_ = (
+            [lo] * (self.degree + 1) + [float(k) for k in interior] + [hi] * (self.degree + 1)
+        )
+        return self
+
+    def transform(self, x: ArrayLike) -> tuple[F64, list[str]]:
+        """Evaluate the basis (Rust), drop the first column, name the rest."""
+        v = to_vector(x, self.name)
+        flat, p = _core.bspline_design(v, self.knots_, self.degree)
+        design = np.asarray(flat, dtype=np.float64).reshape(len(v), p)[:, 1:]
+        return np.ascontiguousarray(design), [f"{self.name}_s{i}" for i in range(1, p)]
+
+    def fit_transform(
+        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
+    ) -> tuple[F64, list[str]]:
+        """``fit`` then ``transform`` on the same rows."""
+        return self.fit(x, y, sample_weight).transform(x)
+
+    def penalty_matrix(self) -> F64:
+        """Return the second-difference penalty ``D2' D2``, reduced to the kept columns.
+
+        Built on the full basis coefficients, then the first row and column are cut — the
+        dropped column pins that coefficient at zero, which the difference penalty sees.
+        """
+        p_full = len(self.knots_) - self.degree - 1
+        d2 = np.diff(np.eye(p_full), n=2, axis=0)
+        s_full = d2.T @ d2
+        return np.ascontiguousarray(s_full[1:, 1:])
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-ready state."""
+        return {
+            "kind": "smooth",
+            "name": self.name,
+            "df": self.df,
+            "degree": self.degree,
+            "lam": self.lam,
+            "knots": list(self.knots_),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Smooth:
+        """Rebuild from :meth:`to_dict`."""
+        enc = cls(df=d["df"], degree=d["degree"], lam=d["lam"], name=d["name"])
+        enc.knots_ = [float(k) for k in d["knots"]]
+        return enc
+
+
+Encoder = OneHot | TargetEncode | Standardize | BSpline | Smooth
 
 _KINDS: dict[str, type[Encoder]] = {
     "onehot": OneHot,
     "target": TargetEncode,
     "standardize": Standardize,
     "spline": BSpline,
+    "smooth": Smooth,
 }
 
 
@@ -438,4 +531,13 @@ def from_dict(d: dict[str, Any]) -> Encoder:
     return _KINDS[d["kind"]].from_dict(d)
 
 
-__all__ = ["BSpline", "Encoder", "OneHot", "Standardize", "TargetEncode", "from_dict", "make"]
+__all__ = [
+    "BSpline",
+    "Encoder",
+    "OneHot",
+    "Smooth",
+    "Standardize",
+    "TargetEncode",
+    "from_dict",
+    "make",
+]
