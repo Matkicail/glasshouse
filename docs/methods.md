@@ -203,6 +203,33 @@ quietly. The basis is evaluated in Rust by the Cox–de Boor recursion.
 Reference: de Boor, *A Practical Guide to Splines* (2001). Golden reference:
 ``scipy.interpolate.BSpline.design_matrix`` on identical knot vectors.
 
+## Penalised smooths (P-splines) and GCV
+
+A `"smooth"` term is a P-spline: a cubic B-spline basis on *evenly spaced* interior knots
+over the training range, with a penalty on the squared second differences of its
+coefficients, `β' D₂'D₂ β` — Eilers & Marx's construction, where even spacing is what makes
+coefficient differences a fair measure of wiggliness. The first basis column is dropped so
+the term does not fight the intercept; the penalty matrix is built on the full basis and
+reduced the same way. IRLS then solves `(X'WX + S) β = X'Wz` with `S` the block-embedded
+penalty times `λ`; the fixed point minimises the penalised deviance `D + β'Sβ`, and
+step-halving and convergence run on that same objective.
+
+`λ` is chosen by minimising GCV, `n·D / (n − edf)²`, with effective degrees of freedom
+`edf = tr((X'WX + S)⁻¹ X'WX)` — mgcv's criterion with `γ = 1` — over a coarse log-spaced
+grid plus one finer pass around the winner (two coordinate sweeps when several smooths are
+free). Every `(λ, GCV, edf)` evaluated stays on the model in `gcv_`, so the choice can be
+read, not re-run. Because only the smooth's block is penalised, the intercept's score
+equation is untouched and the balance property survives penalisation exactly.
+
+The reported covariance is `φ (X'WX + S)⁻¹` (the Bayesian posterior covariance, mgcv's
+convention) and dispersion divides by `n − edf`.
+
+References: Eilers & Marx, "Flexible smoothing with B-splines and penalties", *Statistical
+Science* 11 (1996); Wood, *Generalized Additive Models*, 2nd ed. (2017). Golden reference:
+statsmodels `GLMGam` — it penalises the log-likelihood where we penalise the deviance
+(−2·loglik), so `S = 2·α·cov_der2` must and does reproduce its coefficients and edf to
+machine precision. mgcv itself needs R, which the test machines do not have.
+
 ## Encoders and leakage
 
 Leakage is a property of the split, not the transform. Every encoder is fitted on the

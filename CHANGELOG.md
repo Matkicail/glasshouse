@@ -5,6 +5,10 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `encoders.Smooth` and GLM `terms={"age": "smooth"}`: penalised P-spline smooths whose
+  wiggliness is chosen by GCV during `fit` (pin it with `Smooth(lam=...)`). The model gains
+  `edf_`, `lambda_` and the searched `gcv_` grid; the intercept stays unpenalised so balance
+  survives. Solver golden vs statsmodels `GLMGam` to machine precision.
 - Family table (gaussian, poisson, gamma, tweedie with power, binomial) with one shared
   deviance path; `metrics.deviance`, `metrics.d2`, and named per-family functions.
 - Ranking: `metrics.gini`, `metrics.normalized_gini` — exposure-weighted, ties grouped.

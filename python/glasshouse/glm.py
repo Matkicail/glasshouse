@@ -7,6 +7,7 @@ null model, per-row contributions, and a fit trace that explains how it got ther
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -55,6 +56,32 @@ class FitTrace:
         return "\n".join(lines)
 
 
+def _gcv_minimise(
+    fit_at: Callable[[float], tuple[float, float]],
+    n_rows: int,
+    trace: list[tuple[float, float, float]],
+) -> float:
+    """1-D GCV minimisation: a coarse log-spaced grid, then a finer pass around the winner.
+
+    GCV is ``n * deviance / (n - edf)^2`` — mgcv's criterion with gamma = 1. The numerator
+    rewards fit; the shrinking denominator charges for every effective coefficient spent.
+    Each evaluation is appended to ``trace`` as ``(lambda, gcv, edf)``.
+    """
+
+    def sweep(grid: F64) -> float:
+        best_lam, best = float(grid[0]), float("inf")
+        for lam in grid:
+            deviance, edf = fit_at(float(lam))
+            gcv = n_rows * deviance / (n_rows - edf) ** 2
+            trace.append((float(lam), float(gcv), float(edf)))
+            if gcv < best:
+                best_lam, best = float(lam), float(gcv)
+        return best_lam
+
+    coarse = sweep(np.logspace(-4.0, 7.0, 23))
+    return sweep(np.logspace(np.log10(coarse) - 0.5, np.log10(coarse) + 0.5, 9))
+
+
 @dataclass
 class GLM:
     """Generalised linear model fitted by IRLS in Rust.
@@ -72,10 +99,12 @@ class GLM:
         Tweedie variance power (``1 < power < 2`` for pure premium). Required for tweedie.
     terms : dict, optional
         How to treat named columns of a frame: ``"onehot"``, ``"target"``, ``"spline"``,
-        ``"standardize"`` or ``"linear"`` (the default for any column not listed) — or a
-        configured encoder instance, e.g. ``{"age": BSpline(df=8)}``. Encoders are fitted on
-        the training rows only; with a time-ordered ``fold`` target encoding is cumulative
-        (past-only) automatically. Columns not in a frame cannot have terms.
+        ``"smooth"``, ``"standardize"`` or ``"linear"`` (the default for any column not
+        listed) — or a configured encoder instance, e.g. ``{"age": BSpline(df=8)}``. A
+        ``"smooth"`` is a penalised spline whose wiggliness is chosen by GCV during ``fit``
+        (pin it with ``Smooth(lam=...)``). Encoders are fitted on the training rows only;
+        with a time-ordered ``fold`` target encoding is cumulative (past-only) automatically.
+        Columns not in a frame cannot have terms.
     fit_intercept : bool
         Prepend a column of ones. Turn off only if your design already has one.
     max_iter, tol : int, float
@@ -86,6 +115,7 @@ class GLM:
     coef_, intercept_, se_, cov_ : the estimates, their standard errors and covariance.
     feature_names_in_ : column names from the frame, or ``x0, x1, ...``.
     deviance_, null_deviance_, dispersion_ : the fit statistics (total, not mean, deviance).
+    edf_, lambda_, gcv_ : what the smooths spent, the chosen penalties, the searched grids.
     n_iter_, converged_, trace_ : how the solver got there.
 
     Examples
@@ -110,6 +140,9 @@ class GLM:
     feature_names_in_: list[str] = field(default_factory=list, repr=False)
     encoders_: dict[str, encoders.Encoder] = field(default_factory=dict, repr=False)
     input_columns_: list[str] = field(default_factory=list, repr=False)
+    lambda_: dict[str, float] = field(default_factory=dict, repr=False)
+    gcv_: dict[str, list[tuple[float, float, float]]] = field(default_factory=dict, repr=False)
+    _slices: dict[str, tuple[int, int]] = field(default_factory=dict, repr=False)
 
     # ------------------------------------------------------------------ fitting
 
@@ -153,6 +186,7 @@ class GLM:
         if self.fit_intercept:
             matrix = np.ascontiguousarray(np.column_stack([np.ones(matrix.shape[0]), matrix]))
             names = ["intercept", *names]
+        penalty = self._smooth_penalty(matrix, yy, w, o)
         result = _core.glm_fit(
             self.family,
             self._link_name(),
@@ -163,6 +197,7 @@ class GLM:
             self.power,
             self.max_iter,
             self.tol,
+            penalty=penalty,
         )
         self._fit = result
         self.feature_names_in_ = names
@@ -189,6 +224,7 @@ class GLM:
             matrix, plain_names = to_matrix(X)
             self.input_columns_ = plain_names
             self.encoders_ = {}
+            self._slices = {}
             return (matrix if rows is None else matrix[rows]), plain_names
         unknown = sorted(set(terms) - {str(n) for n, _ in cols})
         if unknown:
@@ -200,6 +236,7 @@ class GLM:
         w_train = w if (w is None or rows is None) else w[rows]
         blocks: list[F64] = []
         names: list[str] = []
+        self._slices = {}
         for col_name, col in cols:
             block, block_names = self._fit_term(
                 str(col_name),
@@ -209,6 +246,7 @@ class GLM:
                 terms,
                 cumulative=cumulative,
             )
+            self._slices[str(col_name)] = (len(names), len(names) + len(block_names))
             blocks.append(block)
             names.extend(block_names)
         return np.ascontiguousarray(np.column_stack(blocks)), names
@@ -238,6 +276,68 @@ class GLM:
         block, block_names = enc.fit_transform(raw, y_train, w_train)
         self.encoders_[name] = enc
         return block, block_names
+
+    # ------------------------------------------------------------------ smoothing
+
+    def _smooth_penalty(self, matrix: F64, y: F64, w: F64 | None, o: F64 | None) -> F64 | None:
+        """Build the combined penalty for the smooth terms (``None`` when there are none).
+
+        Each :class:`~glasshouse.encoders.Smooth` term contributes its second-difference
+        penalty, embedded at its columns of the design and scaled by its own lambda — pinned
+        by ``Smooth(lam=...)``, otherwise chosen by GCV. With several free smooths the 1-D
+        searches sweep twice (coordinate descent). Every (lambda, GCV, edf) evaluated lands
+        in ``gcv_``, so the choice can be read, not re-run.
+        """
+        smooths = {n: e for n, e in self.encoders_.items() if isinstance(e, encoders.Smooth)}
+        if not smooths:
+            return None
+        bases = self._penalty_bases(smooths, matrix.shape[1])
+
+        def combined(lambdas: dict[str, float]) -> F64:
+            total = np.zeros((matrix.shape[1], matrix.shape[1]))
+            for name, base in bases.items():
+                total += lambdas[name] * base
+            return np.ascontiguousarray(total)
+
+        def fit_at(lambdas: dict[str, float]) -> tuple[float, float]:
+            r = _core.glm_fit(
+                self.family,
+                self._link_name(),
+                matrix,
+                y,
+                w,
+                o,
+                self.power,
+                self.max_iter,
+                self.tol,
+                penalty=combined(lambdas),
+            )
+            return float(r["deviance"]), float(r["edf"])
+
+        lambdas = {n: (e.lam if e.lam is not None else 1.0) for n, e in smooths.items()}
+        free = [n for n, e in smooths.items() if e.lam is None]
+        self.gcv_ = {n: [] for n in free}
+        for _ in range(2 if len(free) > 1 else 1):
+            for name in free:
+                # `lambdas` is shared state on purpose: each 1-D search sees the others'
+                # current values, which is what makes the sweeps coordinate descent
+                def fit_at_lam(lam: float, _name: str = name) -> tuple[float, float]:
+                    return fit_at({**lambdas, _name: lam})
+
+                lambdas[name] = _gcv_minimise(fit_at_lam, matrix.shape[0], self.gcv_[name])
+        self.lambda_ = {n: float(v) for n, v in lambdas.items()}
+        return combined(self.lambda_)
+
+    def _penalty_bases(self, smooths: dict[str, encoders.Smooth], p: int) -> dict[str, F64]:
+        """Embed each smooth's penalty at its own columns of the full design."""
+        shift = 1 if self.fit_intercept else 0
+        bases: dict[str, F64] = {}
+        for name, enc in smooths.items():
+            lo, hi = self._slices[name]
+            base = np.zeros((p, p))
+            base[lo + shift : hi + shift, lo + shift : hi + shift] = enc.penalty_matrix()
+            bases[name] = base
+        return bases
 
     def _design_predict(self, X: ArrayLike) -> F64:  # noqa: N803
         """Build a prediction design with the fitted encoders; check the columns line up."""
@@ -337,6 +437,15 @@ class GLM:
         return float(self._require_fit()["dispersion"])
 
     @property
+    def edf_(self) -> float:
+        """Effective degrees of freedom: ``tr((X'WX + S)^{-1} X'WX)``, what the fit spent.
+
+        Equals the number of coefficients for a plain GLM. A smooth with 9 columns and an
+        edf near 3 is behaving like a 3-parameter curve — the penalty declined the rest.
+        """
+        return float(self._require_fit()["edf"])
+
+    @property
     def n_iter_(self) -> int:
         """IRLS iterations run."""
         return int(self._require_fit()["iterations"])
@@ -432,6 +541,8 @@ class GLM:
             "deviance": float(r["deviance"]),
             "null_deviance": float(r["null_deviance"]),
             "dispersion": float(r["dispersion"]),
+            "edf": float(r["edf"]),
+            "lambda": {k: float(v) for k, v in self.lambda_.items()},
             "iterations": int(r["iterations"]),
             "stop": str(r["stop"]),
         }
@@ -469,6 +580,7 @@ class GLM:
         }
         model._fit.update(
             {
+                "edf": float(payload.get("edf", payload["n_features"])),
                 "mu": [],
                 "trace_iteration": [],
                 "trace_deviance": [],
@@ -476,6 +588,7 @@ class GLM:
                 "trace_max_step": [],
             }
         )
+        model.lambda_ = {str(k): float(v) for k, v in payload.get("lambda", {}).items()}
         return model
 
 

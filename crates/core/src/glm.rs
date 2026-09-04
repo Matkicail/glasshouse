@@ -18,6 +18,7 @@ use crate::link::Link;
 #[derive(Debug, Clone, PartialEq)]
 pub struct TraceRow {
     pub iteration: usize,
+    /// The objective after the step: the deviance, plus `beta' S beta` for a penalised fit.
     pub deviance: f64,
     /// Step-halvings needed before the deviance decreased.
     pub halvings: usize,
@@ -48,10 +49,15 @@ pub struct GlmFit {
     pub deviance: f64,
     /// Deviance of the intercept-only model with the same offset and weights.
     pub null_deviance: f64,
-    /// Pearson estimate `sum(w (y-mu)^2 / V(mu)) / (n - p)`, or exactly 1 for Poisson and
+    /// Pearson estimate `sum(w (y-mu)^2 / V(mu)) / (n - edf)`, or exactly 1 for Poisson and
     /// binomial.
     pub dispersion: f64,
-    /// `dispersion * (X' W X)^{-1}` at convergence, row-major `p x p`.
+    /// Effective degrees of freedom `tr((X'WX + S)^{-1} X'WX)`: how many coefficients the
+    /// fit really spends. Equals `n_features` exactly when there is no penalty.
+    pub edf: f64,
+    /// `dispersion * (X'WX + S)^{-1}` at convergence, row-major `p x p` (`S = 0` when
+    /// unpenalised; for a penalised fit this is the Bayesian posterior covariance, mgcv's
+    /// convention).
     pub cov: Vec<f64>,
     /// HC1 sandwich covariance `(X'WX)^{-1} (sum_i s_i s_i') (X'WX)^{-1} * n/(n-p)`, where
     /// `s_i = x_i * w_i (y_i - mu_i) (dmu/deta) / V(mu_i)` is row i's score. Robust to a
@@ -110,25 +116,46 @@ impl Data<'_> {
     }
 }
 
-/// Fit by IRLS.
+/// Fit by IRLS, optionally with a quadratic penalty `beta' S beta` on the coefficients.
+///
+/// `penalty` is a row-major symmetric `p x p` matrix `S`, already scaled by the smoothing
+/// parameter. Zero rows and columns (the intercept, plain linear terms) leave those
+/// coefficients unpenalised; `None` is the ordinary GLM. The penalised fit minimises the
+/// penalised deviance `D + beta' S beta` — the PIRLS fixed point.
 ///
 /// # Errors
 /// Bad shapes; `y` outside the family's support; non-finite or negative weights; a
-/// rank-deficient design; `max_iter == 0`.
+/// rank-deficient design; a penalty that is not symmetric; `max_iter == 0`.
 pub fn fit(
     family: Family,
     link: Link,
     data: Data<'_>,
+    penalty: Option<&[f64]>,
     settings: Settings,
 ) -> Result<GlmFit, GlassError> {
-    validate(family, data, settings)?;
-    let state = irls(family, link, data, settings)?;
+    validate(family, data, penalty, settings)?;
+    let state = irls(family, link, data, penalty, settings)?;
 
-    // information matrix at the final mean, for the covariance
+    // information matrix at the final mean, for the covariance and the effective dof
     let ww = working_weights(family, link, data, &state.eta, &state.mu);
     let mut xtwx = Square::zeros(data.n_features);
     cross_product(data, &ww, &mut xtwx);
-    let inv = Square::inverse_with(&xtwx.cholesky()?);
+    let mut bread = xtwx.clone();
+    add_penalty(&mut bread, penalty);
+    let inv = Square::inverse_with(&bread.cholesky()?);
+    #[allow(clippy::cast_precision_loss)]
+    let edf = if penalty.is_none() {
+        data.n_features as f64
+    } else {
+        // tr((X'WX + S)^{-1} X'WX): what the penalised fit actually spends
+        (0..data.n_features)
+            .map(|a| {
+                (0..data.n_features)
+                    .map(|k| inv.get(a, k) * xtwx.get(k, a))
+                    .sum::<f64>()
+            })
+            .sum()
+    };
     let dispersion = if family.fixed_dispersion() {
         1.0
     } else {
@@ -138,7 +165,7 @@ pub fn fit(
             })
             .sum();
         #[allow(clippy::cast_precision_loss)]
-        let dof = (data.n_rows - data.n_features) as f64;
+        let dof = data.n_rows as f64 - edf;
         pearson / dof
     };
     let cov = inv.data.iter().map(|v| v * dispersion).collect();
@@ -154,6 +181,7 @@ pub fn fit(
             n_features: 1,
             ..data
         },
+        None,
         settings,
     )?;
 
@@ -165,6 +193,7 @@ pub fn fit(
         deviance: state.deviance,
         null_deviance: null.deviance,
         dispersion,
+        edf,
         cov,
         cov_robust,
         n_rows: data.n_rows,
@@ -181,15 +210,19 @@ struct State {
     eta: Vec<f64>,
     mu: Vec<f64>,
     deviance: f64,
+    /// `deviance + beta' S beta`: what a penalised fit minimises. Equal to the deviance when
+    /// there is no penalty.
+    objective: f64,
     trace: Vec<TraceRow>,
     stop: Stop,
 }
 
-/// The IRLS loop: linearise, solve, step-halve until the deviance drops, repeat.
+/// The IRLS loop: linearise, solve, step-halve until the objective drops, repeat.
 fn irls(
     family: Family,
     link: Link,
     data: Data<'_>,
+    penalty: Option<&[f64]>,
     settings: Settings,
 ) -> Result<State, GlassError> {
     // starting values: R's mustart, then eta from the link, coefficients at zero
@@ -203,6 +236,7 @@ fn irls(
         eta,
         mu,
         deviance,
+        objective: deviance, // coef = 0 pays no penalty
         trace: Vec::new(),
         stop: Stop::MaxIter,
     };
@@ -217,9 +251,9 @@ fn irls(
                     + (data.y[i] - state.mu[i]) / link.mu_eta(state.eta[i])
             })
             .collect();
-        let proposal = weighted_least_squares(data, &z, &ww, &mut xtwx)?;
+        let proposal = weighted_least_squares(data, &z, &ww, penalty, &mut xtwx)?;
 
-        // step-halving: shrink toward the previous coefficients until the deviance drops
+        // step-halving: shrink toward the previous coefficients until the objective drops
         let mut halvings = 0;
         let mut fraction = 1.0;
         let accepted = loop {
@@ -236,9 +270,10 @@ fn irls(
             } else {
                 f64::INFINITY
             };
+            let cand_obj = cand_dev + quad_form(penalty, &cand);
             // iteration 1 starts from coef = 0, which is not a real fit: always accept it
-            if cand_dev.is_finite() && (iteration == 1 || cand_dev <= state.deviance) {
-                break Some((cand, cand_eta, cand_mu, cand_dev));
+            if cand_obj.is_finite() && (iteration == 1 || cand_obj <= state.objective) {
+                break Some((cand, cand_eta, cand_mu, cand_dev, cand_obj));
             }
             halvings += 1;
             if halvings > settings.max_halvings {
@@ -246,11 +281,11 @@ fn irls(
             }
             fraction /= 2.0;
         };
-        let Some((coef, eta, mu, deviance)) = accepted else {
+        let Some((coef, eta, mu, deviance, objective)) = accepted else {
             state.stop = Stop::NoImprovement;
             state.trace.push(TraceRow {
                 iteration,
-                deviance: state.deviance,
+                deviance: state.objective,
                 halvings,
                 max_step: 0.0,
             });
@@ -261,14 +296,15 @@ fn irls(
             .zip(&state.coef)
             .map(|(a, b)| (a - b).abs())
             .fold(0.0, f64::max);
-        let rel_change = (state.deviance - deviance).abs() / (deviance.abs() + 0.1);
+        let rel_change = (state.objective - objective).abs() / (objective.abs() + 0.1);
         state.coef = coef;
         state.eta = eta;
         state.mu = mu;
         state.deviance = deviance;
+        state.objective = objective;
         state.trace.push(TraceRow {
             iteration,
-            deviance,
+            deviance: objective,
             halvings,
             max_step,
         });
@@ -371,14 +407,36 @@ fn cross_product(data: Data<'_>, ww: &[f64], out: &mut Square) {
     }
 }
 
-/// Solve `(X' W X) beta = X' W z`.
+/// `m += S` (no-op without a penalty).
+fn add_penalty(m: &mut Square, penalty: Option<&[f64]>) {
+    if let Some(s) = penalty {
+        for (v, add) in m.data.iter_mut().zip(s) {
+            *v += add;
+        }
+    }
+}
+
+/// `beta' S beta`: the wiggliness the penalty charges.
+fn quad_form(penalty: Option<&[f64]>, coef: &[f64]) -> f64 {
+    let Some(s) = penalty else {
+        return 0.0;
+    };
+    let p = coef.len();
+    (0..p)
+        .map(|a| coef[a] * (0..p).map(|b| s[a * p + b] * coef[b]).sum::<f64>())
+        .sum()
+}
+
+/// Solve `(X' W X + S) beta = X' W z`.
 fn weighted_least_squares(
     data: Data<'_>,
     z: &[f64],
     ww: &[f64],
+    penalty: Option<&[f64]>,
     xtwx: &mut Square,
 ) -> Result<Vec<f64>, GlassError> {
     cross_product(data, ww, xtwx);
+    add_penalty(xtwx, penalty);
     let mut rhs = vec![0.0; data.n_features];
     for i in 0..data.n_rows {
         let wz = ww[i] * z[i];
@@ -400,7 +458,12 @@ fn total_deviance(family: Family, data: Data<'_>, mu: &[f64]) -> f64 {
         .sum()
 }
 
-fn validate(family: Family, data: Data<'_>, settings: Settings) -> Result<(), GlassError> {
+fn validate(
+    family: Family,
+    data: Data<'_>,
+    penalty: Option<&[f64]>,
+    settings: Settings,
+) -> Result<(), GlassError> {
     let Data {
         x,
         n_rows,
@@ -469,12 +532,47 @@ fn validate(family: Family, data: Data<'_>, settings: Settings) -> Result<(), Gl
             f64::is_finite,
         )?;
     }
+    if let Some(s) = penalty {
+        validate_penalty(s, n_features)?;
+    }
     if settings.max_iter == 0 {
         return Err(GlassError::BadArgument {
             name: "max_iter",
             problem: "must be at least 1",
             fix: "the default is 100",
         });
+    }
+    Ok(())
+}
+
+/// A penalty must be a finite, symmetric `p x p` matrix.
+fn validate_penalty(s: &[f64], n_features: usize) -> Result<(), GlassError> {
+    if s.len() != n_features * n_features {
+        return Err(GlassError::LengthMismatch {
+            left: "penalty",
+            left_len: s.len(),
+            right: "n_features * n_features",
+            right_len: n_features * n_features,
+        });
+    }
+    all_values(
+        "penalty",
+        s,
+        "must be finite",
+        "NaN or inf in the penalty matrix",
+        f64::is_finite,
+    )?;
+    for a in 0..n_features {
+        for b in 0..a {
+            let (ab, ba) = (s[a * n_features + b], s[b * n_features + a]);
+            if (ab - ba).abs() > 1e-8 * ab.abs().max(ba.abs()).max(1.0) {
+                return Err(GlassError::BadArgument {
+                    name: "penalty",
+                    problem: "must be symmetric",
+                    fix: "a quadratic penalty is beta' S beta with S = S'; symmetrise S",
+                });
+            }
+        }
     }
     Ok(())
 }
@@ -507,11 +605,13 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 2, &y),
+            None,
             Settings::default(),
         )
         .unwrap();
         assert!((fit.coef[0] - 1.0).abs() < 1e-12 && (fit.coef[1] - 2.0).abs() < 1e-12);
         assert!(fit.deviance < 1e-20);
+        assert!((fit.edf - 2.0).abs() < 1e-12);
     }
 
     #[test]
@@ -522,6 +622,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
+            None,
             Settings::default(),
         )
         .unwrap();
@@ -550,9 +651,138 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 3, &y),
+            None,
             Settings::default(),
         )
         .unwrap_err();
         assert!(matches!(err, GlassError::Singular { column: 2 }), "{err}");
+    }
+
+    #[test]
+    fn zero_penalty_matches_the_unpenalised_fit() {
+        let x = design(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+        let y = [1.0, 1.0, 3.0, 4.0, 8.0, 12.0];
+        let plain = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 2, &y),
+            None,
+            Settings::default(),
+        )
+        .unwrap();
+        let zeros = vec![0.0; 4];
+        let pen = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 2, &y),
+            Some(&zeros),
+            Settings::default(),
+        )
+        .unwrap();
+        assert!(plain
+            .coef
+            .iter()
+            .zip(&pen.coef)
+            .all(|(a, b)| (a - b).abs() < 1e-10));
+        assert!((pen.edf - 2.0).abs() < 1e-8, "edf {}", pen.edf);
+    }
+
+    #[test]
+    #[allow(clippy::needless_range_loop)]
+    fn ridge_gaussian_matches_the_closed_form_and_shrinks_edf() {
+        let feats = [0.0, 1.0, 2.0, 3.0, 4.0];
+        let x = design(&feats);
+        let y = [1.2, 2.9, 5.3, 6.8, 9.1];
+        // penalise the slope only; the intercept stays free
+        let s = vec![0.0, 0.0, 0.0, 3.0];
+        let shrunk = fit(
+            Family::Gaussian,
+            Link::Identity,
+            data(&x, 2, &y),
+            Some(&s),
+            Settings::default(),
+        )
+        .unwrap();
+        // closed form beta = (X'X + S)^{-1} X'y, computed here rather than typed in
+        let mut xtx = Square::zeros(2);
+        let mut rhs = [0.0; 2];
+        for (i, &v) in feats.iter().enumerate() {
+            let row = [1.0, v];
+            for a in 0..2 {
+                rhs[a] += row[a] * y[i];
+                for b in 0..2 {
+                    xtx.set(a, b, xtx.get(a, b) + row[a] * row[b]);
+                }
+            }
+        }
+        xtx.set(1, 1, xtx.get(1, 1) + 3.0);
+        let beta = Square::solve_with(&xtx.cholesky().unwrap(), &rhs);
+        assert!(
+            (shrunk.coef[0] - beta[0]).abs() < 1e-10 && (shrunk.coef[1] - beta[1]).abs() < 1e-10
+        );
+        // a stronger penalty spends fewer effective dof; every penalised fit spends < 2
+        let s_loose = vec![0.0, 0.0, 0.0, 0.3];
+        let loose = fit(
+            Family::Gaussian,
+            Link::Identity,
+            data(&x, 2, &y),
+            Some(&s_loose),
+            Settings::default(),
+        )
+        .unwrap();
+        assert!(
+            1.0 < shrunk.edf && shrunk.edf < loose.edf && loose.edf < 2.0,
+            "edf {} vs {}",
+            shrunk.edf,
+            loose.edf
+        );
+    }
+
+    #[test]
+    fn penalised_poisson_keeps_the_unpenalised_intercept_balanced() {
+        let x = design(&[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+        let y = [1.0, 1.0, 3.0, 4.0, 8.0, 12.0];
+        // the penalty's intercept row and column are zero, so the intercept's score
+        // equation still holds exactly: total predicted equals total actual
+        let s = vec![0.0, 0.0, 0.0, 5.0];
+        let f = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 2, &y),
+            Some(&s),
+            Settings::default(),
+        )
+        .unwrap();
+        let (ty, tm): (f64, f64) = (y.iter().sum(), f.mu.iter().sum());
+        assert!((ty - tm).abs() < 1e-8, "balance: {ty} vs {tm}");
+        let free = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 2, &y),
+            None,
+            Settings::default(),
+        )
+        .unwrap();
+        assert!(f.coef[1].abs() < free.coef[1].abs(), "slope must shrink");
+        assert!(
+            f.deviance > free.deviance,
+            "shrinkage costs training deviance"
+        );
+    }
+
+    #[test]
+    fn refuses_an_asymmetric_penalty() {
+        let x = design(&[0.0, 1.0, 2.0, 3.0]);
+        let y = [1.0, 2.0, 3.0, 4.0];
+        let s = vec![1.0, 0.5, 0.0, 1.0];
+        let err = fit(
+            Family::Gaussian,
+            Link::Identity,
+            data(&x, 2, &y),
+            Some(&s),
+            Settings::default(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("symmetric"), "{err}");
     }
 }
