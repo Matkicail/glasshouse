@@ -9,15 +9,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import numpy.typing as npt
 
-from glasshouse import _core, encoders
+from glasshouse import _core, encoders, splits
 from glasshouse._rows import subset_column
 from glasshouse.arrays import F64, ArrayLike, columns, to_matrix, to_vector
-from glasshouse.metrics import FamilyName
+from glasshouse.metrics import FamilyName, deviance
 from glasshouse.splits import Fold
 
 LinkName = str  # "identity" | "log" | "logit"; None means the family's canonical link
@@ -53,6 +53,39 @@ class FitTrace:
         ):
             lines.append(f"{i:>5}{d:>18.8g}{h:>10}{s:>12.3g}")
         lines.append(f"stopped: {self.stop}")
+        return "\n".join(lines)
+
+
+AlphaRule = Literal["min", "1se"]
+
+
+@dataclass(frozen=True)
+class AlphaPath:
+    """The regularisation path a cross-validated elastic-net walked, one row per alpha.
+
+    ``cv_deviance`` is the held-out mean deviance averaged over the inner folds and
+    ``cv_se`` its standard error; ``n_nonzero`` counts the penalised coefficients still in
+    the model when fitted on all training rows at that alpha. ``chosen`` is the row the
+    rule picked: ``"min"`` is the lowest ``cv_deviance``; ``"1se"`` is the most penalised
+    alpha whose ``cv_deviance`` is within one standard error of that minimum, the usual
+    choice when a simpler model that scores the same is worth more than the last decimal.
+    """
+
+    alphas: F64
+    cv_deviance: F64
+    cv_se: F64
+    n_nonzero: npt.NDArray[np.int64]
+    chosen: int
+    rule: str
+
+    def __str__(self) -> str:
+        """Fixed-width table with the chosen row marked."""
+        lines = [f"{'alpha':>12}{'cv deviance':>14}{'se':>12}{'nonzero':>9}"]
+        for i, (a, d, s, k) in enumerate(
+            zip(self.alphas, self.cv_deviance, self.cv_se, self.n_nonzero, strict=True)
+        ):
+            mark = " <- " + self.rule if i == self.chosen else ""
+            lines.append(f"{a:>12.4g}{d:>14.6g}{s:>12.3g}{k:>9}{mark}")
         return "\n".join(lines)
 
 
@@ -121,6 +154,22 @@ class GLM:
         Prepend a column of ones. Turn off only if your design already has one.
     max_iter, tol : int, float
         IRLS stopping rules. ``tol`` is the relative change in deviance.
+    alpha, l1_ratio : float or "cv", float
+        Elastic-net penalty, glmnet's and glum's convention: the objective is the mean
+        deviance over 2 plus ``alpha * (l1_ratio * sum|b| + (1 - l1_ratio)/2 * sum b^2)``
+        over every column but the intercept, so ``alpha`` means the same number here as
+        there. ``l1_ratio=1`` is the lasso (coefficients reach exactly zero), ``0`` is
+        ridge. ``alpha="cv"`` walks a path down from the alpha that zeroes everything and
+        picks one by ``cv``-fold cross-validation on the training rows (``alpha_rule``:
+        ``"1se"`` for the simplest model within one standard error of the best, ``"min"``
+        for the best); the path is kept in ``path_``. The columns are penalised on their
+        own scale: use ``"standardize"`` terms for a comparable penalty across features.
+        Not combinable with ``"smooth"`` or monotone terms.
+    cv, alpha_rule, n_alphas, alpha_ratio
+        The ``alpha="cv"`` search: inner folds (random k-fold on the training rows; a
+        time-ordered ``fold`` is refused, pass ``alpha`` explicitly), the rule, the number
+        of alphas on the path and how far down it goes (``alpha_min = alpha_ratio *
+        alpha_max``).
 
     Attributes (after ``fit``)
     --------------------------
@@ -128,6 +177,7 @@ class GLM:
     feature_names_in_ : column names from the frame, or ``x0, x1, ...``.
     deviance_, null_deviance_, dispersion_ : the fit statistics (total, not mean, deviance).
     edf_, lambda_, gcv_ : what the smooths spent, the chosen penalties, the searched grids.
+    alpha_, path_ : the elastic-net alpha used, and the cross-validated path if searched.
     n_iter_, converged_, trace_ : how the solver got there.
 
     Examples
@@ -148,6 +198,14 @@ class GLM:
     fit_intercept: bool = True
     max_iter: int = 100
     tol: float = 1e-10
+    alpha: float | Literal["cv"] | None = None
+    l1_ratio: float = 0.5
+    cv: int = 5
+    alpha_rule: AlphaRule = "1se"
+    n_alphas: int = 50
+    alpha_ratio: float = 1e-3
+    alpha_: float | None = field(default=None, repr=False)
+    path_: AlphaPath | None = field(default=None, repr=False)
     _fit: dict[str, Any] = field(default_factory=dict, repr=False)
     feature_names_in_: list[str] = field(default_factory=list, repr=False)
     encoders_: dict[str, encoders.Encoder] = field(default_factory=dict, repr=False)
@@ -199,6 +257,7 @@ class GLM:
             matrix = np.ascontiguousarray(np.column_stack([np.ones(matrix.shape[0]), matrix]))
             names = ["intercept", *names]
         penalty = self._smooth_penalty(matrix, yy, w, o)
+        elastic_net = self._elastic_net(matrix, yy, w, o, fold, penalty)
         result = _core.glm_fit(
             self.family,
             self._link_name(),
@@ -211,10 +270,126 @@ class GLM:
             self.tol,
             penalty=penalty,
             monotone=self._monotone_chains(),
+            elastic_net=elastic_net,
         )
         self._fit = result
         self.feature_names_in_ = names
         return self
+
+    # ------------------------------------------------------------------ elastic-net
+
+    def _elastic_net(
+        self,
+        matrix: F64,
+        y: F64,
+        w: F64 | None,
+        o: F64 | None,
+        fold: Fold | None,
+        penalty: F64 | None,
+    ) -> tuple[float, float, list[bool]] | None:
+        """Resolve ``alpha`` (searching the path if asked) into the solver's penalty tuple."""
+        if self.alpha is None:
+            self.alpha_, self.path_ = None, None
+            return None
+        if penalty is not None or self._monotone_chains() is not None:
+            msg = "alpha (elastic-net) cannot be combined with smooth or monotone terms"
+            raise ValueError(msg)
+        penalised = [not self.fit_intercept] + [True] * (matrix.shape[1] - 1)
+        if self.alpha == "cv":
+            self.alpha_, self.path_ = self._cv_alpha(matrix, y, w, o, fold, penalised)
+        else:
+            self.alpha_, self.path_ = float(self.alpha), None
+        return (self.alpha_, self.l1_ratio, penalised)
+
+    def _cv_alpha(
+        self,
+        matrix: F64,
+        y: F64,
+        w: F64 | None,
+        o: F64 | None,
+        fold: Fold | None,
+        penalised: list[bool],
+    ) -> tuple[float, AlphaPath]:
+        """Walk the path on inner folds, warm-started, and pick alpha by the rule."""
+        if fold is not None and fold.kind == "time":
+            msg = (
+                "alpha='cv' needs exchangeable rows: inner folds on a time-ordered fold would "
+                "let the future score the past; pass alpha explicitly"
+            )
+            raise ValueError(msg)
+        alpha_max = _core.glm_alpha_max(
+            self.family, self._link_name(), matrix, y, w, o, self.power, self.l1_ratio, penalised
+        )
+        alphas = np.geomspace(alpha_max, alpha_max * self.alpha_ratio, self.n_alphas)
+        inner = splits.kfold(matrix.shape[0], k=self.cv, seed=0)
+        held_out = np.empty((len(inner), len(alphas)))
+        for f, inner_fold in enumerate(inner):
+            tr, te = inner_fold.train_idx, inner_fold.test_idx
+            coef: F64 | None = None
+            for a, alpha in enumerate(alphas):
+                coef = self._lean_fit(
+                    matrix[tr], y[tr], _pick(w, tr), _pick(o, tr), alpha, penalised, coef
+                )
+                eta = matrix[te] @ coef + (0.0 if o is None else o[te])
+                held_out[f, a] = deviance(
+                    y[te],
+                    self._inverse_link(eta),
+                    family=self.family,
+                    power=self.power,
+                    sample_weight=_pick(w, te),
+                )
+        cv_mean = held_out.mean(axis=0)
+        cv_se = held_out.std(axis=0, ddof=1) / np.sqrt(len(inner))
+        best = int(np.argmin(cv_mean))
+        chosen = (
+            best
+            if self.alpha_rule == "min"
+            else int(np.flatnonzero(cv_mean <= cv_mean[best] + cv_se[best])[0])
+        )
+        n_nonzero = np.empty(len(alphas), dtype=np.int64)
+        coef = None
+        for a, alpha in enumerate(alphas):
+            coef = self._lean_fit(matrix, y, w, o, alpha, penalised, coef)
+            n_nonzero[a] = int(np.count_nonzero(coef[1:] if self.fit_intercept else coef))
+        path = AlphaPath(alphas, cv_mean, cv_se, n_nonzero, chosen, self.alpha_rule)
+        return float(alphas[chosen]), path
+
+    def _lean_fit(  # noqa: PLR0913, PLR0917
+        self,
+        matrix: F64,
+        y: F64,
+        w: F64 | None,
+        o: F64 | None,
+        alpha: float,
+        penalised: list[bool],
+        start: F64 | None,
+    ) -> F64:
+        r = _core.glm_fit(
+            self.family,
+            self._link_name(),
+            np.ascontiguousarray(matrix),
+            y,
+            w,
+            o,
+            self.power,
+            self.max_iter,
+            self.tol,
+            warm_start=start,
+            inference=False,
+            elastic_net=(alpha, self.l1_ratio, penalised),
+        )
+        return np.asarray(r["coef"], dtype=np.float64)
+
+    def _inverse_link(self, eta: F64) -> F64:
+        link = self._link_name()
+        if link == "identity":
+            return eta
+        if link == "log":
+            return np.asarray(np.exp(eta), dtype=np.float64)
+        return np.asarray(1.0 / (1.0 + np.exp(-eta)), dtype=np.float64)
+
+    def _lasso(self) -> bool:
+        return bool(self.alpha_) and self.l1_ratio > 0.0
 
     # ------------------------------------------------------------------ design matrices
 
@@ -437,7 +612,18 @@ class GLM:
 
     @property
     def cov_(self) -> F64:
-        """Covariance of all coefficients (intercept first), ``dispersion * (X'WX)^-1``."""
+        """Covariance of all coefficients (intercept first), ``dispersion * (X'WX)^-1``.
+
+        Not defined for an L1-penalised fit (the selection is part of the estimator); refit
+        the selected columns without the penalty if you need standard errors, knowing that
+        post-selection inference has its own caveats.
+        """
+        if self._lasso():
+            msg = (
+                "standard errors are not defined for an L1-penalised fit: refit the selected "
+                "columns with alpha=None for inference (post-selection caveats apply)"
+            )
+            raise ValueError(msg)
         p = self._require_fit()["n_features"]
         return np.asarray(self._fit["cov"], dtype=np.float64).reshape(p, p)
 
@@ -449,6 +635,9 @@ class GLM:
     @property
     def cov_robust_(self) -> F64:
         """HC1 sandwich covariance: robust to a wrong variance function (over-dispersion)."""
+        if self._lasso():
+            msg = "robust standard errors are not defined for an L1-penalised fit"
+            raise ValueError(msg)
         p = self._require_fit()["n_features"]
         return np.asarray(self._fit["cov_robust"], dtype=np.float64).reshape(p, p)
 
@@ -520,13 +709,7 @@ class GLM:
 
     def predict(self, X: ArrayLike, offset: ArrayLike | None = None) -> F64:  # noqa: N803
         """Return the mean ``mu = g^{-1}(eta)`` on the response scale (probability for binomial)."""
-        eta = self.predict_linear(X, offset)
-        link = self._link_name()
-        if link == "identity":
-            return eta
-        if link == "log":
-            return np.exp(eta)
-        return 1.0 / (1.0 + np.exp(-eta))
+        return self._inverse_link(self.predict_linear(X, offset))
 
     def contributions(self, X: ArrayLike) -> tuple[F64, list[str]]:  # noqa: N803
         """Per-row, per-feature contributions ``beta_j * x_ij`` on the link scale, plus names.
@@ -543,6 +726,19 @@ class GLM:
         """Coefficient table with standard errors, plus the fit statistics."""
         r = self._require_fit()
         coef = np.asarray(r["coef"], dtype=np.float64)
+        if self._lasso():
+            lines = [
+                f"GLM family={self.family} link={self._link_name()}  n={r['n_rows']}  "
+                f"alpha={self.alpha_:.4g} l1_ratio={self.l1_ratio}  (no standard errors for an "
+                "L1 fit)",
+                f"{'term':<24}{'coef':>14}",
+            ]
+            lines.extend(
+                f"{name:<24}{b:>14.6g}"
+                for name, b in zip(self.feature_names_in_, coef, strict=True)
+            )
+            lines.append(f"deviance={r['deviance']:.6g}  null_deviance={r['null_deviance']:.6g}")
+            return "\n".join(lines)
         se = self.se_
         lines = [
             f"GLM family={self.family} link={self._link_name()}  n={r['n_rows']}  "
@@ -584,6 +780,8 @@ class GLM:
             "dispersion": float(r["dispersion"]),
             "edf": float(r["edf"]),
             "lambda": {k: float(v) for k, v in self.lambda_.items()},
+            "alpha": self.alpha_,
+            "l1_ratio": self.l1_ratio,
             "iterations": int(r["iterations"]),
             "stop": str(r["stop"]),
         }
@@ -630,7 +828,14 @@ class GLM:
             }
         )
         model.lambda_ = {str(k): float(v) for k, v in payload.get("lambda", {}).items()}
+        model.alpha_ = payload.get("alpha")
+        model.alpha = model.alpha_
+        model.l1_ratio = float(payload.get("l1_ratio", 0.5))
         return model
 
 
-__all__ = ["GLM", "FitTrace"]
+def _pick(v: F64 | None, rows: npt.NDArray[np.int64]) -> F64 | None:
+    return None if v is None else v[rows]
+
+
+__all__ = ["GLM", "AlphaPath", "FitTrace"]

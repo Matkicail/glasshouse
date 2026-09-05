@@ -8,7 +8,8 @@
 
 use glasshouse_core::classification::Confusion;
 use glasshouse_core::constraints::Chain;
-use glasshouse_core::glm::{self, Data, Settings, Stop};
+use glasshouse_core::elastic::ElasticNet;
+use glasshouse_core::glm::{self, Data, Penalty, Settings, Stop};
 use glasshouse_core::regression::{self, RegressionMetric};
 use glasshouse_core::Link;
 use glasshouse_core::{
@@ -277,7 +278,7 @@ fn regression_metric(
 /// `penalty` is a row-major symmetric `p x p` matrix, already scaled by the smoothing
 /// parameter — the penalised deviance `D + beta' S beta` is what gets minimised.
 #[pyfunction]
-#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10, penalty=None, warm_start=None, inference=true, monotone=None))]
+#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10, penalty=None, warm_start=None, inference=true, monotone=None, elastic_net=None))]
 #[allow(clippy::too_many_arguments)]
 fn glm_fit<'py>(
     py: Python<'py>,
@@ -294,15 +295,26 @@ fn glm_fit<'py>(
     warm_start: Option<Arr<'_>>,
     inference: bool,
     monotone: Option<Vec<(Vec<usize>, bool, bool)>>,
+    elastic_net: Option<(f64, f64, Vec<bool>)>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let fam = Family::parse(family, power).map_err(to_py)?;
     let link_fn = Link::parse(link).map_err(to_py)?;
     let shape = x.shape().to_vec();
     let w = opt_slice(sample_weight.as_ref())?;
     let o = opt_slice(offset.as_ref())?;
-    let pen = match penalty.as_ref() {
-        Some(arr) => Some(arr.as_slice()?),
-        None => None,
+    let pen = match (penalty.as_ref(), elastic_net.as_ref()) {
+        (Some(_), Some(_)) => {
+            return Err(PyValueError::new_err(
+                "pass either a penalty matrix or an elastic_net, not both",
+            ))
+        }
+        (Some(arr), None) => Penalty::Quadratic(arr.as_slice()?),
+        (None, Some((alpha, l1_ratio, penalised))) => Penalty::ElasticNet(ElasticNet {
+            alpha: *alpha,
+            l1_ratio: *l1_ratio,
+            penalised,
+        }),
+        (None, None) => Penalty::None,
     };
     let data = Data {
         x: x.as_slice()?,
@@ -368,6 +380,38 @@ fn glm_fit<'py>(
         fit.trace.iter().map(|t| t.max_step).collect::<Vec<_>>(),
     )?;
     Ok(out)
+}
+
+/// The elastic-net alpha at which every penalised coefficient is zero. See `glasshouse.glm`.
+#[pyfunction]
+#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, l1_ratio=0.5, penalised=None))]
+#[allow(clippy::too_many_arguments)]
+fn glm_alpha_max(
+    family: &str,
+    link: &str,
+    x: PyReadonlyArray2<'_, f64>,
+    y: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+    offset: Option<Arr<'_>>,
+    power: Option<f64>,
+    l1_ratio: f64,
+    penalised: Option<Vec<bool>>,
+) -> PyResult<f64> {
+    let fam = Family::parse(family, power).map_err(to_py)?;
+    let link_fn = Link::parse(link).map_err(to_py)?;
+    let shape = x.shape().to_vec();
+    let w = opt_slice(sample_weight.as_ref())?;
+    let o = opt_slice(offset.as_ref())?;
+    let data = Data {
+        x: x.as_slice()?,
+        n_rows: shape[0],
+        n_features: shape[1],
+        y: y.as_slice()?,
+        weights: w,
+        offset: o,
+    };
+    let mask = penalised.unwrap_or_else(|| vec![true; shape[1]]);
+    glm::alpha_max(fam, link_fn, data, l1_ratio, &mask, Settings::default()).map_err(to_py)
 }
 
 /// Every row to the cheapest model, ties split. See `glasshouse.tournament`.
@@ -458,6 +502,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(win_sets, m)?)?;
     m.add_function(wrap_pyfunction!(double_lift_table, m)?)?;
     m.add_function(wrap_pyfunction!(glm_fit, m)?)?;
+    m.add_function(wrap_pyfunction!(glm_alpha_max, m)?)?;
     m.add_function(wrap_pyfunction!(regression_metric, m)?)?;
     m.add_function(wrap_pyfunction!(threshold_metrics, m)?)?;
     m.add_function(wrap_pyfunction!(roc_auc, m)?)?;
