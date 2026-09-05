@@ -182,6 +182,53 @@ function curvesScreen(doc: ReportDoc, root: HTMLElement): void {
   draw();
 }
 
+function modelScreen(doc: ReportDoc, root: HTMLElement): void {
+  clear(root);
+  const explain = doc.explain;
+  if (!explain) { root.append(el("p", { class: "muted" }, ["No model explanations in this document (they need the fitted models, which the bench has and a bare report.build does not)."])); return; }
+  const labels = doc.models.filter((m) => explain[m]);
+  root.append(el("p", { class: "lede" }, ["Glass-box where possible, explained where not: every model gets the same two pictures, and a GLM also shows its coefficients."]));
+  const imp = el("div", { class: "chart" });
+  root.append(imp);
+  renderChart(imp, importanceSpec(explain, doc.models));
+
+  const features = Array.from(new Set(labels.flatMap((m) => explain[m]!.partial_dependence.map((p) => p.feature))));
+  if (features.length) {
+    const sel = select(features, features[0]!);
+    const chart = el("div", { class: "chart" });
+    root.append(el("div", { class: "controls" }, ["Partial dependence of ", sel]), chart);
+    const draw = () => {
+      const f = sel.value;
+      const curves = labels.flatMap((m) => {
+        const pd = explain[m]!.partial_dependence.find((p) => p.feature === f);
+        return pd ? [{ label: m, pd }] : [];
+      });
+      renderChart(chart, partialDependenceSpec(curves, doc.models));
+    };
+    sel.addEventListener("change", draw);
+    draw();
+  }
+
+  for (const m of labels) {
+    const c = explain[m]!.coefficients;
+    if (!c) continue;
+    root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: coefficients`]));
+    const head = el("tr", {}, ["term", "coefficient", "fold spread", ...(c.relativity ? ["relativity"] : [])].map((h) => el("th", {}, [h])));
+    const body = el("tbody", {}, c.terms.map((t, i) => el("tr", {}, [
+      el("th", {}, [t]),
+      el("td", { class: "num" }, [fmt(c.mean[i])]),
+      el("td", { class: "num muted" }, [fmt(c.std[i])]),
+      ...(c.relativity ? [el("td", { class: "num" }, [fmt(c.relativity[i])])] : []),
+    ])));
+    root.append(el("table", { class: "grid coefficients" }, [el("thead", {}, [head]), body]));
+    root.append(el("p", { class: "caption" }, [
+      c.relativity
+        ? "Coefficients on the link scale, averaged over folds, with their spread. Relativity is exp(coefficient): the multiplicative effect of one unit (or of that level against the reference) on the prediction. A spline or smooth term shows one row per basis column; read its shape from the partial dependence above."
+        : "Coefficients averaged over folds, with their spread. A spline or smooth term shows one row per basis column; read its shape from the partial dependence above.",
+    ]));
+  }
+}
+
 function residualsScreen(doc: ReportDoc, root: HTMLElement): void {
   clear(root);
   const sel = select(doc.models, doc.models[0]!);

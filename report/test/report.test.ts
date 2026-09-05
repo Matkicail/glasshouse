@@ -52,12 +52,28 @@ describe("glasshouse report viewer", () => {
     expect(metrics).toContain("gini");
     expect(root.querySelector("tr.primary th")?.textContent).toContain("deviance");
     expect(root.querySelector(".provenance pre")?.textContent).toContain("made up");
-    expect(root.querySelectorAll("nav.tabs button").length).toBe(4);
+    expect(root.querySelectorAll("nav.tabs button").length).toBe(5);
     // the tournament: one row per model, shares that add to 100 %
     const rows = Array.from(root.querySelectorAll("table.tournament tbody tr"));
     expect(rows.map((r) => r.querySelector("th")?.textContent)).toEqual(["glm", "mean"]);
     const shares = rows.map((r) => parseFloat(r.querySelectorAll("td")[0]!.textContent ?? "0"));
     expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 0);
+  });
+
+  it("model screen shows importance, a partial dependence per feature and the GLM coefficients", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    const tab = Array.from(root.querySelectorAll("nav.tabs button")).find((b) => b.textContent === "Model") as HTMLButtonElement;
+    tab.click();
+    const pane = root.querySelector("#pane-model") as HTMLElement;
+    expect(pane.hidden).toBe(false);
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
+    const options = Array.from(pane.querySelectorAll("select option")).map((o) => (o as HTMLOptionElement).value);
+    expect(options).toEqual(["region", "age"]);
+    const tables = pane.querySelectorAll("table.coefficients");
+    expect(tables.length).toBe(2);
+    expect(tables[0]!.querySelector("tbody th")?.textContent).toBe("intercept");
+    expect(Array.from(tables[0]!.querySelectorAll("thead th")).map((n) => n.textContent)).toContain("relativity");
   });
 
   it("binary reports have no tournament (a probability is not a price)", () => {
@@ -93,7 +109,7 @@ describe("glasshouse report viewer", () => {
   it("residuals tab shows the summary and two charts per model", () => {
     const { api, root } = boot(true);
     api.render(api.parse(text), root);
-    (root.querySelectorAll("nav.tabs button")[3] as HTMLButtonElement).click();
+    (Array.from(root.querySelectorAll("nav.tabs button")).find((b) => b.textContent === "Residuals") as HTMLButtonElement).click();
     const pane = root.querySelector("#pane-residuals") as HTMLElement;
     expect(pane.hidden).toBe(false);
     const rows = Array.from(pane.querySelectorAll("table.panel tbody tr > th")).map((n) => n.textContent);

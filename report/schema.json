@@ -551,6 +551,145 @@
           }
         }
       }
+    },
+    "explain": {
+      "type": "object",
+      "description": "Per model (bench only): partial dependence and permutation importance on held-out rows, mean and spread across folds; coefficients for glass-box models.",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "partial_dependence",
+          "importance",
+          "coefficients"
+        ],
+        "properties": {
+          "partial_dependence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "feature",
+                "kind",
+                "grid",
+                "mean",
+                "low",
+                "high"
+              ],
+              "properties": {
+                "feature": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": [
+                    "numeric",
+                    "categorical"
+                  ]
+                },
+                "grid": {
+                  "type": "array",
+                  "items": {
+                    "type": [
+                      "number",
+                      "string"
+                    ]
+                  }
+                },
+                "mean": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "low": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "high": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          },
+          "importance": {
+            "type": "object",
+            "required": [
+              "features",
+              "mean",
+              "std",
+              "base_deviance"
+            ],
+            "properties": {
+              "features": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mean": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "std": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "base_deviance": {
+                "type": "number"
+              }
+            }
+          },
+          "coefficients": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "terms",
+              "mean",
+              "std",
+              "relativity"
+            ],
+            "properties": {
+              "terms": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "mean": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "std": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "relativity": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "$defs": {
