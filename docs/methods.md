@@ -252,6 +252,28 @@ statsmodels `GLMGam` — it penalises the log-likelihood where we penalise the d
 (−2·loglik), so `S = 2·α·cov_der2` must and does reproduce its coefficients and edf to
 machine precision. mgcv itself needs R, which the test machines do not have.
 
+## Win sets and the tournament
+
+Several models price the same rows; every row goes to the model whose prediction is lowest,
+an exact tie split equally among the tied models. For model `m` the win set `W_m` is then
+summed with the row weights: `share = Σ_{W_m} w / Σ w`, `predicted = Σ_{W_m} w · p_m`,
+`actual = Σ_{W_m} w · y`, `profit = predicted − actual`, and `A/E = actual / predicted`. The
+two-model case is the pairwise win-set table on the report's Compare tab; all models at
+once is the tournament on the Overview.
+
+What it tells you: a model that wins business with `A/E > 1` is winning it by under-pricing
+it, which is adverse selection; a model with a small share and `A/E < 1` is pricing
+conservatively and losing the business it prices well. Because the prediction is what would
+be charged, the table exists for frequency, severity, pure premium and regression tasks,
+not for binary ones (a probability is not a price). It is a description of the models on
+this data, not a forecast of a market: real conversion depends on much more than the
+lowest price.
+
+Reference: this is the "win set" and "profit matrix" view of pricing reviews (see Goldburd,
+Khare & Tevet, *Generalized Linear Models for Insurance Rating*, CAS Monograph 5, 2nd ed.
+2020, on model comparison); golden reference: the definition written out in NumPy
+(`tests/test_tournament.py`).
+
 ## Monotone constraints on spline terms
 
 `Smooth(monotone="increasing")` or `BSpline(monotone="decreasing")` fits the term under a

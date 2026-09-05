@@ -54,6 +54,14 @@ function overviewScreen(doc: ReportDoc, root: HTMLElement): void {
     `★ primary metric by convention for a ${doc.task.type} task, not a verdict. Bold = best model on that metric. ✓ / ✗ = better / worse than the naive baseline (the weighted mean of y${doc.task.type === "binary" ? ", i.e. the class prior" : ""}). Hover a metric for what it is for.`,
   ]));
 
+  if (doc.tournament && doc.models.length > 1) {
+    root.append(el("h3", {}, ["Tournament: every risk to the cheapest model"]));
+    root.append(tournamentTable(doc.tournament.overall, doc.models));
+    root.append(el("p", { class: "caption" }, [
+      "Each row of the data goes to the model that prices it lowest (ties split equally). Share is the market that model wins; predicted is what it would charge there, actual what that business costs. A/E above 1 means the model wins business it under-prices: adverse selection.",
+    ]));
+  }
+
   // provenance
   const prov = el("section", { class: "provenance" }, [
     el("h3", {}, ["Provenance"]),
@@ -90,6 +98,14 @@ function compareScreen(doc: ReportDoc, root: HTMLElement): void {
       el("tbody", {}, rows.map(([m, va, vb, w]) => el("tr", {}, [el("th", { title: METRIC_HELP[m] ?? "" }, [m]), el("td", { class: `num${w === a ? " best" : ""}` }, [fmt(va)]), el("td", { class: `num${w === b ? " best" : ""}` }, [fmt(vb)]), el("td", { class: "muted" }, [w])]))),
     ]);
     out.append(tbl);
+    const pair = doc.tournament?.pairs.find((t) => t.labels.includes(a) && t.labels.includes(b));
+    if (pair) {
+      out.append(el("h3", {}, ["Win sets: where each model prices below the other"]));
+      out.append(tournamentTable(pair, doc.models));
+      out.append(el("p", { class: "caption" }, [
+        "Rows where A is cheaper go to A, and the other way round; ties split. Read with the double lift below: that chart shows where the two disagree, this table what the disagreement would cost in a market. A/E above 1 on a win set is business won by under-pricing it.",
+      ]));
+    }
     const dl = doc.curves.find((c): c is DoubleLiftCurve => c.kind === "double_lift" && ((c.label_a === a && c.label_b === b) || (c.label_a === b && c.label_b === a)));
     const charts = el("div", { class: "charts two" });
     const c1 = el("div", { class: "chart" }), c2 = el("div", { class: "chart" });
@@ -258,6 +274,23 @@ function thresholdScreen(doc: ReportDoc, root: HTMLElement): void {
   sel.addEventListener("change", draw);
   slider.addEventListener("input", draw);
   draw();
+}
+
+function tournamentTable(t: TournamentTable, models: string[]): HTMLTableElement {
+  const head = el("tr", {}, ["model", "share", "weight", "predicted", "actual", "profit", "A/E"].map((h) => el("th", {}, [h])));
+  const body = el("tbody", {}, t.labels.map((label, i) => {
+    const ae = t.actual_over_expected[i] ?? null;
+    return el("tr", {}, [
+      el("th", { style: `color:${colourOf(models, label)}` }, [label]),
+      el("td", { class: "num" }, [`${(100 * (t.share[i] ?? 0)).toFixed(1)} %`]),
+      el("td", { class: "num" }, [fmt(t.weight[i] ?? NaN)]),
+      el("td", { class: "num" }, [fmt(t.predicted[i] ?? NaN)]),
+      el("td", { class: "num" }, [fmt(t.actual[i] ?? NaN)]),
+      el("td", { class: `num${(t.profit[i] ?? 0) < 0 ? " worse" : ""}` }, [fmt(t.profit[i] ?? NaN)]),
+      el("td", { class: `num${ae !== null && ae > 1 ? " worse" : ""}` }, [ae === null ? "–" : ae.toFixed(3)]),
+    ]);
+  }));
+  return el("table", { class: "grid tournament" }, [el("thead", {}, [head]), body]);
 }
 
 function select(options: string[], value: string): HTMLSelectElement {

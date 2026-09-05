@@ -27,7 +27,7 @@ from typing import Any, Literal
 import numpy as np
 
 from glasshouse import classification as clf
-from glasshouse import curves, residuals
+from glasshouse import curves, residuals, tournament
 from glasshouse.arrays import F64, ArrayLike, to_vector
 from glasshouse.metrics import FamilyName
 from glasshouse.scorecard import Scorecard, compare, scorecard
@@ -187,6 +187,17 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
     }
     if task == "binary":
         doc["thresholds"] = {label: _threshold_grid(yy, p, w) for label, p in preds.items()}
+    else:
+        # a probability is not a price: the tournament is for tasks where the prediction is
+        # what would be charged
+        doc["tournament"] = {
+            "pairs": [
+                tournament.win_sets(yy, preds[a], preds[b], w, label_a=a, label_b=b).to_dict()
+                for i, a in enumerate(labels)
+                for b in labels[i + 1 :]
+            ],
+            "overall": tournament.tournament(yy, preds, w).to_dict(),
+        }
     return Report(doc=_clean(doc), cards=cards)
 
 

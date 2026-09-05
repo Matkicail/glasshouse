@@ -106,6 +106,21 @@ interface ThresholdGrid {
   alerts_per_tp: (number | null)[];
 }
 
+interface TournamentTable {
+  labels: string[];
+  share: number[];
+  weight: number[];
+  predicted: number[];
+  actual: number[];
+  profit: number[];
+  actual_over_expected: (number | null)[];
+}
+
+interface TournamentBlock {
+  pairs: TournamentTable[];
+  overall: TournamentTable;
+}
+
 interface ReportDoc {
   schema: "glasshouse-report/1";
   task: TaskInfo;
@@ -118,6 +133,7 @@ interface ReportDoc {
   residuals: Record<string, ResidualDoc>;
   bench?: BenchBlock;
   thresholds?: Record<string, ThresholdGrid>;
+  tournament?: TournamentBlock;
 }
 
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.
