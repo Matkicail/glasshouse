@@ -15,6 +15,7 @@
 
 use rayon::prelude::*;
 
+use crate::constraints::{self, Chain};
 use crate::error::{all_values, same_length, GlassError};
 use crate::family::Family;
 use crate::linalg::Square;
@@ -153,39 +154,49 @@ impl Data<'_> {
 /// A warm start is a real fit, so its first step is judged like every other, and it may
 /// converge at iteration 1.
 ///
+/// `chains` are monotone constraints (see [`crate::constraints`]): each IRLS step then
+/// solves its weighted least squares subject to them, and the fixed point satisfies the
+/// KKT conditions of the constrained penalised deviance. Coefficients an active constraint
+/// ties together count as one in the edf and share a covariance entry; a run held at zero
+/// counts for nothing.
+///
 /// # Errors
 /// Bad shapes; `y` outside the family's support; non-finite or negative weights; a
-/// rank-deficient design; a penalty that is not symmetric; a warm start of the wrong length
-/// or whose mean leaves the family's support; `max_iter == 0`.
+/// rank-deficient design; a penalty that is not symmetric; a warm start of the wrong length,
+/// whose mean leaves the family's support, or that violates a constraint; a chain naming a
+/// column twice or out of range; `max_iter == 0`.
 pub fn fit(
     family: Family,
     link: Link,
     data: Data<'_>,
     penalty: Option<&[f64]>,
     warm_start: Option<&[f64]>,
+    chains: &[Chain],
     settings: Settings,
 ) -> Result<GlmFit, GlassError> {
-    validate(family, data, penalty, warm_start, settings)?;
-    let state = irls(family, link, data, penalty, warm_start, settings)?;
+    validate(family, data, penalty, warm_start, chains, settings)?;
+    let state = irls(family, link, data, penalty, warm_start, chains, settings)?;
 
-    // information matrix at the final mean, for the covariance and the effective dof
+    // information matrix at the final mean, for the covariance and the effective dof; with
+    // constraints, on the reduced design the final ties imply
     let ww = working_weights(family, link, data, &state.eta, &state.mu);
     let xtwx = cross_product(data, &ww);
     let mut bread = xtwx.clone();
     add_penalty(&mut bread, penalty);
-    let inv = Square::inverse_with(&bread.cholesky()?);
-    #[allow(clippy::cast_precision_loss)]
-    let edf = if penalty.is_none() {
-        data.n_features as f64
+    let (inv, edf) = if chains.is_empty() {
+        let inv = Square::inverse_with(&bread.cholesky()?);
+        #[allow(clippy::cast_precision_loss)]
+        let edf = if penalty.is_none() {
+            data.n_features as f64
+        } else {
+            trace_product(&inv, &xtwx)
+        };
+        (inv, edf)
     } else {
-        // tr((X'WX + S)^{-1} X'WX): what the penalised fit actually spends
-        (0..data.n_features)
-            .map(|a| {
-                (0..data.n_features)
-                    .map(|k| inv.get(a, k) * xtwx.get(k, a))
-                    .sum::<f64>()
-            })
-            .sum()
+        let groups = constraints::groups_at(chains, &state.coef);
+        let inv_r = Square::inverse_with(&constraints::reduce(&bread, &groups).cholesky()?);
+        let edf = trace_product(&inv_r, &constraints::reduce(&xtwx, &groups));
+        (constraints::expand(&inv_r, &groups, data.n_features), edf)
     };
     let inference = if settings.inference {
         Some(inference(family, link, data, &state, edf, &inv, settings)?)
@@ -207,6 +218,14 @@ pub fn fit(
         stop: state.stop,
         trace: state.trace,
     })
+}
+
+/// `tr(A B)` for two square matrices of the same size: what a penalised or constrained fit
+/// actually spends when `A = (X'WX + S)^{-1}` and `B = X'WX`.
+fn trace_product(a: &Square, b: &Square) -> f64 {
+    (0..a.p)
+        .map(|i| (0..a.p).map(|k| a.get(i, k) * b.get(k, i)).sum::<f64>())
+        .sum()
 }
 
 /// The null model, the dispersion and both covariances at a converged fit.
@@ -244,6 +263,7 @@ fn inference(
         },
         None,
         None,
+        &[],
         settings,
     )?;
     Ok(Inference {
@@ -316,6 +336,7 @@ fn irls(
     data: Data<'_>,
     penalty: Option<&[f64]>,
     warm_start: Option<&[f64]>,
+    chains: &[Chain],
     settings: Settings,
 ) -> Result<State, GlassError> {
     let (mut state, warmed) = start(family, link, data, penalty, warm_start)?;
@@ -327,9 +348,10 @@ fn irls(
             (state.eta[i] - data.offset_at(i))
                 + (data.y[i] - state.mu[i]) / link.mu_eta(state.eta[i])
         });
-        let proposal = weighted_least_squares(data, &z, &ww, penalty)?;
+        let proposal = weighted_least_squares(data, &z, &ww, penalty, chains, &state.coef)?;
 
-        // step-halving: shrink toward the previous coefficients until the objective drops.
+        // step-halving: shrink toward the previous coefficients until the objective drops
+        // (a convex combination of two feasible points, so the constraints hold throughout).
         // A change smaller than the convergence tolerance is not a change: a step that
         // moves the objective by less than that, either way, is the rounding noise of a
         // solver already at its optimum, and is accepted so the loop can stop there.
@@ -562,18 +584,24 @@ fn quad_form(penalty: Option<&[f64]>, coef: &[f64]) -> f64 {
         .sum()
 }
 
-/// Solve `(X' W X + S) beta = X' W z`.
+/// Solve `(X' W X + S) beta = X' W z`, subject to the chains if there are any (then the
+/// active-set solve starts from `start`, the current feasible coefficients).
 fn weighted_least_squares(
     data: Data<'_>,
     z: &[f64],
     ww: &[f64],
     penalty: Option<&[f64]>,
+    chains: &[Chain],
+    start: &[f64],
 ) -> Result<Vec<f64>, GlassError> {
     let mut xtwx = cross_product(data, ww);
     add_penalty(&mut xtwx, penalty);
     let rhs = weighted_rhs(data, z, ww);
-    let chol = xtwx.cholesky()?;
-    Ok(Square::solve_with(&chol, &rhs))
+    if chains.is_empty() {
+        let chol = xtwx.cholesky()?;
+        return Ok(Square::solve_with(&chol, &rhs));
+    }
+    constraints::solve_constrained(&xtwx, &rhs, chains, start)
 }
 
 /// Total weighted deviance (not the mean: the fitter compares sums).
@@ -588,6 +616,7 @@ fn validate(
     data: Data<'_>,
     penalty: Option<&[f64]>,
     warm_start: Option<&[f64]>,
+    chains: &[Chain],
     settings: Settings,
 ) -> Result<(), GlassError> {
     let Data {
@@ -661,22 +690,9 @@ fn validate(
     if let Some(s) = penalty {
         validate_penalty(s, n_features)?;
     }
+    validate_chains(chains, n_features)?;
     if let Some(c) = warm_start {
-        if c.len() != n_features {
-            return Err(GlassError::LengthMismatch {
-                left: "warm_start",
-                left_len: c.len(),
-                right: "X columns",
-                right_len: n_features,
-            });
-        }
-        all_values(
-            "warm_start",
-            c,
-            "must be finite",
-            "NaN or inf in the starting coefficients",
-            f64::is_finite,
-        )?;
+        validate_warm_start(c, chains, n_features)?;
     }
     if settings.max_iter == 0 {
         return Err(GlassError::BadArgument {
@@ -684,6 +700,60 @@ fn validate(
             problem: "must be at least 1",
             fix: "the default is 100",
         });
+    }
+    Ok(())
+}
+
+/// A warm start has one finite coefficient per column and sits inside the constraints.
+fn validate_warm_start(
+    coef: &[f64],
+    chains: &[Chain],
+    n_features: usize,
+) -> Result<(), GlassError> {
+    if coef.len() != n_features {
+        return Err(GlassError::LengthMismatch {
+            left: "warm_start",
+            left_len: coef.len(),
+            right: "X columns",
+            right_len: n_features,
+        });
+    }
+    all_values(
+        "warm_start",
+        coef,
+        "must be finite",
+        "NaN or inf in the starting coefficients",
+        f64::is_finite,
+    )?;
+    if !constraints::feasible(chains, coef) {
+        return Err(GlassError::BadArgument {
+            name: "warm_start",
+            problem: "violates a monotone constraint",
+            fix: "start from a constrained fit of the same model, or pass None",
+        });
+    }
+    Ok(())
+}
+
+/// Every chain names at least one column, in range, and no column twice across chains.
+fn validate_chains(chains: &[Chain], n_features: usize) -> Result<(), GlassError> {
+    let mut seen = vec![false; n_features];
+    for chain in chains {
+        if chain.columns.is_empty() {
+            return Err(GlassError::Empty {
+                name: "monotone chain",
+            });
+        }
+        for &col in &chain.columns {
+            if col >= n_features || seen[col] {
+                return Err(GlassError::BadArgument {
+                    name: "monotone",
+                    problem: "a chain names a column out of range or twice",
+                    fix: "each constrained column belongs to exactly one chain",
+                });
+            }
+            seen[col] = true;
+        }
     }
     Ok(())
 }
@@ -757,6 +827,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -775,6 +846,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -802,6 +874,7 @@ mod tests {
             data(&x, 3, &y),
             None,
             None,
+            &[],
             Settings::default(),
         )
         .unwrap_err();
@@ -818,6 +891,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -828,6 +902,7 @@ mod tests {
             data(&x, 2, &y),
             Some(&zeros),
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -853,6 +928,7 @@ mod tests {
             data(&x, 2, &y),
             Some(&s),
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -881,6 +957,7 @@ mod tests {
             data(&x, 2, &y),
             Some(&s_loose),
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -905,6 +982,7 @@ mod tests {
             data(&x, 2, &y),
             Some(&s),
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -916,6 +994,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -924,6 +1003,149 @@ mod tests {
             f.deviance > free.deviance,
             "shrinkage costs training deviance"
         );
+    }
+
+    #[test]
+    fn monotone_increasing_smooth_holds_where_the_data_dips() {
+        // intercept + 4 step columns (a crude increasing basis): y rises, dips, rises
+        // intercept + three bin indicators (a degree-0 spline with the first bin dropped, so
+        // the same "non-decreasing coefficients" condition applies): y rises, dips, rises
+        let steps = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0];
+        let x: Vec<f64> = steps
+            .iter()
+            .flat_map(|&s| {
+                [
+                    1.0,
+                    f64::from(u8::from((2.0..4.0).contains(&s))),
+                    f64::from(u8::from((4.0..6.0).contains(&s))),
+                    f64::from(u8::from(s >= 6.0)),
+                ]
+            })
+            .collect();
+        let y = [1.0, 1.5, 4.0, 4.5, 2.0, 2.5, 6.0, 6.5];
+        let chains = [Chain {
+            columns: vec![1, 2, 3],
+            increasing: true,
+            anchored: true,
+        }];
+        let free = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 4, &y),
+            None,
+            None,
+            &[],
+            Settings::default(),
+        )
+        .unwrap();
+        let held = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 4, &y),
+            None,
+            None,
+            &chains,
+            Settings::default(),
+        )
+        .unwrap();
+        assert!(
+            free.coef[2] < free.coef[1],
+            "unconstrained, the dip shows: {:?}",
+            free.coef
+        );
+        assert!(
+            0.0 <= held.coef[1] && held.coef[1] <= held.coef[2] && held.coef[2] <= held.coef[3],
+            "{:?}",
+            held.coef
+        );
+        // the dip is pooled with its neighbour: an exact tie, one coefficient fewer
+        assert!(
+            held.coef[1].to_bits() == held.coef[2].to_bits(),
+            "{:?}",
+            held.coef
+        );
+        assert!(
+            held.deviance > free.deviance,
+            "the constraint costs training deviance"
+        );
+        assert!((free.edf - 4.0).abs() < 1e-12 && (held.edf - 3.0).abs() < 1e-12);
+        assert_eq!(held.stop, Stop::Converged);
+        // balance survives: the intercept is unconstrained, so its score equation holds
+        let (ty, tm): (f64, f64) = (y.iter().sum(), held.mu.iter().sum());
+        assert!((ty - tm).abs() < 1e-8, "balance: {ty} vs {tm}");
+    }
+
+    #[test]
+    fn monotone_constraint_is_inactive_on_monotone_data() {
+        let steps = [0.0, 1.0, 2.0, 3.0, 4.0, 5.0];
+        let x: Vec<f64> = steps
+            .iter()
+            .flat_map(|&s| {
+                [
+                    1.0,
+                    f64::from(u8::from((2.0..4.0).contains(&s))),
+                    f64::from(u8::from(s >= 4.0)),
+                ]
+            })
+            .collect();
+        let y = [1.0, 1.5, 3.0, 3.5, 6.0, 6.5];
+        let chains = [Chain {
+            columns: vec![1, 2],
+            increasing: true,
+            anchored: true,
+        }];
+        let free = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 3, &y),
+            None,
+            None,
+            &[],
+            Settings::default(),
+        )
+        .unwrap();
+        let held = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 3, &y),
+            None,
+            None,
+            &chains,
+            Settings::default(),
+        )
+        .unwrap();
+        for (a, b) in free.coef.iter().zip(&held.coef) {
+            assert!((a - b).abs() < 1e-9, "{:?} vs {:?}", free.coef, held.coef);
+        }
+        assert!((free.edf - held.edf).abs() < 1e-9);
+        let bad_start = [0.0, 1.0, 0.5];
+        let err = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 3, &y),
+            None,
+            Some(&bad_start),
+            &chains,
+            Settings::default(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("monotone"), "{err}");
+        let twice = [Chain {
+            columns: vec![1, 1],
+            increasing: true,
+            anchored: false,
+        }];
+        let err = fit(
+            Family::Poisson,
+            Link::Log,
+            data(&x, 3, &y),
+            None,
+            None,
+            &twice,
+            Settings::default(),
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("twice"), "{err}");
     }
 
     #[test]
@@ -937,6 +1159,7 @@ mod tests {
             data(&x, 2, &y),
             Some(&s),
             None,
+            &[],
             Settings::default(),
         )
         .unwrap_err();
@@ -953,6 +1176,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -962,6 +1186,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             Some(&cold.coef),
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -992,6 +1217,7 @@ mod tests {
             start_data,
             None,
             Some(&far),
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -1012,6 +1238,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             Some(&bad),
+            &[],
             Settings::default(),
         )
         .unwrap_err();
@@ -1023,6 +1250,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             Some(&short),
+            &[],
             Settings::default(),
         )
         .unwrap_err();
@@ -1043,6 +1271,7 @@ mod tests {
             data(&x, 2, &y),
             Some(&s),
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();
@@ -1052,6 +1281,7 @@ mod tests {
             data(&x, 2, &y),
             Some(&s),
             None,
+            &[],
             Settings {
                 inference: false,
                 ..Settings::default()
@@ -1089,6 +1319,7 @@ mod tests {
             data(&x, 2, &y),
             None,
             None,
+            &[],
             Settings::default(),
         )
         .unwrap();

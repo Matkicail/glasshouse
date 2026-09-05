@@ -7,6 +7,7 @@
 //! calls `glasshouse_core`, and maps `GlassError` to `ValueError`. No `if` about numbers here.
 
 use glasshouse_core::classification::Confusion;
+use glasshouse_core::constraints::Chain;
 use glasshouse_core::glm::{self, Data, Settings, Stop};
 use glasshouse_core::regression::{self, RegressionMetric};
 use glasshouse_core::Link;
@@ -274,7 +275,7 @@ fn regression_metric(
 /// `penalty` is a row-major symmetric `p x p` matrix, already scaled by the smoothing
 /// parameter — the penalised deviance `D + beta' S beta` is what gets minimised.
 #[pyfunction]
-#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10, penalty=None, warm_start=None, inference=true))]
+#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10, penalty=None, warm_start=None, inference=true, monotone=None))]
 #[allow(clippy::too_many_arguments)]
 fn glm_fit<'py>(
     py: Python<'py>,
@@ -290,6 +291,7 @@ fn glm_fit<'py>(
     penalty: Option<PyReadonlyArray2<'_, f64>>,
     warm_start: Option<Arr<'_>>,
     inference: bool,
+    monotone: Option<Vec<(Vec<usize>, bool, bool)>>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let fam = Family::parse(family, power).map_err(to_py)?;
     let link_fn = Link::parse(link).map_err(to_py)?;
@@ -309,13 +311,22 @@ fn glm_fit<'py>(
         offset: o,
     };
     let start = opt_slice(warm_start.as_ref())?;
+    let chains: Vec<Chain> = monotone
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(columns, increasing, anchored)| Chain {
+            columns,
+            increasing,
+            anchored,
+        })
+        .collect();
     let settings = Settings {
         max_iter,
         tol,
         inference,
         ..Settings::default()
     };
-    let fit = glm::fit(fam, link_fn, data, pen, start, settings).map_err(to_py)?;
+    let fit = glm::fit(fam, link_fn, data, pen, start, &chains, settings).map_err(to_py)?;
     let out = PyDict::new(py);
     out.set_item("coef", fit.coef)?;
     out.set_item("mu", fit.mu)?;

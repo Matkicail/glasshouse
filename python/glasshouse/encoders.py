@@ -17,7 +17,7 @@ what you pass to ``fit`` is the training fold. The GLM's ``fold=`` does that for
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 
@@ -328,6 +328,15 @@ class Standardize:
         return enc
 
 
+Monotone = Literal["increasing", "decreasing"]
+
+
+def _check_monotone(value: str | None, name: str) -> None:
+    if value not in (None, "increasing", "decreasing"):
+        msg = f"{name}: monotone must be 'increasing', 'decreasing' or None, not {value!r}"
+        raise ValueError(msg)
+
+
 @dataclass
 class BSpline:
     """A cubic B-spline expansion of one numeric column: the GLM's smooth term.
@@ -337,6 +346,12 @@ class BSpline:
     *training* rows; tied quantiles collapse, so heavily tied data yields fewer columns than
     ``df``. At transform time values outside the training range are clamped to the boundary —
     a polynomial tail extrapolated silently is how spline models go wrong quietly.
+
+    ``monotone="increasing"`` (or ``"decreasing"``) makes the GLM fit the term under a shape
+    constraint: the fitted curve cannot fall (or rise) anywhere. A B-spline is monotone when
+    its coefficients are, so the constraint is a chain of inequalities the solver honours at
+    every step (see ``docs/methods.md``). The business rule "a premium must not fall with
+    the bonus-malus" is this one line.
 
     Examples
     --------
@@ -349,6 +364,7 @@ class BSpline:
 
     df: int = 6
     degree: int = 3
+    monotone: Monotone | None = None
     name: str = "x"
     knots_: list[float] = field(default_factory=list, repr=False)
 
@@ -357,6 +373,7 @@ class BSpline:
     ) -> BSpline:
         """Place interior knots at quantiles of the training rows."""
         _ = y, sample_weight
+        _check_monotone(self.monotone, self.name)
         if self.df <= self.degree:
             msg = (
                 f"{self.name}: df must exceed the degree ({self.degree}); df=6 is the usual choice"
@@ -397,13 +414,14 @@ class BSpline:
             "name": self.name,
             "df": self.df,
             "degree": self.degree,
+            "monotone": self.monotone,
             "knots": list(self.knots_),
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> BSpline:
         """Rebuild from :meth:`to_dict`."""
-        enc = cls(df=d["df"], degree=d["degree"], name=d["name"])
+        enc = cls(df=d["df"], degree=d["degree"], monotone=d.get("monotone"), name=d["name"])
         enc.knots_ = [float(k) for k in d["knots"]]
         return enc
 
@@ -421,6 +439,8 @@ class Smooth:
     by GCV unless ``lam`` pins it, so ``df`` is a budget, not a dial — generous is fine,
     because the penalty decides how much of it gets spent (read ``edf_`` afterwards to see).
     Out-of-range values at transform time are clamped, like every spline here.
+    ``monotone="increasing"`` or ``"decreasing"`` adds the shape constraint described under
+    :class:`BSpline`; the smoothness penalty and the constraint work together.
 
     Examples
     --------
@@ -435,6 +455,7 @@ class Smooth:
     df: int = 9
     degree: int = 3
     lam: float | None = None
+    monotone: Monotone | None = None
     name: str = "x"
     knots_: list[float] = field(default_factory=list, repr=False)
 
@@ -443,6 +464,7 @@ class Smooth:
     ) -> Smooth:
         """Place evenly spaced interior knots over the training range."""
         _ = y, sample_weight
+        _check_monotone(self.monotone, self.name)
         if self.df <= self.degree:
             msg = f"{self.name}: df must exceed the degree ({self.degree}); the default df is 9"
             raise ValueError(msg)
@@ -489,13 +511,16 @@ class Smooth:
             "df": self.df,
             "degree": self.degree,
             "lam": self.lam,
+            "monotone": self.monotone,
             "knots": list(self.knots_),
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Smooth:
         """Rebuild from :meth:`to_dict`."""
-        enc = cls(df=d["df"], degree=d["degree"], lam=d["lam"], name=d["name"])
+        enc = cls(
+            df=d["df"], degree=d["degree"], lam=d["lam"], monotone=d.get("monotone"), name=d["name"]
+        )
         enc.knots_ = [float(k) for k in d["knots"]]
         return enc
 

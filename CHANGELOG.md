@@ -4,6 +4,13 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 
 ## Unreleased
 
+### Added
+- `Smooth(monotone="increasing")` / `BSpline(monotone="decreasing")`: shape-constrained
+  spline terms. The solver honours the constraint at every IRLS step (an active-set QP on
+  the chain of coefficient differences), GCV and the balance property carry over, tied
+  coefficients count once in the edf. Golden against the exact enumeration of the KKT
+  system.
+
 ### Changed
 - The GLM solver runs its row passes in parallel (rayon) with fixed-chunk partial sums, so a
   fit is identical whatever the thread count; a full fit on a 540k-row fold went from

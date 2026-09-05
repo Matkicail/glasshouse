@@ -111,7 +111,10 @@ and wins every metric. LightGBM with library defaults on 4,000-row training fold
 under-fit and loses even to the linear GLM. More telling is its balance of 0.84: it predicts
 16 % fewer claims than happened. Trees fitted by gradient descent have no balance property;
 a GLM with the canonical link has it by construction. A single ranking score would have
-hidden that. Now write the report and open it:
+hidden that. If a term must not dip by business rule, say a premium that cannot fall as
+the bonus-malus rises, give it `Smooth(monotone="increasing")` and the fit honours it at
+every step; the one-way chart on the Curves tab shows the constraint doing its work. Now
+write the report and open it:
 
 ```python
 out = result.write("reports/synthetic_frequency")
