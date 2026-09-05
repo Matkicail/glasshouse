@@ -94,6 +94,7 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
     dataset: str = "dataset",
     describe: str = "",
     split: dict[str, Any] | None = None,
+    explain: dict[str, Any] | None = None,
 ) -> Report:
     """Compute everything the report shows for these models on this data.
 
@@ -117,6 +118,10 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
         table uses all rows. The document says which.
     dataset, describe, split
         Provenance: a name, the ``data.describe()`` text (or your own), the ``Splits`` spec.
+    explain
+        The bench's per-model explanations (partial dependence, permutation importance and
+        coefficients across folds), when the models themselves were available. Predictions
+        alone cannot produce it, so it is optional here.
     """
     if task not in _FAMILY:
         msg = f"unknown task {task!r}: one of {sorted(_FAMILY)}"
@@ -185,6 +190,8 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
         "curves": _curves(task, yy, preds, w, n_bins),
         "residuals": _residuals(family, yy, preds, w, power, keep, feats, time, n_bins),
     }
+    if explain:
+        doc["explain"] = explain
     if task == "binary":
         doc["thresholds"] = {label: _threshold_grid(yy, p, w) for label, p in preds.items()}
     else:

@@ -231,6 +231,12 @@ The tabs, in the order a reader meets them:
 - **Curves.** Lorenz (with the Gini), lift (predicted vs actual by predicted decile), and
   calibration (actual over expected by decile, with the balance). For a binary task, ROC and
   precision-recall as well. Every curve has one line per model, same colour on every chart.
+- **Model.** Glass-box where possible, explained where not. Permutation importance per
+  model: how much worse the held-out deviance gets when a feature is shuffled. Partial
+  dependence per feature: what each model says the feature does, one line per model, with
+  the spread across folds as a band. For a GLM, its coefficients averaged over folds with
+  their spread and, on a log link, the relativities. This tab needs the fitted models, so
+  it comes from `bench.run`; a report built from predictions alone does not have it.
 - **Residuals.** Deviance and Pearson residuals, a one-way view of actual vs predicted by
   each feature you passed in `features=` (with exposure bars), and residuals over time when
   a `time=` column was given. This is where a model that scores well but misprices one

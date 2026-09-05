@@ -180,6 +180,57 @@ function onewaySpec(tables: AEByFeature[], models: string[]): ChartSpec {
   };
 }
 
+function importanceSpec(explain: Record<string, ExplainDoc>, models: string[]): ChartSpec {
+  const labels = models.filter((m) => explain[m]);
+  const features = Array.from(new Set(labels.flatMap((m) => explain[m]!.importance.features)));
+  const rows: (string | number)[][] = [];
+  for (const m of labels) explain[m]!.importance.features.forEach((f, i) => rows.push([m, f, fmt(explain[m]!.importance.mean[i]), fmt(explain[m]!.importance.std[i])]));
+  return {
+    title: "Permutation importance: deviance increase when a feature is shuffled",
+    caption: "On held-out rows, one feature at a time is shuffled and the mean deviance re-scored; the bar is the increase, averaged over folds, the whisker its spread. A feature the model does not use costs nothing to shuffle. Compare models on the same feature, not features on absolute scale.",
+    data: labels.map((m) => {
+      const e = explain[m]!.importance;
+      const by = new Map(e.features.map((f, i) => [f, i] as const));
+      return {
+        type: "bar", name: m, x: features,
+        y: features.map((f) => (by.has(f) ? e.mean[by.get(f)!] : null)),
+        error_y: { type: "data", array: features.map((f) => (by.has(f) ? e.std[by.get(f)!] : 0)), visible: true, thickness: 1 },
+        marker: { color: colourOf(models, m) },
+        hovertemplate: "%{x}<br>+%{y:.4g} deviance<extra>" + m + "</extra>",
+      };
+    }),
+    layout: { ...LAYOUT_BASE, barmode: "group", xaxis: { ...(LAYOUT_BASE.xaxis as object), type: "category" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "mean deviance increase", rangemode: "tozero" } },
+    table: { columns: ["model", "feature", "increase", "fold spread"], rows },
+  };
+}
+
+function partialDependenceSpec(curves: { label: string; pd: PartialDependenceDoc }[], models: string[]): ChartSpec {
+  const first = curves[0];
+  const feature = first ? first.pd.feature : "feature";
+  const categorical = first ? first.pd.kind === "categorical" : false;
+  const data: Record<string, unknown>[] = [];
+  const rows: (string | number)[][] = [];
+  for (const { label, pd } of curves) {
+    const colour = colourOf(models, label);
+    pd.grid.forEach((g, i) => rows.push([label, String(g), fmt(pd.mean[i]), fmt(pd.low[i]), fmt(pd.high[i])]));
+    if (categorical) {
+      data.push({ type: "bar", name: label, x: pd.grid, y: pd.mean, marker: { color: colour }, error_y: { type: "data", symmetric: false, array: pd.high.map((h, i) => h - (pd.mean[i] ?? 0)), arrayminus: pd.mean.map((m, i) => m - (pd.low[i] ?? 0)), visible: true, thickness: 1 } });
+    } else {
+      // the fold band first (two traces, filled between), then the mean line on top
+      data.push({ type: "scatter", mode: "lines", x: pd.grid, y: pd.high, line: { width: 0 }, showlegend: false, hoverinfo: "skip" });
+      data.push({ type: "scatter", mode: "lines", x: pd.grid, y: pd.low, line: { width: 0 }, fill: "tonexty", fillcolor: colour + "22", showlegend: false, hoverinfo: "skip" });
+      data.push({ type: "scatter", mode: "lines+markers", x: pd.grid, y: pd.mean, name: label, line: { color: colour, width: 2 }, marker: { size: 4 } });
+    }
+  }
+  return {
+    title: `Partial dependence: ${feature}`,
+    caption: "The feature is set to each grid value on every held-out row and the predictions averaged: what the model says the feature does, averaged over how the other features co-occur. The band is the spread across folds; a wide band is a model that is not sure. Points sit at the feature's quantiles, so the picture is drawn where the data is.",
+    data,
+    layout: { ...LAYOUT_BASE, barmode: "group", xaxis: { ...(LAYOUT_BASE.xaxis as object), title: feature, ...(categorical ? { type: "category" } : {}) }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "mean prediction" } },
+    table: { columns: ["model", feature, "mean", "fold low", "fold high"], rows },
+  };
+}
+
 function histogramSpec(r: ResidualDoc, label: string, models: string[]): ChartSpec {
   const edges = r.histogram.edges;
   const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);

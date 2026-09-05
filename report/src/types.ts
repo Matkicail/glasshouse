@@ -121,6 +121,35 @@ interface TournamentBlock {
   overall: TournamentTable;
 }
 
+interface PartialDependenceDoc {
+  feature: string;
+  kind: "numeric" | "categorical";
+  grid: (number | string)[];
+  mean: number[];
+  low: number[];
+  high: number[];
+}
+
+interface ImportanceDoc {
+  features: string[];
+  mean: number[];
+  std: number[];
+  base_deviance: number;
+}
+
+interface CoefficientsDoc {
+  terms: string[];
+  mean: number[];
+  std: number[];
+  relativity: number[] | null;
+}
+
+interface ExplainDoc {
+  partial_dependence: PartialDependenceDoc[];
+  importance: ImportanceDoc;
+  coefficients: CoefficientsDoc | null;
+}
+
 interface ReportDoc {
   schema: "glasshouse-report/1";
   task: TaskInfo;
@@ -134,6 +163,7 @@ interface ReportDoc {
   bench?: BenchBlock;
   thresholds?: Record<string, ThresholdGrid>;
   tournament?: TournamentBlock;
+  explain?: Record<string, ExplainDoc>;
 }
 
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.

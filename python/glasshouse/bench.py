@@ -19,6 +19,7 @@ from typing import Any, Protocol
 
 import numpy as np
 
+from glasshouse import explain as explain_mod
 from glasshouse import report as report_mod
 from glasshouse.arrays import F64, to_vector
 from glasshouse.metrics import FamilyName
@@ -72,12 +73,13 @@ class ModelSpec:
 
 @dataclass(frozen=True)
 class FoldResult:
-    """One model on one fold."""
+    """One model on one fold, and what explains it on that fold's held-out rows."""
 
     label: str
     fold: int
     card: Scorecard
     seconds: float
+    explain: dict[str, Any] | None = None
 
 
 class Progress:
@@ -252,6 +254,7 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
     n_bins: int = 10,
     features: list[str] | None = None,
     progress: bool = False,
+    explain_rows: int = 5000,
 ) -> BenchResult:
     """Fit every model on every fold, score every held-out fold, build the report.
 
@@ -283,8 +286,20 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
     expo = None if task.exposure is None else to_vector(frame[task.exposure], task.exposure)
     offset = np.log(expo) if (task.rate and expo is not None) else None
     weight_fit = None if task.rate else expo  # a rate model carries exposure in the offset
+    grids = _grids(frame, features or [])
     results, pooled, bar = _fit_folds(
-        frame, task, models, folds, n_bins, weight_fit, offset, y, expo, progress=progress
+        frame,
+        task,
+        models,
+        folds,
+        n_bins,
+        weight_fit,
+        offset,
+        y,
+        expo,
+        progress=progress,
+        grids=grids,
+        explain_rows=explain_rows,
     )
     scored = ~np.isnan(next(iter(pooled.values())))  # rows that were in some test fold
     y_s, w_s = _scored(task, y[scored], None if expo is None else expo[scored])
@@ -308,6 +323,7 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
         dataset=dataset,
         describe=describe,
         split={"kind": folds.kind, **folds.spec},
+        explain=_aggregate_explain(results, [m.label for m in models], grids) if grids else None,
     )
     bar.step("building the report", time.perf_counter() - t_report)
     return BenchResult(
@@ -334,6 +350,8 @@ def _fit_folds(  # noqa: PLR0913, PLR0917 — internal plumbing shared by run()
     expo: F64 | None,
     *,
     progress: bool,
+    grids: dict[str, dict[str, Any]],
+    explain_rows: int,
 ) -> tuple[list[FoldResult], dict[str, F64], Progress]:
     """Fit every model on every fold; return the fold scorecards and pooled OOF predictions."""
     results: list[FoldResult] = []
@@ -363,10 +381,118 @@ def _fit_folds(  # noqa: PLR0913, PLR0917 — internal plumbing shared by run()
                 threshold=task.threshold,
                 label=spec.label,
             )
+            explained = _explain_fold(
+                model, spec, frame, te, y_s, w_s, task, grids, explain_rows, fold.number
+            )
             took = time.perf_counter() - t0
-            results.append(FoldResult(spec.label, fold.number, card, took))
+            results.append(FoldResult(spec.label, fold.number, card, took, explained))
             bar.step(f"{spec.label} fold {fold.number}", took)
     return results, pooled, bar
+
+
+def _grids(frame: Any, features: list[str]) -> dict[str, dict[str, Any]]:
+    """One shared grid per explained feature (levels, or quantiles of the whole column)."""
+    out: dict[str, dict[str, Any]] = {}
+    for name in features:
+        col = frame[name]
+        if explain_mod.is_categorical(col):
+            levels = sorted({str(v) for v in np.asarray(col)})
+            out[name] = {"kind": "categorical", "grid": levels}
+        else:
+            out[name] = {"kind": "numeric", "grid": explain_mod.numeric_grid(col)}
+    return out
+
+
+def _explain_fold(  # noqa: PLR0913, PLR0917 — the fold's own pieces, threaded through
+    model: Model,
+    spec: ModelSpec,
+    frame: Any,
+    te: np.ndarray,
+    y_s: F64,
+    w_s: F64 | None,
+    task: TaskSpec,
+    grids: dict[str, dict[str, Any]],
+    explain_rows: int,
+    fold_number: int,
+) -> dict[str, Any] | None:
+    """Partial dependence and permutation importance on a sample of the held-out rows."""
+    used = [f for f in grids if f in spec.columns]
+    if not used:
+        return None
+    rng = np.random.default_rng(fold_number)
+    pick = np.sort(rng.choice(len(te), size=min(explain_rows, len(te)), replace=False))
+    sub = frame[spec.columns].iloc[te[pick]]
+    curves = {
+        f: explain_mod.partial_dependence(model, sub, f, grid=grids[f]["grid"]).effect.tolist()
+        for f in used
+    }
+    importance = explain_mod.permutation_importance(
+        model,
+        sub,
+        y_s[pick],
+        family=task.family,
+        features=used,
+        power=task.power,
+        sample_weight=None if w_s is None else w_s[pick],
+        seed=fold_number,
+        label=spec.label,
+    )
+    link = getattr(model, "_link_name", None)
+    return {
+        "partial_dependence": curves,
+        "importance": {"loss": importance.loss.tolist(), "base": importance.base_deviance},
+        "coefficients": explain_mod.coefficients(model),
+        "link": link() if callable(link) else None,
+    }
+
+
+def _aggregate_explain(
+    results: list[FoldResult], labels: list[str], grids: dict[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Fold explanations to the report's block: mean and spread across folds, per model."""
+    block: dict[str, Any] = {}
+    for label in labels:
+        folds = [r.explain for r in results if r.label == label and r.explain is not None]
+        if not folds:
+            continue
+        used = list(folds[0]["partial_dependence"])
+        curves = []
+        for f in used:
+            stack = np.array([fold["partial_dependence"][f] for fold in folds])
+            curves.append(
+                {
+                    "feature": f,
+                    "kind": grids[f]["kind"],
+                    "grid": grids[f]["grid"],
+                    "mean": stack.mean(axis=0).tolist(),
+                    "low": stack.min(axis=0).tolist(),
+                    "high": stack.max(axis=0).tolist(),
+                }
+            )
+        losses = np.array([fold["importance"]["loss"] for fold in folds])
+        entry: dict[str, Any] = {
+            "partial_dependence": curves,
+            "importance": {
+                "features": used,
+                "mean": losses.mean(axis=0).tolist(),
+                "std": losses.std(axis=0).tolist(),
+                "base_deviance": float(np.mean([fold["importance"]["base"] for fold in folds])),
+            },
+            "coefficients": None,
+        }
+        coefs = [fold["coefficients"] for fold in folds if fold["coefficients"] is not None]
+        if len(coefs) == len(folds):
+            terms = list(coefs[0])
+            values = np.array([[c[t] for t in terms] for c in coefs])
+            mean = values.mean(axis=0)
+            entry["coefficients"] = {
+                "terms": terms,
+                "mean": mean.tolist(),
+                "std": values.std(axis=0).tolist(),
+                "relativity": np.exp(mean).tolist() if folds[0]["link"] == "log" else None,
+            }
+        block[label] = entry
+    return block
 
 
 def _check_columns(

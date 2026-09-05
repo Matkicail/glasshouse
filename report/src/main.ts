@@ -22,6 +22,7 @@ function renderReport(doc: ReportDoc, root: HTMLElement): void {
     { id: "overview", title: "Overview", draw: overviewScreen },
     { id: "compare", title: "Compare", draw: compareScreen },
     { id: "curves", title: "Curves", draw: curvesScreen },
+    ...(doc.explain ? [{ id: "model", title: "Model", draw: modelScreen }] : []),
     { id: "residuals", title: "Residuals", draw: residualsScreen },
     ...(doc.thresholds ? [{ id: "threshold", title: "Threshold", draw: thresholdScreen }] : []),
   ];

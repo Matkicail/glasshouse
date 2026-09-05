@@ -5,6 +5,11 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `glasshouse.explain`: `partial_dependence` and `permutation_importance` for any model
+  through its predictions, and `coefficients` for glass-box ones. The bench computes them
+  on held-out rows per fold and the report gains a Model tab: importance per model with the
+  fold spread, a partial-dependence chart per feature with one line per model and a fold
+  band, and each GLM's coefficient table with relativities.
 - `GLM(alpha=..., l1_ratio=...)`: lasso, ridge and elastic-net GLMs by coordinate descent
   inside the same IRLS, in glmnet's and glum's convention (golden against glum for three
   families). `alpha="cv"` walks the path from `alpha_max` with warm starts and picks by

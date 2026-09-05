@@ -297,6 +297,30 @@ gaussian, poisson (with offset) and binomial, and the ridge case against the qua
 penalty solver with `S = Σw·a·I`; the coordinate-descent step against its own KKT
 conditions and the closed-form ridge.
 
+## Partial dependence and permutation importance
+
+Every model on a bench report gets the same two explanations, computed on a sample of each
+fold's held-out rows and averaged over folds with the fold spread shown.
+
+- **Partial dependence** (Friedman, "Greedy function approximation", *Ann. Statist.* 29,
+  2001): for each grid value `v` of a feature, set the feature to `v` on every row, predict,
+  and average: `PD(v) = mean_i f(x_i with feature = v)`. The grid is the feature's
+  quantiles (evenly spaced in probability, so the curve is drawn where the data is) or its
+  levels. For a GLM the curve is exactly the term's effect: on the log link the ratio of
+  two grid points is `exp(β · Δv)`, which a test checks.
+- **Permutation importance** (Breiman, "Random forests", *Machine Learning* 45, 2001;
+  Fisher, Rudin & Dominici, "All models are wrong, but many are useful", *JMLR* 20, 2019):
+  shuffle one feature across the held-out rows, re-score the mean deviance, and report the
+  increase. One shuffle per feature per fold, seeded by the fold; the spread across folds
+  says how stable the ranking is.
+
+Both vary one feature with the others held as they are, so for tightly bound features the
+model is being asked about rows that do not exist; the one-way and A/E views on the Curves
+tab, which slice the actual data, are the complement. For a GLM the report also shows the
+coefficients averaged over folds, with their spread and, on a log link, the relativities
+`exp(β)`. That table is the glass box itself; the two pictures above are how the same
+questions get answered for a model that has no such table.
+
 ## Win sets and the tournament
 
 Several models price the same rows; every row goes to the model whose prediction is lowest,

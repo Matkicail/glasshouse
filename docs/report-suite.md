@@ -165,7 +165,9 @@ the residuals tab. Adopted into the backlog, in order of value:
 2. **Two-feature A/P heatmap** — A/E on a bins-times-bins grid of two features, cells under a
    weight floor greyed out. Finds interaction segments one-way views miss.
 3. **Data overview tab** — per-feature distributions with the outcome rate overlaid.
-4. **SHAP for tree models** — waits for GBDT wrappers in the bench.
+4. **SHAP for tree models** — waits for GBDT wrappers in the bench. Partial dependence
+   and permutation importance landed first (2026-09-05, the Model tab): model-agnostic,
+   on held-out rows, with the fold spread; SHAP would add per-row attributions on top.
 
 ## Out of scope, on purpose
 
