@@ -203,6 +203,12 @@ References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized L
 - **A/E by feature**: the calibration table with the rows binned by a feature instead of the
   prediction — equal-weight bins (ties whole) for a numeric column, one row per level for a
   categorical — reporting weight, mean prediction, mean outcome and their ratio per bin.
+- **A/E by two features**: the same ratio on the grid of two features, each cut exactly as
+  the one-way table cuts it, so the grid's marginals are the one-way tables. A cell is
+  *thin* when its weight is below `floor` (default 0.2) times the average cell's weight,
+  `floor · Σw / (n_a · n_b)`; the report greys thin cells out rather than dropping them.
+  This is the interaction view: a one-way A/E of 1 for young drivers and 1 for powerful
+  cars says nothing about young drivers in powerful cars.
 
 Golden references: statsmodels `resid_deviance`, `resid_pearson` (with `var_weights`).
 
@@ -390,6 +396,26 @@ training rows only (the GLM's `fold=` guarantees it), and:
   get the prior. Reference: Micci-Barreca, "A preprocessing scheme for high-cardinality
   categorical attributes", *SIGKDD Explorations* 3 (2001).
 - **Standardize**: weighted mean and population standard deviation from the training rows.
+
+## Data profile
+
+The Data tab of the report, and `glasshouse.profile`, describe the data before any model.
+
+- `histogram(values, sample_weight)`: `n_bins` even-width bins from the column's minimum to
+  its weighted 99th percentile, then one pooled bin to the maximum (a claim rate whose
+  largest value is a thousand times its 99th percentile would otherwise draw as one bar),
+  with the row count and the weight in each, and a weighted summary. The mean and standard
+  deviation are weighted; a quantile is the value where the cumulative weight, on the sorted
+  values, first reaches that probability; `zero_share` is the share of the weight on exact
+  zeros.
+- `feature_profile(column, y, sample_weight)`: for a numeric feature, the same bins with
+  the weight and the weighted mean outcome `sum(w y) / sum(w)` in each; for a categorical,
+  one row per level, heaviest first, with the levels past `max_levels` pooled into one row.
+
+The bins are even in width on purpose. The one-way tables in `residuals.ae_by_feature` use
+equal-weight bins, so every A/E rests on the same amount of data, which makes their weight
+bars flat by construction. A distribution has to be allowed to vary, so here the width is
+fixed and the weight is what the chart shows. Weighted means follow the one convention above.
 
 ## Numerical notes
 

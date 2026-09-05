@@ -132,7 +132,7 @@ function aeByFeatureSpec(tables: AEByFeature[], models: string[]): ChartSpec {
     title: `A/E by ${first ? first.feature : "feature"}`,
     caption: "1 is calibrated for that segment. Above 1 the model under-predicts there; below, it over-predicts. Small-weight bins are noisy.",
     data: [
-      ...tables.map((t) => ({ type: "bar", x: t.level, y: t.actual_over_expected, name: t.label, marker: { color: colourOf(models, t.label) }, text: t.weight.map((w) => `weight ${fmt(w)}`), hovertemplate: "%{x}<br>A/E %{y:.3f}<br>%{text}<extra></extra>" })),
+      ...tables.map((t) => ({ type: "bar", x: t.level, y: t.actual_over_expected, name: t.label, marker: { color: colourOf(models, t.label) }, textposition: "none", text: t.weight.map((w) => `weight ${fmt(w)}`), hovertemplate: "%{x}<br>A/E %{y:.3f}<br>%{text}<extra></extra>" })),
       // drawn last so the bars cannot hide it
       { type: "scatter", mode: "lines", x: [levels[0] ?? "", levels[levels.length - 1] ?? ""], y: [1, 1], name: "A/E = 1", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
     ],
@@ -228,6 +228,97 @@ function partialDependenceSpec(curves: { label: string; pd: PartialDependenceDoc
     data,
     layout: { ...LAYOUT_BASE, barmode: "group", xaxis: { ...(LAYOUT_BASE.xaxis as object), title: feature, ...(categorical ? { type: "category" } : {}) }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "mean prediction" } },
     table: { columns: ["model", feature, "mean", "fold low", "fold high"], rows },
+  };
+}
+
+function distributionSpec(h: HistogramDoc, title: string, caption: string, colour: string): ChartSpec {
+  // Bins are even up to the 99th percentile and the last one pools the tail to the maximum, so
+  // the x axis is the bin labels, not a number line: a tail bin a thousand times wider than
+  // the others would otherwise squash the body into a sliver.
+  const total = h.weight.reduce((a, b) => a + b, 0);
+  return {
+    title,
+    caption,
+    data: [{
+      type: "bar", x: h.level, y: h.weight, name: h.name, marker: { color: colour }, textposition: "none",
+      text: h.n_rows.map((n, i) => `${fmtInt(n)} rows · ${(100 * ((h.weight[i] ?? 0) / total)).toFixed(1)} %`),
+      hovertemplate: "%{x}<br>weight %{y:.4g}<br>%{text}<extra></extra>",
+    }],
+    layout: { ...LAYOUT_BASE, bargap: 0.05, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: h.name, type: "category" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "weight" } },
+    table: { columns: ["bin", "rows", "weight"], rows: h.level.map((lv, i) => [lv, h.n_rows[i] ?? 0, fmt(h.weight[i])]) },
+  };
+}
+
+function profileSpec(p: FeatureProfileDoc): ChartSpec {
+  const total = p.weight.reduce((a, b) => a + b, 0);
+  return {
+    title: `${p.feature}: where the weight is, and the mean outcome there`,
+    caption: p.kind === "numeric"
+      ? "Even-width bins up to the feature's 99th percentile, then one bin pooling the tail: the bars are the weight in each, the line the weighted mean outcome. Where the bars are thin the line is noise; a sharp turn where the bars are tall is a shape a model must reproduce."
+      : "One bar per level, heaviest first: the bars are the weight, the line the weighted mean outcome. A level with a high mean and little weight is where a one-hot coefficient gets its wide standard error.",
+    data: [
+      // bars on the base axis, the line on the overlay, so the line is never hidden (see onewaySpec)
+      {
+        type: "bar", x: p.level, y: p.weight, name: "weight", marker: { color: "#ececec" }, textposition: "none",
+        text: p.n_rows.map((n, i) => `${fmtInt(n)} rows · ${(100 * ((p.weight[i] ?? 0) / total)).toFixed(1)} %`),
+        hovertemplate: "%{x}<br>weight %{y:.4g}<br>%{text}<extra></extra>",
+      },
+      {
+        type: "scatter", mode: "lines+markers", x: p.level, y: p.actual, name: "mean outcome", yaxis: "y2",
+        line: { color: "#000000", width: 2.5 }, marker: { size: 5 }, connectgaps: false,
+      },
+    ],
+    layout: {
+      ...LAYOUT_BASE,
+      xaxis: { ...(LAYOUT_BASE.xaxis as object), title: p.feature, type: "category" },
+      yaxis: { side: "right", showgrid: false, title: "weight", rangemode: "tozero" },
+      yaxis2: { ...(LAYOUT_BASE.yaxis as object), overlaying: "y", side: "left", title: "mean outcome", rangemode: "tozero" },
+      legend: { orientation: "h", y: -0.25 },
+    },
+    table: { columns: ["level", "rows", "weight", "share", "mean outcome"], rows: p.level.map((lv, i) => [lv, p.n_rows[i] ?? 0, fmt(p.weight[i]), `${(100 * ((p.weight[i] ?? 0) / total)).toFixed(1)} %`, fmt(p.actual[i])]) },
+  };
+}
+
+function heatmapSpec(g: AEGridDoc): ChartSpec {
+  // A/E is a ratio, so the colour scale is symmetric in log terms around 1: 0.5 and 2 are the
+  // same distance from calibrated. Thin cells (weight under the floor) are left blank and the
+  // plot background is grey, so a gap reads as "not enough data", not as "fine".
+  let extreme = 1;
+  const z: (number | null)[][] = g.actual_over_expected.map((row, i) => row.map((v, j) => {
+    const thin = (g.weight[i]?.[j] ?? 0) < g.weight_floor;
+    if (thin || v === null || !Number.isFinite(v) || v <= 0) return null;
+    extreme = Math.max(extreme, v, 1 / v);
+    return v;
+  }));
+  const span = Math.min(extreme, 2.5);
+  const text = g.level_a.map((la, i) => g.level_b.map((lb, j) => {
+    const w = g.weight[i]?.[j] ?? 0, n = g.n_rows[i]?.[j] ?? 0, ae = g.actual_over_expected[i]?.[j];
+    const thin = w < g.weight_floor;
+    return `${g.feature_a} ${la} · ${g.feature_b} ${lb}<br>A/E ${ae === null || ae === undefined ? "—" : fmt(ae, 3)}${thin ? " (thin)" : ""}<br>weight ${fmt(w)} · ${fmtInt(n)} rows`;
+  }));
+  const rows: (string | number)[][] = [];
+  g.level_a.forEach((la, i) => g.level_b.forEach((lb, j) => {
+    const w = g.weight[i]?.[j] ?? 0;
+    rows.push([la, lb, fmt(w), fmtInt(g.n_rows[i]?.[j] ?? 0), w < g.weight_floor ? "thin" : fmt(g.actual_over_expected[i]?.[j], 3)]);
+  }));
+  const thinCount = g.weight.flat().filter((w) => w < g.weight_floor).length;
+  return {
+    title: `A/E by ${g.feature_a} and ${g.feature_b}`,
+    caption: `Blue is under-predicted (A/E above 1), red over-predicted; white is calibrated. Grey cells hold less than the weight floor (${fmt(g.weight_floor)}, a fifth of the average cell; ${thinCount} of ${g.weight.flat().length} cells) and are not shown. A one-way A/E of 1 on both axes can still hide a coloured corner here: that corner is the interaction a model is missing.`,
+    data: [{
+      type: "heatmap", x: g.level_b, y: g.level_a, z, text, hovertemplate: "%{text}<extra></extra>",
+      colorscale: [[0, "#B2182B"], [0.5, "#FFFFFF"], [1, "#2166AC"]],
+      zmin: 1 / span, zmax: span, zmid: 1, hoverongaps: false,
+      colorbar: { title: "A/E", thickness: 12, tickvals: [1 / span, 1, span], ticktext: [fmt(1 / span, 2), "1", fmt(span, 2)] },
+    }],
+    layout: {
+      ...LAYOUT_BASE,
+      plot_bgcolor: "#e6e6e6",
+      xaxis: { ...(LAYOUT_BASE.xaxis as object), title: g.feature_b, type: "category", showgrid: false },
+      yaxis: { ...(LAYOUT_BASE.yaxis as object), title: g.feature_a, type: "category", showgrid: false, automargin: true },
+      margin: { l: 96, r: 16, t: 36, b: 72 },
+    },
+    table: { columns: [g.feature_a, g.feature_b, "weight", "rows", "A/E"], rows },
   };
 }
 

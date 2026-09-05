@@ -249,7 +249,8 @@
           "summary",
           "histogram",
           "scatter",
-          "by_feature"
+          "by_feature",
+          "by_pair"
         ],
         "properties": {
           "definition": {
@@ -307,6 +308,13 @@
             "items": {
               "$ref": "#/$defs/ae_by_feature"
             }
+          },
+          "by_pair": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ae_by_two"
+            },
+            "description": "A/E on the grid of every pair of features: the interaction view. Cells under weight_floor are thin."
           },
           "over_time": {
             "oneOf": [
@@ -690,6 +698,36 @@
           }
         }
       }
+    },
+    "data": {
+      "type": "object",
+      "description": "The data before any model: even-width histograms of the outcome and the weight, and each feature's weight and mean outcome per bin or level.",
+      "required": [
+        "target",
+        "weight",
+        "features"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/histogram"
+        },
+        "weight": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/histogram"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feature_profile"
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -786,6 +824,222 @@
         },
         "actual_over_expected": {
           "$ref": "#/$defs/numbers"
+        }
+      }
+    },
+    "histogram": {
+      "type": "object",
+      "required": [
+        "name",
+        "level",
+        "edges",
+        "n_rows",
+        "weight",
+        "summary"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "level": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edges": {
+          "$ref": "#/$defs/numbers"
+        },
+        "n_rows": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "weight": {
+          "$ref": "#/$defs/numbers"
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "mean",
+            "std",
+            "min",
+            "q05",
+            "q25",
+            "median",
+            "q75",
+            "q95",
+            "max",
+            "zero_share"
+          ],
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "feature_profile": {
+      "type": "object",
+      "required": [
+        "feature",
+        "kind",
+        "level",
+        "edges",
+        "n_rows",
+        "weight",
+        "actual",
+        "n_levels"
+      ],
+      "properties": {
+        "feature": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "numeric",
+            "categorical"
+          ]
+        },
+        "level": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edges": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/numbers"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "n_rows": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "weight": {
+          "$ref": "#/$defs/numbers"
+        },
+        "actual": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "n_levels": {
+          "type": "integer"
+        }
+      }
+    },
+    "ae_by_two": {
+      "type": "object",
+      "required": [
+        "kind",
+        "feature_a",
+        "feature_b",
+        "label",
+        "level_a",
+        "level_b",
+        "n_rows",
+        "weight",
+        "predicted",
+        "actual",
+        "actual_over_expected",
+        "weight_floor"
+      ],
+      "properties": {
+        "kind": {
+          "const": "ae_by_two"
+        },
+        "feature_a": {
+          "type": "string"
+        },
+        "feature_b": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "level_a": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "level_b": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "n_rows": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            }
+          }
+        },
+        "weight": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "predicted": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "actual": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "actual_over_expected": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": [
+                "number",
+                "null"
+              ]
+            }
+          }
+        },
+        "weight_floor": {
+          "type": "number"
         }
       }
     }

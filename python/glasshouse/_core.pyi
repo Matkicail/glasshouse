@@ -118,6 +118,20 @@ def binned_table(
     sample_weight: npt.NDArray[np.float64] | None = None,
     n_bins: int = 10,
 ) -> dict[str, list[float] | list[int]]: ...
+def bin_index(
+    key: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    n_bins: int = 10,
+) -> list[int]: ...
+def grid_table(
+    index_a: list[int],
+    n_a: int,
+    index_b: list[int],
+    n_b: int,
+    y: npt.NDArray[np.float64],
+    mu: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> dict[str, list[float] | list[int]]: ...
 def residuals(
     kind: str,
     family: str,

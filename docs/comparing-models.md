@@ -221,6 +221,13 @@ The tabs, in the order a reader meets them:
   model. For priced tasks, the tournament: every row goes to the cheapest model, and each
   model is judged on the business it won. Nothing on this screen is computed in the
   browser; every number is in the JSON.
+- **Data.** The data before any model. The outcome and the weight summarised (weighted
+  mean, spread, quantiles, the share of the weight on exact zeros) and drawn as histograms,
+  then one profile per feature you passed in `features=`: the weight in each bin or level
+  with the mean outcome there. Read this before the leaderboard. A feature whose outcome
+  rate turns sharply where the data is thick is a shape every model has to reproduce; a
+  level with a high rate and little weight is where a coefficient earns its wide standard
+  error.
 - **Compare.** Pick two models. Each metric says which one wins and by how much. The double
   lift chart is here: rows are ranked by the ratio of the two models' predictions and
   binned. In the bins where they disagree most (the ends), the line that sits on the actual
@@ -239,8 +246,11 @@ The tabs, in the order a reader meets them:
   it comes from `bench.run`; a report built from predictions alone does not have it.
 - **Residuals.** Deviance and Pearson residuals, a one-way view of actual vs predicted by
   each feature you passed in `features=` (with exposure bars), and residuals over time when
-  a `time=` column was given. This is where a model that scores well but misprices one
-  segment gets caught.
+  a `time=` column was given. Then the segments: A/E on the grid of every pair of features,
+  as a heatmap with cells too thin to read greyed out. A model can be calibrated on every
+  one-way view and still be wrong for young drivers in powerful cars; this is the view that
+  shows it, and the honest case for an interaction term. This is where a model that scores
+  well but misprices one segment gets caught.
 - **Threshold** (binary only). The slider described above.
 
 What to look at first depends on who you are:

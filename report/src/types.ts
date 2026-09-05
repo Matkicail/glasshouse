@@ -74,6 +74,21 @@ interface AEByFeature extends Binned {
   level: string[];
 }
 
+interface AEGridDoc {
+  kind: "ae_by_two";
+  feature_a: string;
+  feature_b: string;
+  label: string;
+  level_a: string[];
+  level_b: string[];
+  n_rows: number[][];
+  weight: number[][];
+  predicted: (number | null)[][];
+  actual: (number | null)[][];
+  actual_over_expected: (number | null)[][];
+  weight_floor: number;
+}
+
 interface ResidualStats { mean: number; std: number; median: number; [q: string]: number }
 
 interface ResidualDoc {
@@ -82,6 +97,7 @@ interface ResidualDoc {
   histogram: { edges: number[]; counts: number[] };
   scatter: { fitted: number[]; deviance: number[]; actual: number[] };
   by_feature: AEByFeature[];
+  by_pair?: AEGridDoc[];
   over_time: AEByFeature | null;
 }
 
@@ -150,6 +166,32 @@ interface ExplainDoc {
   coefficients: CoefficientsDoc | null;
 }
 
+interface HistogramDoc {
+  name: string;
+  level: string[]; // bin labels; the last is the pooled tail when there is one
+  edges: number[];
+  n_rows: number[];
+  weight: number[];
+  summary: Record<string, number>; // mean, std, min, q05, q25, median, q75, q95, max, zero_share
+}
+
+interface FeatureProfileDoc {
+  feature: string;
+  kind: "numeric" | "categorical";
+  level: string[];
+  edges: number[] | null;
+  n_rows: number[];
+  weight: number[];
+  actual: (number | null)[];
+  n_levels: number;
+}
+
+interface DataBlock {
+  target: HistogramDoc;
+  weight: HistogramDoc | null;
+  features: FeatureProfileDoc[];
+}
+
 interface ReportDoc {
   schema: "glasshouse-report/1";
   task: TaskInfo;
@@ -164,6 +206,7 @@ interface ReportDoc {
   thresholds?: Record<string, ThresholdGrid>;
   tournament?: TournamentBlock;
   explain?: Record<string, ExplainDoc>;
+  data?: DataBlock;
 }
 
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.

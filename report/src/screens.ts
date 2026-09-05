@@ -74,6 +74,65 @@ function overviewScreen(doc: ReportDoc, root: HTMLElement): void {
   root.append(prov);
 }
 
+function dataScreen(doc: ReportDoc, root: HTMLElement): void {
+  clear(root);
+  const data = doc.data;
+  if (!data) { root.append(el("p", { class: "muted" }, ["No data profile in this document (it was built by an older glasshouse)."])); return; }
+  const t = data.target.summary;
+  root.append(el("p", { class: "lede" }, [
+    `${fmtInt(doc.provenance.n_rows)} rows · weight ${fmt(doc.provenance.weight_sum)} · mean outcome ${fmt(t["mean"])} · ${(100 * (t["zero_share"] ?? 0)).toFixed(1)} % of the weight on exact zeros. The data before any model: read this before the leaderboard.`,
+  ]));
+
+  // the outcome and the weight, summarised
+  const cols = ["mean", "std", "min", "q05", "median", "q95", "max", "zero_share"];
+  const head = el("tr", {}, [el("th", {}, ["column"]), ...cols.map((c) => el("th", {}, [c === "zero_share" ? "share at 0" : c]))]);
+  const row = (h: HistogramDoc) => el("tr", {}, [
+    el("th", {}, [h.name]),
+    ...cols.map((c) => el("td", { class: "num" }, [c === "zero_share" ? `${(100 * (h.summary[c] ?? 0)).toFixed(1)} %` : fmt(h.summary[c])])),
+  ]);
+  root.append(el("table", { class: "grid panel" }, [el("thead", {}, [head]), el("tbody", {}, [row(data.target), ...(data.weight ? [row(data.weight)] : [])])]));
+  root.append(el("p", { class: "caption" }, [
+    "Weighted by the same weight every score uses (exposure for a rate task). For a frequency task y is the claim rate per unit of exposure, so its mean is the book's frequency and the share at 0 is the policies with no claim.",
+  ]));
+
+  const charts = el("div", { class: "charts two" });
+  const c1 = el("div", { class: "chart" }), c2 = el("div", { class: "chart" });
+  charts.append(c1, c2);
+  root.append(charts);
+  renderChart(c1, distributionSpec(data.target, "The outcome", "Even-width bins of y up to its 99th percentile, then one bin pooling the tail to the maximum; the bars are the weight in each. A long tail is what the family's variance function has to carry; a spike at zero is the mass a Tweedie or a frequency model must get right first.", "#0072B2"));
+  if (data.weight) renderChart(c2, distributionSpec(data.weight, "The weight", "Exposure, claim count, or whatever weights the scores. A book of short policies (weight near 0) scores noisier than it looks by row count.", "#999999"));
+  else c2.append(el("p", { class: "muted" }, ["No weight given: every row counts once."]));
+
+  // the features
+  if (data.features.length === 0) {
+    root.append(el("p", { class: "muted" }, ["No features were passed to the report, so there is nothing to profile. Pass features= to see each one's distribution and outcome rate."]));
+    return;
+  }
+  root.append(el("h3", {}, ["Features"]));
+  const fhead = el("tr", {}, ["feature", "kind", "distinct", "shown as", "range or heaviest level"].map((h) => el("th", {}, [h])));
+  const fbody = el("tbody", {}, data.features.map((p) => {
+    const heaviest = p.level[0] ?? "";
+    const range = p.kind === "numeric" && p.edges ? `${fmt(p.edges[0])} to ${fmt(p.edges[p.edges.length - 1])}` : `${heaviest} (${(100 * ((p.weight[0] ?? 0) / p.weight.reduce((a, b) => a + b, 0))).toFixed(1)} %)`;
+    return el("tr", {}, [
+      el("th", {}, [p.feature]),
+      el("td", {}, [p.kind]),
+      el("td", { class: "num" }, [fmtInt(p.n_levels)]),
+      el("td", {}, [p.kind === "numeric" ? `${p.level.length} even bins` : `${p.level.length} level${p.level.length === 1 ? "" : "s"}`]),
+      el("td", {}, [range]),
+    ]);
+  }));
+  root.append(el("table", { class: "grid features" }, [el("thead", {}, [fhead]), fbody]));
+  const sel = select(data.features.map((p) => p.feature), data.features[0]!.feature);
+  const chart = el("div", { class: "chart" });
+  root.append(el("div", { class: "controls" }, ["Profile of ", sel]), chart);
+  const draw = () => {
+    const p = data.features.find((f) => f.feature === sel.value);
+    if (p) renderChart(chart, profileSpec(p));
+  };
+  sel.addEventListener("change", draw);
+  draw();
+}
+
 function compareScreen(doc: ReportDoc, root: HTMLElement): void {
   clear(root);
   if (doc.models.length < 2) {
@@ -264,6 +323,19 @@ function residualsScreen(doc: ReportDoc, root: HTMLElement): void {
     out.append(charts);
     renderChart(c1, histogramSpec(r, label, doc.models));
     renderChart(c2, scatterSpec(r, label, doc.models, doc.provenance.sample_rows));
+    const pairs = r.by_pair ?? [];
+    if (pairs.length) {
+      out.append(el("h3", {}, ["Segments: A/E by two features"]));
+      const pairSel = select(pairs.map((g) => `${g.feature_a} × ${g.feature_b}`), `${pairs[0]!.feature_a} × ${pairs[0]!.feature_b}`);
+      const heat = el("div", { class: "chart heatmap" });
+      out.append(el("div", { class: "controls" }, ["Pair ", pairSel]), heat);
+      const drawPair = () => {
+        const g = pairs[pairSel.selectedIndex];
+        if (g) renderChart(heat, heatmapSpec(g));
+      };
+      pairSel.addEventListener("change", drawPair);
+      drawPair();
+    }
   };
   sel.addEventListener("change", draw);
   draw();

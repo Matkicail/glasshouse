@@ -59,8 +59,25 @@ def test_frequency_report_is_complete_and_valid() -> None:
     res = doc["residuals"]["glm"]
     assert [b["feature"] for b in res["by_feature"]] == ["region", "age"]
     assert res["over_time"]["feature"] == "time"
+    (pair,) = res["by_pair"]
+    assert (pair["feature_a"], pair["feature_b"]) == ("region", "age")
+    assert len(pair["actual_over_expected"]) == 3 and len(pair["actual_over_expected"][0]) == 10
+    assert sum(map(sum, pair["weight"])) == pytest.approx(EXPO.sum()) and pair["weight_floor"] > 0
+    assert (
+        report.build("regression", PROB, {"m": PROB}).to_dict()["residuals"]["m"]["by_pair"] == []
+    )
     assert len(res["scatter"]["fitted"]) == N  # under the sample cap: all rows
     assert doc["provenance"]["sample_rows"] == N and doc["provenance"]["n_rows"] == N
+    data = doc["data"]
+    assert data["target"]["name"] == "y" and sum(data["target"]["n_rows"]) == N
+    assert data["weight"]["name"] == "weight" and data["target"]["summary"]["zero_share"] > 0
+    assert [p["feature"] for p in data["features"]] == ["region", "age"]
+    assert data["features"][0]["kind"] == "categorical" and data["features"][0]["n_levels"] == 3
+    age = data["features"][1]
+    assert age["kind"] == "numeric" and len(age["level"]) == len(age["edges"]) - 1 == 21
+    assert age["edges"][-1] == AGE.max() and len(data["target"]["level"]) == 41
+    assert sum(data["features"][1]["weight"]) == pytest.approx(EXPO.sum())
+    assert report.build("regression", PROB, {"m": PROB}).to_dict()["data"]["weight"] is None
 
 
 def test_binary_report_uses_roc_and_pr_and_the_prior() -> None:

@@ -30,6 +30,12 @@ function boot(withPlotly: boolean): { dom: JSDOM; api: Api; root: HTMLElement } 
   return { dom, api, root };
 }
 
+function tab(root: HTMLElement, name: string): HTMLButtonElement {
+  const found = Array.from(root.querySelectorAll("nav.tabs button")).find((b) => b.textContent === name);
+  if (!found) throw new Error(`no ${name} tab`);
+  return found as HTMLButtonElement;
+}
+
 const text = readFileSync(FIXTURE, "utf8");
 const binaryText = readFileSync(BINARY_FIXTURE, "utf8");
 
@@ -52,7 +58,7 @@ describe("glasshouse report viewer", () => {
     expect(metrics).toContain("gini");
     expect(root.querySelector("tr.primary th")?.textContent).toContain("deviance");
     expect(root.querySelector(".provenance pre")?.textContent).toContain("made up");
-    expect(root.querySelectorAll("nav.tabs button").length).toBe(5);
+    expect(Array.from(root.querySelectorAll("nav.tabs button")).map((b) => b.textContent)).toEqual(["Overview", "Data", "Compare", "Curves", "Model", "Residuals"]);
     // the tournament: one row per model, shares that add to 100 %
     const rows = Array.from(root.querySelectorAll("table.tournament tbody tr"));
     expect(rows.map((r) => r.querySelector("th")?.textContent)).toEqual(["glm", "mean"]);
@@ -63,8 +69,7 @@ describe("glasshouse report viewer", () => {
   it("model screen shows importance, a partial dependence per feature and the GLM coefficients", () => {
     const { api, root } = boot(true);
     api.render(api.parse(text), root);
-    const tab = Array.from(root.querySelectorAll("nav.tabs button")).find((b) => b.textContent === "Model") as HTMLButtonElement;
-    tab.click();
+    tab(root, "Model").click();
     const pane = root.querySelector("#pane-model") as HTMLElement;
     expect(pane.hidden).toBe(false);
     expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
@@ -76,6 +81,23 @@ describe("glasshouse report viewer", () => {
     expect(Array.from(tables[0]!.querySelectorAll("thead th")).map((n) => n.textContent)).toContain("relativity");
   });
 
+  it("data screen summarises the outcome and the weight and profiles every feature", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    tab(root, "Data").click();
+    const pane = root.querySelector("#pane-data") as HTMLElement;
+    expect(pane.hidden).toBe(false);
+    const rows = Array.from(pane.querySelectorAll("table.panel tbody tr > th")).map((n) => n.textContent);
+    expect(rows).toEqual(["y", "weight"]);
+    expect(Array.from(pane.querySelectorAll("table.features tbody tr > th")).map((n) => n.textContent)).toEqual(["region", "age"]);
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(3); // outcome, weight, one feature
+    const sel = pane.querySelector("select") as HTMLSelectElement;
+    expect(Array.from(sel.options).map((o) => o.value)).toEqual(["region", "age"]);
+    sel.value = "age";
+    sel.dispatchEvent(new (pane.ownerDocument.defaultView as any).Event("change"));
+    expect(pane.textContent).toContain("age: where the weight is");
+  });
+
   it("binary reports have no tournament (a probability is not a price)", () => {
     const { api, root } = boot(true);
     api.render(api.parse(binaryText), root);
@@ -85,7 +107,7 @@ describe("glasshouse report viewer", () => {
   it("compare screen draws the pair's table and two charts", () => {
     const { api, root } = boot(true);
     api.render(api.parse(text), root);
-    (root.querySelectorAll("nav.tabs button")[1] as HTMLButtonElement).click();
+    tab(root, "Compare").click();
     const pane = root.querySelector("#pane-compare") as HTMLElement;
     expect(pane.hidden).toBe(false);
     expect(pane.querySelectorAll("table.panel tbody tr").length).toBeGreaterThan(5);
@@ -96,7 +118,7 @@ describe("glasshouse report viewer", () => {
   it("curves screen lists every curve kind and the A/E-by-feature slices", () => {
     const { api, root } = boot(true);
     api.render(api.parse(text), root);
-    (root.querySelectorAll("nav.tabs button")[2] as HTMLButtonElement).click();
+    tab(root, "Curves").click();
     const pane = root.querySelector("#pane-curves") as HTMLElement;
     const options = Array.from(pane.querySelectorAll("select option")).map((o) => (o as HTMLOptionElement).value);
     expect(options).toEqual(
@@ -109,13 +131,31 @@ describe("glasshouse report viewer", () => {
   it("residuals tab shows the summary and two charts per model", () => {
     const { api, root } = boot(true);
     api.render(api.parse(text), root);
-    (Array.from(root.querySelectorAll("nav.tabs button")).find((b) => b.textContent === "Residuals") as HTMLButtonElement).click();
+    tab(root, "Residuals").click();
     const pane = root.querySelector("#pane-residuals") as HTMLElement;
     expect(pane.hidden).toBe(false);
     const rows = Array.from(pane.querySelectorAll("table.panel tbody tr > th")).map((n) => n.textContent);
     expect(rows).toEqual(["deviance", "pearson"]);
-    expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(3); // histogram, scatter, one pair heatmap
     expect(pane.textContent).toContain("Residual vs fitted");
+    expect(pane.textContent).toContain("A/E by region and age");
+    const pairSel = pane.querySelectorAll("select")[1] as HTMLSelectElement;
+    expect(Array.from(pairSel.options).map((o) => o.value)).toEqual(["region × age"]);
+  });
+
+  it("the heatmap leaves thin cells blank and keeps every other cell", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    tab(root, "Residuals").click();
+    const calls = (root.ownerDocument.defaultView as any).Plotly.__calls as unknown[][];
+    const heat = calls.flat().find((t: any) => t.type === "heatmap") as any;
+    expect(heat).toBeDefined();
+    const doc = api.parse(text) as any;
+    const g = doc.residuals.glm.by_pair[0];
+    const thin = g.weight.flat().filter((w: number) => w < g.weight_floor).length;
+    const blank = heat.z.flat().filter((v: unknown) => v === null).length;
+    expect(blank).toBeGreaterThanOrEqual(thin);
+    expect(heat.z.length).toBe(g.level_a.length);
   });
 
   it("binary reports get a Threshold tab whose slider walks the precomputed grid", () => {
@@ -123,7 +163,7 @@ describe("glasshouse report viewer", () => {
     api.render(api.parse(binaryText), root);
     const tabs = Array.from(root.querySelectorAll("nav.tabs button")).map((b) => b.textContent);
     expect(tabs).toContain("Threshold");
-    (root.querySelectorAll("nav.tabs button")[4] as HTMLButtonElement).click();
+    tab(root, "Threshold").click();
     const pane = root.querySelector("#pane-threshold") as HTMLElement;
     expect(pane.hidden).toBe(false);
     expect(pane.textContent).toContain("alerts per catch");
@@ -146,7 +186,7 @@ describe("glasshouse report viewer", () => {
   it("falls back to tables when Plotly is not available", () => {
     const { api, root } = boot(false);
     api.render(api.parse(text), root);
-    (root.querySelectorAll("nav.tabs button")[2] as HTMLButtonElement).click();
+    tab(root, "Curves").click();
     const pane = root.querySelector("#pane-curves") as HTMLElement;
     expect(pane.querySelector("[data-plotly]")).toBeNull();
     expect(pane.querySelector("table.grid")).not.toBeNull();

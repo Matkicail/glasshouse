@@ -54,7 +54,22 @@ pub fn binned_table(
     n_bins: usize,
 ) -> Result<Vec<CalibrationBin>, GlassError> {
     validate(y, mu, w)?;
-    same_length("key", key, "y", y)?;
+    let index = bin_index(key, w, n_bins)?;
+    let n = index.iter().max().map_or(0, |m| m + 1);
+    grid_table(&index, n, &vec![0; key.len()], 1, y, mu, w)
+}
+
+/// Which equal-weight bin each row of `key` falls in, `0..n_bins`, ties kept whole.
+///
+/// Rows are sorted by `key`; bin edges are fixed at equal shares of the total weight; a tie
+/// group belongs to the bin its weight midpoint falls in, so a bin can be larger than its
+/// share, a group that spans several edges takes them all, and the number of bins used can
+/// be smaller than `n_bins` (all tied: one bin). This is the one binning rule behind the
+/// calibration table, A/E by feature and A/E by two features.
+///
+/// # Errors
+/// `key` non-finite; `w` (if given) not the same length as `key`; `n_bins == 0`.
+pub fn bin_index(key: &[f64], w: Option<&[f64]>, n_bins: usize) -> Result<Vec<usize>, GlassError> {
     all_values(
         "key",
         key,
@@ -62,6 +77,9 @@ pub fn binned_table(
         "NaN or inf in the binning column",
         f64::is_finite,
     )?;
+    if let Some(w) = w {
+        same_length("key", key, "sample_weight", w)?;
+    }
     if n_bins == 0 {
         return Err(GlassError::BadArgument {
             name: "n_bins",
@@ -71,34 +89,70 @@ pub fn binned_table(
     }
     let weight = |row: usize| w.map_or(1.0, |w| w[row]);
     let (order, groups) = sorted_tie_groups(key);
-    let total_w: f64 = (0..y.len()).map(weight).sum();
+    let total_w: f64 = (0..key.len()).map(weight).sum();
     #[allow(clippy::cast_precision_loss)]
     let bin_width = total_w / n_bins as f64;
-
-    let mut bins: Vec<CalibrationBin> = Vec::with_capacity(n_bins);
-    let mut current = Accumulator::default();
+    let mut index = vec![0; key.len()];
+    let mut bin = 0;
+    let mut bin_rows = 0;
     let mut cum_w = 0.0;
     let mut next_edge = bin_width;
     for (start, end) in groups {
         let rows = &order[start..end];
         let group_w: f64 = rows.iter().map(|&r| weight(r)).sum();
         // A tie group belongs to the bin its midpoint falls in; open a new bin when the
-        // midpoint has crossed the current edge (and the current bin is not empty).
+        // midpoint has crossed the current edge (and the current bin is not empty). A group
+        // heavy enough to cross several edges at once skips them all: the edges are fixed,
+        // so the rows after it are still cut at equal shares, never into near-empty bins.
         let midpoint = cum_w + group_w / 2.0;
-        while midpoint >= next_edge && current.n_rows > 0 && bins.len() + 1 < n_bins {
-            bins.push(current.finish());
-            current = Accumulator::default();
-            next_edge += bin_width;
+        if midpoint >= next_edge && bin_rows > 0 && bin + 1 < n_bins {
+            bin += 1;
+            bin_rows = 0;
+            while midpoint >= next_edge {
+                next_edge += bin_width;
+            }
         }
         for &r in rows {
-            current.add(y[r], mu[r], weight(r));
+            index[r] = bin;
         }
+        bin_rows += rows.len();
         cum_w += group_w;
     }
-    if current.n_rows > 0 {
-        bins.push(current.finish());
+    Ok(index)
+}
+
+/// Actual / expected on a grid: cell `(i, j)` (row-major, `i * n_b + j`) holds the rows whose
+/// `index_a` is `i` and `index_b` is `j`. With `n_b == 1` this is the one-way table; with two
+/// features it is the interaction view that finds the segment a one-way A/E averages away.
+/// An empty cell has `n_rows == 0`, zero weight and NaN means.
+///
+/// # Errors
+/// As [`calibration_table`]; an index out of range or of the wrong length.
+pub fn grid_table(
+    index_a: &[usize],
+    n_a: usize,
+    index_b: &[usize],
+    n_b: usize,
+    y: &[f64],
+    mu: &[f64],
+    w: Option<&[f64]>,
+) -> Result<Vec<CalibrationBin>, GlassError> {
+    validate(y, mu, w)?;
+    same_length("index_a", index_a, "y", y)?;
+    same_length("index_b", index_b, "y", y)?;
+    if index_a.iter().any(|&i| i >= n_a) || index_b.iter().any(|&j| j >= n_b) {
+        return Err(GlassError::BadArgument {
+            name: "index",
+            problem: "a bin index is outside the grid",
+            fix: "indices must be < n_a and < n_b",
+        });
     }
-    Ok(bins)
+    let weight = |row: usize| w.map_or(1.0, |w| w[row]);
+    let mut cells = vec![Accumulator::default(); n_a * n_b];
+    for (row, (&i, &j)) in index_a.iter().zip(index_b).enumerate() {
+        cells[i * n_b + j].add(y[row], mu[row], weight(row));
+    }
+    Ok(cells.iter().map(Accumulator::finish).collect())
 }
 
 /// One row of a double-lift table.
@@ -220,7 +274,7 @@ pub fn balance(y: &[f64], mu: &[f64], w: Option<&[f64]>) -> Result<f64, GlassErr
     Ok(actual / expected)
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct Accumulator {
     n_rows: usize,
     weight: f64,
@@ -321,6 +375,74 @@ mod tests {
         let bins = calibration_table(&[1.0, 2.0], &[0.5, 0.5], None, 10).unwrap();
         assert_eq!(bins.len(), 1);
         assert_eq!(bins[0].n_rows, 2);
+    }
+
+    #[test]
+    fn bin_index_reproduces_the_binned_table() {
+        let key = [3.0, 1.0, 2.0, 2.0, 5.0, 4.0, 2.0, 0.5];
+        let w = [1.0, 2.0, 1.0, 1.0, 0.5, 1.0, 1.0, 2.0];
+        let y = [1.0, 0.0, 2.0, 1.0, 3.0, 1.0, 0.0, 1.0];
+        let mu = [1.0, 1.0, 1.5, 1.5, 2.0, 1.0, 1.5, 0.5];
+        let idx = bin_index(&key, Some(&w), 3).unwrap();
+        // ties (the three 2.0s) share a bin; sorted order maps to non-decreasing bins
+        assert_eq!(idx[2], idx[3]);
+        assert_eq!(idx[3], idx[6]);
+        assert!(idx[7] <= idx[1] && idx[1] <= idx[2] && idx[2] <= idx[0]);
+        let table = binned_table(&key, &y, &mu, Some(&w), 3).unwrap();
+        let n = idx.iter().max().unwrap() + 1;
+        assert_eq!(table.len(), n);
+        let by_hand: Vec<f64> = (0..n)
+            .map(|b| {
+                (0..8)
+                    .filter(|&r| idx[r] == b)
+                    .map(|r| w[r] * y[r])
+                    .sum::<f64>()
+            })
+            .collect();
+        for (b, t) in table.iter().enumerate() {
+            assert!((t.actual * t.weight - by_hand[b]).abs() < 1e-12);
+        }
+    }
+
+    #[test]
+    fn a_heavy_tie_group_takes_the_edges_it_spans() {
+        // 60 rows tied at 0, then 40 distinct values: deciles must give the tie one bin and
+        // cut the remaining 40 rows at the fixed edges 70, 80, 90 -> four bins of 10
+        let key: Vec<f64> = (0..100)
+            .map(|i| if i < 60 { 0.0 } else { f64::from(i) })
+            .collect();
+        let idx = bin_index(&key, None, 10).unwrap();
+        let mut counts = vec![0; 10];
+        for &b in &idx {
+            counts[b] += 1;
+        }
+        assert_eq!(&counts[..5], &[60, 10, 10, 10, 10], "{counts:?}");
+        assert!(counts[5..].iter().all(|&c| c == 0));
+    }
+
+    #[test]
+    fn grid_marginals_are_the_one_way_tables() {
+        let a = [0, 0, 1, 1, 2, 2, 0, 1];
+        let b = [0, 1, 0, 1, 0, 1, 1, 1];
+        let y = [1.0, 2.0, 0.0, 1.0, 3.0, 1.0, 2.0, 0.0];
+        let mu = [1.0, 1.0, 1.5, 1.5, 2.0, 1.0, 1.5, 0.5];
+        let w = [1.0, 2.0, 1.0, 1.0, 0.5, 1.0, 1.0, 2.0];
+        let grid = grid_table(&a, 3, &b, 2, &y, &mu, Some(&w)).unwrap();
+        assert_eq!(grid.len(), 6);
+        let rows = grid_table(&a, 3, &[0; 8], 1, &y, &mu, Some(&w)).unwrap();
+        for i in 0..3 {
+            let wt: f64 = (0..2).map(|j| grid[i * 2 + j].weight).sum();
+            let wy: f64 = (0..2)
+                .map(|j| grid[i * 2 + j].weight * grid[i * 2 + j].actual)
+                .sum();
+            assert!((wt - rows[i].weight).abs() < 1e-12);
+            assert!((wy / wt - rows[i].actual).abs() < 1e-12);
+        }
+        // an empty cell is honest about it
+        let sparse = grid_table(&[0, 0], 2, &[0, 0], 2, &[1.0, 1.0], &[1.0, 1.0], None).unwrap();
+        assert_eq!(sparse[3].n_rows, 0);
+        assert!(sparse[3].actual_over_expected.is_nan());
+        assert!(grid_table(&[0, 2], 2, &[0, 0], 1, &[1.0, 1.0], &[1.0, 1.0], None).is_err());
     }
 
     #[test]

@@ -86,6 +86,40 @@ def test_ae_by_categorical_feature_is_the_grouped_ratio() -> None:
     assert payload["kind"] == "ae_by_feature" and payload["feature"] == "region"
 
 
+def test_ae_by_two_marginals_are_the_one_way_tables_and_cells_are_grouped_ratios() -> None:
+    region = rng.choice(["n", "s", "e"], size=N)
+    y = rng.poisson(1.0, size=N).astype(float)
+    mu = np.exp(rng.normal(0, 0.2, size=N))
+    g = residuals.ae_by_two(X.age, region, y, mu, W, names=("age", "region"), n_bins=5, label="m")
+    assert g.level_b == ["e", "n", "s"] and len(g.level_a) == 5
+    assert g.weight.shape == (5, 3) and g.weight.sum() == pytest.approx(W.sum())
+    one_way = residuals.ae_by_feature(X.age, y, mu, W, name="age", n_bins=5)
+    assert g.level_a == one_way.level
+    np.testing.assert_allclose(g.weight.sum(axis=1), one_way.weight, rtol=1e-12)
+    np.testing.assert_allclose(
+        (g.actual * g.weight).sum(axis=1) / g.weight.sum(axis=1), one_way.actual, rtol=1e-12
+    )
+    by_region = residuals.ae_by_feature(region, y, mu, W, name="region")
+    np.testing.assert_allclose(g.weight.sum(axis=0), by_region.weight, rtol=1e-12)
+    # every cell is the plain grouped ratio (pandas as the reference)
+    frame = pd.DataFrame({"row": g.level_a[0], "region": region, "wy": W * y, "wmu": W * mu})
+    codes = _core.bin_index(X.age.to_numpy(), W, 5)
+    frame["row"] = [g.level_a[c] for c in codes]
+    ref = frame.groupby(["row", "region"]).sum()
+    for i, la in enumerate(g.level_a):
+        for j, lb in enumerate(g.level_b):
+            assert g.actual_over_expected[i, j] == pytest.approx(
+                ref.loc[(la, lb), "wy"] / ref.loc[(la, lb), "wmu"]
+            )
+    assert g.weight_floor == pytest.approx(0.2 * W.sum() / 15)
+    assert "A/E by age (rows) and region (columns)" in str(g)
+    payload = g.to_dict()
+    assert payload["kind"] == "ae_by_two" and len(payload["actual_over_expected"]) == 5
+    # an empty cell is null-able, not an error
+    sparse = residuals.ae_by_two(["a", "a", "b"], ["p", "q", "p"], [1, 1, 1], [1, 1, 1])
+    assert sparse.n_rows[1, 1] == 0 and np.isnan(sparse.actual_over_expected[1, 1])
+
+
 def test_fails_early() -> None:
     with pytest.raises(ValueError, match="one of: deviance, pearson"):
         _core.residuals("studentised", "poisson", np.ones(2), np.ones(2))
