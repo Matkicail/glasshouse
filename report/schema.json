@@ -392,6 +392,137 @@
         }
       }
     },
+    "tournament": {
+      "type": "object",
+      "description": "Priced tasks only (not binary): every row goes to the cheapest model, ties split equally; per model the weight won, what it charged there, what it cost. pairs: one table per model pair; overall: all models at once.",
+      "required": [
+        "pairs",
+        "overall"
+      ],
+      "properties": {
+        "pairs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "labels",
+              "share",
+              "weight",
+              "predicted",
+              "actual",
+              "profit",
+              "actual_over_expected"
+            ],
+            "properties": {
+              "labels": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "share": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "weight": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "predicted": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "actual": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "profit": {
+                "type": "array",
+                "items": {
+                  "type": "number"
+                }
+              },
+              "actual_over_expected": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "overall": {
+          "type": "object",
+          "required": [
+            "labels",
+            "share",
+            "weight",
+            "predicted",
+            "actual",
+            "profit",
+            "actual_over_expected"
+          ],
+          "properties": {
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "share": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "weight": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "predicted": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "actual": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "profit": {
+              "type": "array",
+              "items": {
+                "type": "number"
+              }
+            },
+            "actual_over_expected": {
+              "type": "array",
+              "items": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "thresholds": {
       "type": "object",
       "description": "Binary tasks only: every decision metric precomputed at evenly spaced thresholds; the viewer's slider walks this grid.",

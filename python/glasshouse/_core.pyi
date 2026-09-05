@@ -82,6 +82,11 @@ def glm_fit(
     inference: bool = True,
     monotone: list[tuple[list[int], bool, bool]] | None = None,
 ) -> dict[str, Any]: ...
+def win_sets(
+    y: npt.NDArray[np.float64],
+    predictions: list[npt.NDArray[np.float64]],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+) -> dict[str, list[float]]: ...
 def lorenz_curve(
     y: npt.NDArray[np.float64],
     score: npt.NDArray[np.float64],

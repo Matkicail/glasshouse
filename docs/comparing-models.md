@@ -218,12 +218,16 @@ The tabs, in the order a reader meets them:
 
 - **Overview.** Where the data came from, how it was cleaned, and how it was split. Then
   the leaderboard: every model on the panel, held-out, with the naive row. Fit seconds per
-  model. Nothing on this screen is computed in the browser; every number is in the JSON.
+  model. For priced tasks, the tournament: every row goes to the cheapest model, and each
+  model is judged on the business it won. Nothing on this screen is computed in the
+  browser; every number is in the JSON.
 - **Compare.** Pick two models. Each metric says which one wins and by how much. The double
   lift chart is here: rows are ranked by the ratio of the two models' predictions and
   binned. In the bins where they disagree most (the ends), the line that sits on the actual
   line is the model to trust there. Between two models with similar deviance, this chart
-  settles it.
+  settles it. Above it, the pair's win sets: the share each model wins by pricing lower,
+  what it charges there and what that business costs. An A/E above 1 on a win set is
+  business won by under-pricing it.
 - **Curves.** Lorenz (with the Gini), lift (predicted vs actual by predicted decile), and
   calibration (actual over expected by decile, with the balance). For a binary task, ROC and
   precision-recall as well. Every curve has one line per model, same colour on every chart.

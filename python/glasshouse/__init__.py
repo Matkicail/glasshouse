@@ -20,6 +20,7 @@ from glasshouse import (
     residuals,
     scorecard,
     splits,
+    tournament,
 )
 from glasshouse.glm import GLM
 
@@ -40,5 +41,6 @@ __all__ = [
     "residuals",
     "scorecard",
     "splits",
+    "tournament",
 ]
 __version__ = "0.0.1"

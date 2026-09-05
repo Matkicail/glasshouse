@@ -53,6 +53,17 @@ describe("glasshouse report viewer", () => {
     expect(root.querySelector("tr.primary th")?.textContent).toContain("deviance");
     expect(root.querySelector(".provenance pre")?.textContent).toContain("made up");
     expect(root.querySelectorAll("nav.tabs button").length).toBe(4);
+    // the tournament: one row per model, shares that add to 100 %
+    const rows = Array.from(root.querySelectorAll("table.tournament tbody tr"));
+    expect(rows.map((r) => r.querySelector("th")?.textContent)).toEqual(["glm", "mean"]);
+    const shares = rows.map((r) => parseFloat(r.querySelectorAll("td")[0]!.textContent ?? "0"));
+    expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 0);
+  });
+
+  it("binary reports have no tournament (a probability is not a price)", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(binaryText), root);
+    expect(root.querySelector("table.tournament")).toBeNull();
   });
 
   it("compare screen draws the pair's table and two charts", () => {
@@ -62,6 +73,7 @@ describe("glasshouse report viewer", () => {
     const pane = root.querySelector("#pane-compare") as HTMLElement;
     expect(pane.hidden).toBe(false);
     expect(pane.querySelectorAll("table.panel tbody tr").length).toBeGreaterThan(5);
+    expect(pane.querySelectorAll("table.tournament tbody tr").length).toBe(2);
     expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
   });
 

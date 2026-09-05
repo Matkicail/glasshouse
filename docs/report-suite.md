@@ -159,10 +159,9 @@ colours. Adopted into the viewer (the JSON already carried the data): the one-wa
 (actual vs predicted by feature bin with exposure bars), fit seconds on the leaderboard, and
 the residuals tab. Adopted into the backlog, in order of value:
 
-1. **Profit matrix / tournament** — for each model pair, the "win set" (policies where A
-   prices below B), its profit (predicted minus actual on the set), market share, and A/P;
-   plus an all-models tournament with ties split. The most decision-shaped view in the
-   reference; needs a new computation and a schema block.
+1. **Profit matrix / tournament** — DONE (2026-09-05): `glasshouse.tournament`, the
+   `tournament` block of the document (pairs + overall), the win-set table on Compare and
+   the tournament on Overview. Priced tasks only; ties split equally.
 2. **Two-feature A/P heatmap** — A/E on a bins-times-bins grid of two features, cells under a
    weight floor greyed out. Finds interaction segments one-way views miss.
 3. **Data overview tab** — per-feature distributions with the outcome rate overlaid.

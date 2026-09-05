@@ -15,6 +15,7 @@ pub mod metrics;
 pub mod ranking;
 pub mod regression;
 pub mod splines;
+pub mod tournament;
 
 pub use error::GlassError;
 pub use family::Family;

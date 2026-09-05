@@ -5,6 +5,10 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `tournament.win_sets` / `tournament.tournament` and the report's `tournament` block: every
+  row goes to the cheapest model (ties split), and each model is judged on the business it
+  won: share, predicted, actual, profit, A/E. The Compare tab shows the pair's win sets
+  next to the double lift; the Overview shows the all-model tournament. Priced tasks only.
 - `Smooth(monotone="increasing")` / `BSpline(monotone="decreasing")`: shape-constrained
   spline terms. The solver honours the constraint at every IRLS step (an active-set QP on
   the chain of coefficient differences), GCV and the balance property carry over, tied

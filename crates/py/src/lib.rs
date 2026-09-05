@@ -11,7 +11,9 @@ use glasshouse_core::constraints::Chain;
 use glasshouse_core::glm::{self, Data, Settings, Stop};
 use glasshouse_core::regression::{self, RegressionMetric};
 use glasshouse_core::Link;
-use glasshouse_core::{calibration, classification, metrics, ranking, splines, Family, GlassError};
+use glasshouse_core::{
+    calibration, classification, metrics, ranking, splines, tournament, Family, GlassError,
+};
 use numpy::PyReadonlyArray2;
 use numpy::{PyReadonlyArray1, PyUntypedArrayMethods};
 use pyo3::exceptions::PyValueError;
@@ -368,6 +370,31 @@ fn glm_fit<'py>(
     Ok(out)
 }
 
+/// Every row to the cheapest model, ties split. See `glasshouse.tournament`.
+#[pyfunction]
+#[pyo3(signature = (y, predictions, sample_weight=None))]
+fn win_sets<'py>(
+    py: Python<'py>,
+    y: Arr<'_>,
+    predictions: Vec<Arr<'_>>,
+    sample_weight: Option<Arr<'_>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let w = opt_slice(sample_weight.as_ref())?;
+    let slices: Vec<&[f64]> = predictions
+        .iter()
+        .map(|p| p.as_slice())
+        .collect::<Result<_, _>>()?;
+    let sets = tournament::win_sets(y.as_slice()?, &slices, w).map_err(to_py)?;
+    let out = PyDict::new(py);
+    out.set_item("weight", sets.iter().map(|s| s.weight).collect::<Vec<_>>())?;
+    out.set_item(
+        "predicted",
+        sets.iter().map(|s| s.predicted).collect::<Vec<_>>(),
+    )?;
+    out.set_item("actual", sets.iter().map(|s| s.actual).collect::<Vec<_>>())?;
+    Ok(out)
+}
+
 /// Lorenz curve points. See `glasshouse.curves.lorenz`.
 #[pyfunction]
 #[pyo3(signature = (y, score, sample_weight=None))]
@@ -428,6 +455,7 @@ fn bspline_design(x: Arr<'_>, knots: Vec<f64>, degree: usize) -> PyResult<(Vec<f
 fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(bspline_design, m)?)?;
     m.add_function(wrap_pyfunction!(lorenz_curve, m)?)?;
+    m.add_function(wrap_pyfunction!(win_sets, m)?)?;
     m.add_function(wrap_pyfunction!(double_lift_table, m)?)?;
     m.add_function(wrap_pyfunction!(glm_fit, m)?)?;
     m.add_function(wrap_pyfunction!(regression_metric, m)?)?;
