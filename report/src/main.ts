@@ -20,6 +20,7 @@ function renderReport(doc: ReportDoc, root: HTMLElement): void {
   clear(root);
   const screens: { id: string; title: string; draw: (d: ReportDoc, r: HTMLElement) => void }[] = [
     { id: "overview", title: "Overview", draw: overviewScreen },
+    ...(doc.data ? [{ id: "data", title: "Data", draw: dataScreen }] : []),
     { id: "compare", title: "Compare", draw: compareScreen },
     { id: "curves", title: "Curves", draw: curvesScreen },
     ...(doc.explain ? [{ id: "model", title: "Model", draw: modelScreen }] : []),

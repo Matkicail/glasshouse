@@ -27,7 +27,7 @@ from typing import Any, Literal
 import numpy as np
 
 from glasshouse import classification as clf
-from glasshouse import curves, residuals, tournament
+from glasshouse import curves, profile, residuals, tournament
 from glasshouse.arrays import F64, ArrayLike, to_vector
 from glasshouse.metrics import FamilyName
 from glasshouse.scorecard import Scorecard, compare, scorecard
@@ -108,7 +108,8 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
         exposure / claim count / none. For a rate task pass rates and exposure.
     features
         ``{name: column}`` to slice A/E and residuals by; numeric columns are binned by
-        weighted decile, categoricals by level.
+        weighted decile, categoricals by level. The same columns are profiled for the Data
+        tab (even-width bins with the mean outcome in each).
     time
         A time column for residuals over time (binned by weighted decile of time).
     power, threshold, n_bins
@@ -189,6 +190,7 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
         "comparisons": comparisons,
         "curves": _curves(task, yy, preds, w, n_bins),
         "residuals": _residuals(family, yy, preds, w, power, keep, feats, time, n_bins),
+        "data": _data(yy, w, feats),
     }
     if explain:
         doc["explain"] = explain
@@ -327,6 +329,22 @@ def _residuals(  # noqa: PLR0913, PLR0917
         }
         out[label] = entry
     return out
+
+
+def _data(y: F64, w: F64 | None, features: dict[str, ArrayLike]) -> dict[str, Any]:
+    """Build the Data tab: the outcome and weight distributions, each feature's profile.
+
+    Even-width bins here, unlike the equal-weight bins of the A/E tables: the point is the
+    shape of the data, so the weight must be free to vary across the bins.
+    """
+    return {
+        "target": profile.histogram(y, w, name="y").to_dict(),
+        "weight": None if w is None else profile.histogram(w, name="weight").to_dict(),
+        "features": [
+            profile.feature_profile(col, y, w, name=name).to_dict()
+            for name, col in features.items()
+        ],
+    }
 
 
 def _summary(r: F64) -> dict[str, float]:

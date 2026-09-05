@@ -690,6 +690,36 @@
           }
         }
       }
+    },
+    "data": {
+      "type": "object",
+      "description": "The data before any model: even-width histograms of the outcome and the weight, and each feature's weight and mean outcome per bin or level.",
+      "required": [
+        "target",
+        "weight",
+        "features"
+      ],
+      "properties": {
+        "target": {
+          "$ref": "#/$defs/histogram"
+        },
+        "weight": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/histogram"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "features": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/feature_profile"
+          }
+        }
+      }
     }
   },
   "$defs": {
@@ -786,6 +816,119 @@
         },
         "actual_over_expected": {
           "$ref": "#/$defs/numbers"
+        }
+      }
+    },
+    "histogram": {
+      "type": "object",
+      "required": [
+        "name",
+        "level",
+        "edges",
+        "n_rows",
+        "weight",
+        "summary"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "level": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edges": {
+          "$ref": "#/$defs/numbers"
+        },
+        "n_rows": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "weight": {
+          "$ref": "#/$defs/numbers"
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "mean",
+            "std",
+            "min",
+            "q05",
+            "q25",
+            "median",
+            "q75",
+            "q95",
+            "max",
+            "zero_share"
+          ],
+          "additionalProperties": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    "feature_profile": {
+      "type": "object",
+      "required": [
+        "feature",
+        "kind",
+        "level",
+        "edges",
+        "n_rows",
+        "weight",
+        "actual",
+        "n_levels"
+      ],
+      "properties": {
+        "feature": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "numeric",
+            "categorical"
+          ]
+        },
+        "level": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "edges": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/numbers"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "n_rows": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "weight": {
+          "$ref": "#/$defs/numbers"
+        },
+        "actual": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "n_levels": {
+          "type": "integer"
         }
       }
     }

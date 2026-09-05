@@ -177,7 +177,7 @@ function aeByFeatureSpec(tables, models) {
         title: `A/E by ${first ? first.feature : "feature"}`,
         caption: "1 is calibrated for that segment. Above 1 the model under-predicts there; below, it over-predicts. Small-weight bins are noisy.",
         data: [
-            ...tables.map((t) => ({ type: "bar", x: t.level, y: t.actual_over_expected, name: t.label, marker: { color: colourOf(models, t.label) }, text: t.weight.map((w) => `weight ${fmt(w)}`), hovertemplate: "%{x}<br>A/E %{y:.3f}<br>%{text}<extra></extra>" })),
+            ...tables.map((t) => ({ type: "bar", x: t.level, y: t.actual_over_expected, name: t.label, marker: { color: colourOf(models, t.label) }, textposition: "none", text: t.weight.map((w) => `weight ${fmt(w)}`), hovertemplate: "%{x}<br>A/E %{y:.3f}<br>%{text}<extra></extra>" })),
             // drawn last so the bars cannot hide it
             { type: "scatter", mode: "lines", x: [levels[0] ?? "", levels[levels.length - 1] ?? ""], y: [1, 1], name: "A/E = 1", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
         ],
@@ -273,6 +273,52 @@ function partialDependenceSpec(curves, models) {
         data,
         layout: { ...LAYOUT_BASE, barmode: "group", xaxis: { ...LAYOUT_BASE.xaxis, title: feature, ...(categorical ? { type: "category" } : {}) }, yaxis: { ...LAYOUT_BASE.yaxis, title: "mean prediction" } },
         table: { columns: ["model", feature, "mean", "fold low", "fold high"], rows },
+    };
+}
+function distributionSpec(h, title, caption, colour) {
+    // Bins are even up to the 99th percentile and the last one pools the tail to the maximum, so
+    // the x axis is the bin labels, not a number line: a tail bin a thousand times wider than
+    // the others would otherwise squash the body into a sliver.
+    const total = h.weight.reduce((a, b) => a + b, 0);
+    return {
+        title,
+        caption,
+        data: [{
+                type: "bar", x: h.level, y: h.weight, name: h.name, marker: { color: colour }, textposition: "none",
+                text: h.n_rows.map((n, i) => `${fmtInt(n)} rows · ${(100 * ((h.weight[i] ?? 0) / total)).toFixed(1)} %`),
+                hovertemplate: "%{x}<br>weight %{y:.4g}<br>%{text}<extra></extra>",
+            }],
+        layout: { ...LAYOUT_BASE, bargap: 0.05, xaxis: { ...LAYOUT_BASE.xaxis, title: h.name, type: "category" }, yaxis: { ...LAYOUT_BASE.yaxis, title: "weight" } },
+        table: { columns: ["bin", "rows", "weight"], rows: h.level.map((lv, i) => [lv, h.n_rows[i] ?? 0, fmt(h.weight[i])]) },
+    };
+}
+function profileSpec(p) {
+    const total = p.weight.reduce((a, b) => a + b, 0);
+    return {
+        title: `${p.feature}: where the weight is, and the mean outcome there`,
+        caption: p.kind === "numeric"
+            ? "Even-width bins up to the feature's 99th percentile, then one bin pooling the tail: the bars are the weight in each, the line the weighted mean outcome. Where the bars are thin the line is noise; a sharp turn where the bars are tall is a shape a model must reproduce."
+            : "One bar per level, heaviest first: the bars are the weight, the line the weighted mean outcome. A level with a high mean and little weight is where a one-hot coefficient gets its wide standard error.",
+        data: [
+            // bars on the base axis, the line on the overlay, so the line is never hidden (see onewaySpec)
+            {
+                type: "bar", x: p.level, y: p.weight, name: "weight", marker: { color: "#ececec" }, textposition: "none",
+                text: p.n_rows.map((n, i) => `${fmtInt(n)} rows · ${(100 * ((p.weight[i] ?? 0) / total)).toFixed(1)} %`),
+                hovertemplate: "%{x}<br>weight %{y:.4g}<br>%{text}<extra></extra>",
+            },
+            {
+                type: "scatter", mode: "lines+markers", x: p.level, y: p.actual, name: "mean outcome", yaxis: "y2",
+                line: { color: "#000000", width: 2.5 }, marker: { size: 5 }, connectgaps: false,
+            },
+        ],
+        layout: {
+            ...LAYOUT_BASE,
+            xaxis: { ...LAYOUT_BASE.xaxis, title: p.feature, type: "category" },
+            yaxis: { side: "right", showgrid: false, title: "weight", rangemode: "tozero" },
+            yaxis2: { ...LAYOUT_BASE.yaxis, overlaying: "y", side: "left", title: "mean outcome", rangemode: "tozero" },
+            legend: { orientation: "h", y: -0.25 },
+        },
+        table: { columns: ["level", "rows", "weight", "share", "mean outcome"], rows: p.level.map((lv, i) => [lv, p.n_rows[i] ?? 0, fmt(p.weight[i]), `${(100 * ((p.weight[i] ?? 0) / total)).toFixed(1)} %`, fmt(p.actual[i])]) },
     };
 }
 function histogramSpec(r, label, models) {
@@ -390,6 +436,67 @@ function overviewScreen(doc, root) {
         ]),
     ]);
     root.append(prov);
+}
+function dataScreen(doc, root) {
+    clear(root);
+    const data = doc.data;
+    if (!data) {
+        root.append(el("p", { class: "muted" }, ["No data profile in this document (it was built by an older glasshouse)."]));
+        return;
+    }
+    const t = data.target.summary;
+    root.append(el("p", { class: "lede" }, [
+        `${fmtInt(doc.provenance.n_rows)} rows · weight ${fmt(doc.provenance.weight_sum)} · mean outcome ${fmt(t["mean"])} · ${(100 * (t["zero_share"] ?? 0)).toFixed(1)} % of the weight on exact zeros. The data before any model: read this before the leaderboard.`,
+    ]));
+    // the outcome and the weight, summarised
+    const cols = ["mean", "std", "min", "q05", "median", "q95", "max", "zero_share"];
+    const head = el("tr", {}, [el("th", {}, ["column"]), ...cols.map((c) => el("th", {}, [c === "zero_share" ? "share at 0" : c]))]);
+    const row = (h) => el("tr", {}, [
+        el("th", {}, [h.name]),
+        ...cols.map((c) => el("td", { class: "num" }, [c === "zero_share" ? `${(100 * (h.summary[c] ?? 0)).toFixed(1)} %` : fmt(h.summary[c])])),
+    ]);
+    root.append(el("table", { class: "grid panel" }, [el("thead", {}, [head]), el("tbody", {}, [row(data.target), ...(data.weight ? [row(data.weight)] : [])])]));
+    root.append(el("p", { class: "caption" }, [
+        "Weighted by the same weight every score uses (exposure for a rate task). For a frequency task y is the claim rate per unit of exposure, so its mean is the book's frequency and the share at 0 is the policies with no claim.",
+    ]));
+    const charts = el("div", { class: "charts two" });
+    const c1 = el("div", { class: "chart" }), c2 = el("div", { class: "chart" });
+    charts.append(c1, c2);
+    root.append(charts);
+    renderChart(c1, distributionSpec(data.target, "The outcome", "Even-width bins of y up to its 99th percentile, then one bin pooling the tail to the maximum; the bars are the weight in each. A long tail is what the family's variance function has to carry; a spike at zero is the mass a Tweedie or a frequency model must get right first.", "#0072B2"));
+    if (data.weight)
+        renderChart(c2, distributionSpec(data.weight, "The weight", "Exposure, claim count, or whatever weights the scores. A book of short policies (weight near 0) scores noisier than it looks by row count.", "#999999"));
+    else
+        c2.append(el("p", { class: "muted" }, ["No weight given: every row counts once."]));
+    // the features
+    if (data.features.length === 0) {
+        root.append(el("p", { class: "muted" }, ["No features were passed to the report, so there is nothing to profile. Pass features= to see each one's distribution and outcome rate."]));
+        return;
+    }
+    root.append(el("h3", {}, ["Features"]));
+    const fhead = el("tr", {}, ["feature", "kind", "distinct", "shown as", "range or heaviest level"].map((h) => el("th", {}, [h])));
+    const fbody = el("tbody", {}, data.features.map((p) => {
+        const heaviest = p.level[0] ?? "";
+        const range = p.kind === "numeric" && p.edges ? `${fmt(p.edges[0])} to ${fmt(p.edges[p.edges.length - 1])}` : `${heaviest} (${(100 * ((p.weight[0] ?? 0) / p.weight.reduce((a, b) => a + b, 0))).toFixed(1)} %)`;
+        return el("tr", {}, [
+            el("th", {}, [p.feature]),
+            el("td", {}, [p.kind]),
+            el("td", { class: "num" }, [fmtInt(p.n_levels)]),
+            el("td", {}, [p.kind === "numeric" ? `${p.level.length} even bins` : `${p.level.length} level${p.level.length === 1 ? "" : "s"}`]),
+            el("td", {}, [range]),
+        ]);
+    }));
+    root.append(el("table", { class: "grid features" }, [el("thead", {}, [fhead]), fbody]));
+    const sel = select(data.features.map((p) => p.feature), data.features[0].feature);
+    const chart = el("div", { class: "chart" });
+    root.append(el("div", { class: "controls" }, ["Profile of ", sel]), chart);
+    const draw = () => {
+        const p = data.features.find((f) => f.feature === sel.value);
+        if (p)
+            renderChart(chart, profileSpec(p));
+    };
+    sel.addEventListener("change", draw);
+    draw();
 }
 function compareScreen(doc, root) {
     clear(root);
@@ -708,6 +815,7 @@ function renderReport(doc, root) {
     clear(root);
     const screens = [
         { id: "overview", title: "Overview", draw: overviewScreen },
+        ...(doc.data ? [{ id: "data", title: "Data", draw: dataScreen }] : []),
         { id: "compare", title: "Compare", draw: compareScreen },
         { id: "curves", title: "Curves", draw: curvesScreen },
         ...(doc.explain ? [{ id: "model", title: "Model", draw: modelScreen }] : []),

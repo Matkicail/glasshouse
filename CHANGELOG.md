@@ -5,6 +5,11 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `glasshouse.profile`: `histogram` and `feature_profile`, the data before any model. The
+  report gains a `data` block and a Data tab after the Overview: the outcome and the weight
+  summarised (weighted mean, spread, quantiles, share of the weight on exact zeros) and
+  drawn as even-width histograms, then one profile per feature with the weight in each bin
+  or level and the mean outcome there.
 - `glasshouse.explain`: `partial_dependence` and `permutation_importance` for any model
   through its predictions, and `coefficients` for glass-box ones. The bench computes them
   on held-out rows per fold and the report gains a Model tab: importance per model with the

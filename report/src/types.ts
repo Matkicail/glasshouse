@@ -150,6 +150,32 @@ interface ExplainDoc {
   coefficients: CoefficientsDoc | null;
 }
 
+interface HistogramDoc {
+  name: string;
+  level: string[]; // bin labels; the last is the pooled tail when there is one
+  edges: number[];
+  n_rows: number[];
+  weight: number[];
+  summary: Record<string, number>; // mean, std, min, q05, q25, median, q75, q95, max, zero_share
+}
+
+interface FeatureProfileDoc {
+  feature: string;
+  kind: "numeric" | "categorical";
+  level: string[];
+  edges: number[] | null;
+  n_rows: number[];
+  weight: number[];
+  actual: (number | null)[];
+  n_levels: number;
+}
+
+interface DataBlock {
+  target: HistogramDoc;
+  weight: HistogramDoc | null;
+  features: FeatureProfileDoc[];
+}
+
 interface ReportDoc {
   schema: "glasshouse-report/1";
   task: TaskInfo;
@@ -164,6 +190,7 @@ interface ReportDoc {
   thresholds?: Record<string, ThresholdGrid>;
   tournament?: TournamentBlock;
   explain?: Record<string, ExplainDoc>;
+  data?: DataBlock;
 }
 
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.
