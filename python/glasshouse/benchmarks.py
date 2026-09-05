@@ -13,7 +13,7 @@ from typing import Any
 
 from glasshouse import data, splits
 from glasshouse.bench import BenchResult, ModelSpec, TaskSpec, run
-from glasshouse.encoders import BSpline
+from glasshouse.encoders import BSpline, Smooth
 from glasshouse.foss import GlumPoisson, SklearnPoisson
 from glasshouse.gbdt import LightGBM
 from glasshouse.glm import GLM
@@ -147,7 +147,11 @@ BENCHMARKS: dict[str, Benchmark] = {
                         "Region": "target",
                         "DrivAge": "smooth",
                         "VehAge": "smooth",
-                        "BonusMalus": "smooth",
+                        # the business rule: a premium must not fall as the bonus-malus rises.
+                        # Free, the smooth wiggles where the high-BM data is thin (19 dips over
+                        # 50..150 on fold 0); held, it does not, on fewer edf and the same
+                        # held-out deviance
+                        "BonusMalus": Smooth(monotone="increasing"),
                         "LogDensity": "smooth",
                     },
                 ),
