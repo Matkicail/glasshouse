@@ -5,6 +5,7 @@
 
 pub mod calibration;
 pub mod classification;
+pub mod constraints;
 pub mod error;
 pub mod family;
 pub mod glm;

@@ -252,6 +252,38 @@ statsmodels `GLMGam` — it penalises the log-likelihood where we penalise the d
 (−2·loglik), so `S = 2·α·cov_der2` must and does reproduce its coefficients and edf to
 machine precision. mgcv itself needs R, which the test machines do not have.
 
+## Monotone constraints on spline terms
+
+`Smooth(monotone="increasing")` or `BSpline(monotone="decreasing")` fits the term under a
+shape constraint. A cubic B-spline is non-decreasing wherever its coefficients are
+non-decreasing along the knots (de Boor, *A Practical Guide to Splines*, ch. XI: the curve
+follows its control polygon), so the constraint is the chain `0 ≤ β₂ ≤ β₃ ≤ …` on the
+term's kept columns, the leading zero being the dropped first basis coefficient that the
+intercept absorbs. The condition is sufficient, not necessary: a monotone curve with a
+dipping coefficient near a boundary will have that dip ironed out.
+
+Each IRLS step then solves its weighted least squares subject to the chain, as a quadratic
+programme `min ½ β'Hβ − b'β  s.t. Aβ ≥ 0` with `H = X'WX + S` and `b = X'Wz`, by a primal
+active-set method. An active constraint is a *tie*: two adjacent coefficients equal, or a
+leading run held at zero. A tied run is one merged column of the design, so every
+subproblem is an ordinary Cholesky solve on a reduced matrix; ties are added when a step
+would cross a constraint and released when the KKT multiplier says the objective would
+rather move apart. Step-halving stays inside the constraints because a convex combination
+of two feasible points is feasible, and the fixed point satisfies the KKT conditions of the
+constrained penalised deviance. The intercept is never constrained, so the balance property
+survives.
+
+Coefficients an active tie joins count as one in the effective degrees of freedom and share
+a covariance entry; a run held at zero counts for nothing. GCV runs unchanged over the
+constrained fits.
+
+References: de Boor (2001); Pya & Wood, "Shape constrained additive models", *Statistics
+and Computing* 25 (2015), which reaches the same fits by reparameterisation. Golden
+reference: the constrained problem itself, solved exactly by enumerating every active set
+of the KKT system on a gaussian problem (`tests/test_monotone.py`); isotonic regression
+(pool-adjacent-violators) for the QP solver on its own. mgcv's `scam` needs R, which the
+test machines do not have.
+
 ## Encoders and leakage
 
 Leakage is a property of the split, not the transform. Every encoder is fitted on the

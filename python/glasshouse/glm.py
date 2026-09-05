@@ -112,9 +112,11 @@ class GLM:
         ``"smooth"``, ``"standardize"`` or ``"linear"`` (the default for any column not
         listed) — or a configured encoder instance, e.g. ``{"age": BSpline(df=8)}``. A
         ``"smooth"`` is a penalised spline whose wiggliness is chosen by GCV during ``fit``
-        (pin it with ``Smooth(lam=...)``). Encoders are fitted on the training rows only;
-        with a time-ordered ``fold`` target encoding is cumulative (past-only) automatically.
-        Columns not in a frame cannot have terms.
+        (pin it with ``Smooth(lam=...)``). ``Smooth(monotone="increasing")`` (or a
+        ``BSpline``) fits the term under a shape constraint: the curve cannot fall.
+        Encoders are fitted on the training rows only; with a time-ordered ``fold`` target
+        encoding is cumulative (past-only) automatically. Columns not in a frame cannot have
+        terms.
     fit_intercept : bool
         Prepend a column of ones. Turn off only if your design already has one.
     max_iter, tol : int, float
@@ -208,6 +210,7 @@ class GLM:
             self.max_iter,
             self.tol,
             penalty=penalty,
+            monotone=self._monotone_chains(),
         )
         self._fit = result
         self.feature_names_in_ = names
@@ -325,6 +328,7 @@ class GLM:
                 penalty=combined(lambdas),
                 warm_start=start,
                 inference=False,
+                monotone=self._monotone_chains(),
             )
             return float(r["deviance"]), float(r["edf"]), np.asarray(r["coef"], dtype=np.float64)
 
@@ -346,6 +350,24 @@ class GLM:
                 )
         self.lambda_ = {n: float(v) for n, v in lambdas.items()}
         return combined(self.lambda_)
+
+    def _monotone_chains(self) -> list[tuple[list[int], bool, bool]] | None:
+        """Return the shape constraints as chains of design columns for the solver.
+
+        A spline term with ``monotone`` set gives one chain over its columns: the fitted
+        coefficients must not decrease (or increase) along the knots. The chain is anchored
+        because the term's first basis column was dropped, so its coefficient is zero and the
+        first kept coefficient is constrained against that zero.
+        """
+        shift = 1 if self.fit_intercept else 0
+        chains = []
+        for name, enc in self.encoders_.items():
+            monotone = getattr(enc, "monotone", None)
+            if monotone is None:
+                continue
+            lo, hi = self._slices[name]
+            chains.append((list(range(lo + shift, hi + shift)), monotone == "increasing", True))
+        return chains or None
 
     def _penalty_bases(self, smooths: dict[str, encoders.Smooth], p: int) -> dict[str, F64]:
         """Embed each smooth's penalty at its own columns of the full design."""
