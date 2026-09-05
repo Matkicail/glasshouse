@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
@@ -10,7 +15,7 @@ import pandas as pd
 import pytest
 import statsmodels.api as sm
 
-from glasshouse import GLM
+from glasshouse import GLM, _core
 from glasshouse.metrics import balance
 
 Arr = npt.NDArray[np.float64]
@@ -180,3 +185,54 @@ def test_fails_early_and_clearly() -> None:
         GLM(family="poisson", link="probit").fit(X, np.abs(y))
     with pytest.raises(ValueError, match="do not match"):
         GLM(family="gaussian").fit(X, y).predict(X.rename(columns={"age": "AGE"}))
+
+
+def test_solver_warm_start_and_lean_mode() -> None:
+    """The two knobs the GCV search leans on: start from coefficients, skip the inference."""
+    y, _, offset = _targets("poisson")
+    design = np.ascontiguousarray(np.column_stack([np.ones(N), X.to_numpy()]))
+    cold = _core.glm_fit("poisson", "log", design, y, None, offset)
+    lean = _core.glm_fit("poisson", "log", design, y, None, offset, inference=False)
+    assert "cov" not in lean and "null_deviance" not in lean and "dispersion" not in lean
+    assert lean["coef"] == cold["coef"] and lean["deviance"] == cold["deviance"]
+    coef = np.asarray(cold["coef"], dtype=np.float64)
+    warm = _core.glm_fit("poisson", "log", design, y, None, offset, warm_start=coef)
+    assert warm["iterations"] == 1 and warm["stop"] == "converged"
+    np.testing.assert_allclose(warm["coef"], cold["coef"], rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(warm["cov"], cold["cov"], rtol=1e-8)
+    with pytest.raises(ValueError, match="warm_start"):
+        _core.glm_fit("poisson", "identity", design, y, None, offset, warm_start=-coef - 10.0)
+    with pytest.raises(ValueError, match="warm_start"):
+        _core.glm_fit("poisson", "log", design, y, None, offset, warm_start=coef[:-1])
+
+
+def test_fit_is_the_same_whatever_the_thread_count() -> None:
+    """Row sums are chunked and combined in a fixed order: one thread or sixteen, same bits."""
+    y, _, offset = _targets("poisson")
+    assert offset is not None
+    design = np.ascontiguousarray(np.column_stack([np.ones(N), X.to_numpy()]))
+    fits = [
+        subprocess.run(  # our own interpreter, fixed arguments
+            [
+                sys.executable,
+                "-c",
+                "import sys, json, numpy as np; from glasshouse import _core; "
+                "d = np.load(sys.argv[1]); "
+                "r = _core.glm_fit('poisson', 'log', d['x'], d['y'], None, d['o']); "
+                "print(json.dumps([r['coef'], r['deviance'], r['cov']]))",
+                str(_dump(design, y, offset)),
+            ],
+            env={**os.environ, "RAYON_NUM_THREADS": str(threads)},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for threads in (1, 3, 16)
+    ]
+    assert fits[0] == fits[1] == fits[2]
+
+
+def _dump(design: Arr, y: Arr, offset: Arr) -> Path:
+    path = Path(tempfile.mkdtemp()) / "fit.npz"
+    np.savez(path, x=design, y=y, o=offset)
+    return path

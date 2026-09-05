@@ -35,8 +35,8 @@ class FitTrace:
     """One row per IRLS iteration: what the solver did and why it stopped.
 
     ``stop`` is ``"converged"`` (relative deviance change below ``tol``), ``"max_iter"``
-    (still moving), or ``"no_improvement"`` (no step of any size lowered the deviance —
-    already at the optimum, or a separated / ill-posed problem).
+    (still moving), or ``"no_improvement"`` (every step, however small, raised the deviance
+    by more than ``tol``'s worth of noise: a separated / ill-posed problem).
     """
 
     iteration: npt.NDArray[np.int64]
@@ -56,30 +56,40 @@ class FitTrace:
         return "\n".join(lines)
 
 
+# A search evaluation: fit at this lambda, starting from these coefficients (or cold), and
+# return the deviance, the edf, and the converged coefficients for the next one to start from.
+_FitAt = Callable[[float, F64 | None], tuple[float, float, F64]]
+
+
 def _gcv_minimise(
-    fit_at: Callable[[float], tuple[float, float]],
+    fit_at: _FitAt,
     n_rows: int,
     trace: list[tuple[float, float, float]],
-) -> float:
+    start: F64 | None = None,
+) -> tuple[float, F64 | None]:
     """1-D GCV minimisation: a coarse log-spaced grid, then a finer pass around the winner.
 
     GCV is ``n * deviance / (n - edf)^2`` — mgcv's criterion with gamma = 1. The numerator
     rewards fit; the shrinking denominator charges for every effective coefficient spent.
     Each evaluation is appended to ``trace`` as ``(lambda, gcv, edf)``.
+
+    Neighbouring lambdas have neighbouring optima, so each fit warm-starts from the previous
+    one and the fine pass from the coarse winner: the same fixed points, reached in a couple
+    of iterations instead of seven. Returns the chosen lambda and its coefficients.
     """
 
-    def sweep(grid: F64) -> float:
-        best_lam, best = float(grid[0]), float("inf")
+    def sweep(grid: F64, start: F64 | None) -> tuple[float, F64 | None]:
+        best_lam, best, best_coef, coef = float(grid[0]), float("inf"), start, start
         for lam in grid:
-            deviance, edf = fit_at(float(lam))
+            deviance, edf, coef = fit_at(float(lam), coef)
             gcv = n_rows * deviance / (n_rows - edf) ** 2
             trace.append((float(lam), float(gcv), float(edf)))
             if gcv < best:
-                best_lam, best = float(lam), float(gcv)
-        return best_lam
+                best_lam, best, best_coef = float(lam), float(gcv), coef
+        return best_lam, best_coef
 
-    coarse = sweep(np.logspace(-4.0, 7.0, 23))
-    return sweep(np.logspace(np.log10(coarse) - 0.5, np.log10(coarse) + 0.5, 9))
+    coarse, coef = sweep(np.logspace(-4.0, 7.0, 23), start)
+    return sweep(np.logspace(np.log10(coarse) - 0.5, np.log10(coarse) + 0.5, 9), coef)
 
 
 @dataclass
@@ -299,7 +309,9 @@ class GLM:
                 total += lambdas[name] * base
             return np.ascontiguousarray(total)
 
-        def fit_at(lambdas: dict[str, float]) -> tuple[float, float]:
+        def fit_at(lambdas: dict[str, float], start: F64 | None) -> tuple[float, float, F64]:
+            # lean: the search reads deviance, edf and coefficients; the null model and the
+            # covariances wait for the final fit
             r = _core.glm_fit(
                 self.family,
                 self._link_name(),
@@ -311,20 +323,27 @@ class GLM:
                 self.max_iter,
                 self.tol,
                 penalty=combined(lambdas),
+                warm_start=start,
+                inference=False,
             )
-            return float(r["deviance"]), float(r["edf"])
+            return float(r["deviance"]), float(r["edf"]), np.asarray(r["coef"], dtype=np.float64)
 
         lambdas = {n: (e.lam if e.lam is not None else 1.0) for n, e in smooths.items()}
         free = [n for n, e in smooths.items() if e.lam is None]
         self.gcv_ = {n: [] for n in free}
+        start: F64 | None = None
         for _ in range(2 if len(free) > 1 else 1):
             for name in free:
                 # `lambdas` is shared state on purpose: each 1-D search sees the others'
                 # current values, which is what makes the sweeps coordinate descent
-                def fit_at_lam(lam: float, _name: str = name) -> tuple[float, float]:
-                    return fit_at({**lambdas, _name: lam})
+                def fit_at_lam(
+                    lam: float, start: F64 | None, _name: str = name
+                ) -> tuple[float, float, F64]:
+                    return fit_at({**lambdas, _name: lam}, start)
 
-                lambdas[name] = _gcv_minimise(fit_at_lam, matrix.shape[0], self.gcv_[name])
+                lambdas[name], start = _gcv_minimise(
+                    fit_at_lam, matrix.shape[0], self.gcv_[name], start
+                )
         self.lambda_ = {n: float(v) for n, v in lambdas.items()}
         return combined(self.lambda_)
 

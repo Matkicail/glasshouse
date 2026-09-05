@@ -274,7 +274,7 @@ fn regression_metric(
 /// `penalty` is a row-major symmetric `p x p` matrix, already scaled by the smoothing
 /// parameter — the penalised deviance `D + beta' S beta` is what gets minimised.
 #[pyfunction]
-#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10, penalty=None))]
+#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, max_iter=100, tol=1e-10, penalty=None, warm_start=None, inference=true))]
 #[allow(clippy::too_many_arguments)]
 fn glm_fit<'py>(
     py: Python<'py>,
@@ -288,6 +288,8 @@ fn glm_fit<'py>(
     max_iter: usize,
     tol: f64,
     penalty: Option<PyReadonlyArray2<'_, f64>>,
+    warm_start: Option<Arr<'_>>,
+    inference: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let fam = Family::parse(family, power).map_err(to_py)?;
     let link_fn = Link::parse(link).map_err(to_py)?;
@@ -306,21 +308,25 @@ fn glm_fit<'py>(
         weights: w,
         offset: o,
     };
+    let start = opt_slice(warm_start.as_ref())?;
     let settings = Settings {
         max_iter,
         tol,
+        inference,
         ..Settings::default()
     };
-    let fit = glm::fit(fam, link_fn, data, pen, settings).map_err(to_py)?;
+    let fit = glm::fit(fam, link_fn, data, pen, start, settings).map_err(to_py)?;
     let out = PyDict::new(py);
     out.set_item("coef", fit.coef)?;
     out.set_item("mu", fit.mu)?;
     out.set_item("deviance", fit.deviance)?;
-    out.set_item("null_deviance", fit.null_deviance)?;
-    out.set_item("dispersion", fit.dispersion)?;
     out.set_item("edf", fit.edf)?;
-    out.set_item("cov", fit.cov)?;
-    out.set_item("cov_robust", fit.cov_robust)?;
+    if let Some(inf) = fit.inference {
+        out.set_item("null_deviance", inf.null_deviance)?;
+        out.set_item("dispersion", inf.dispersion)?;
+        out.set_item("cov", inf.cov)?;
+        out.set_item("cov_robust", inf.cov_robust)?;
+    }
     out.set_item("n_rows", fit.n_rows)?;
     out.set_item("n_features", fit.n_features)?;
     out.set_item("iterations", fit.iterations)?;
