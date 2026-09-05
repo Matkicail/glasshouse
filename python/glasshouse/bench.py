@@ -48,9 +48,9 @@ class TaskSpec:
     """How a dataset is modelled and scored.
 
     ``exposure`` names the weight column; for a rate task (``rate=True``) the model gets
-    ``offset = log(exposure)``, and scoring uses ``y / exposure`` vs ``mu / exposure`` weighted
-    by exposure. For everything else the weight is passed as ``sample_weight`` and scoring is
-    on the raw scale.
+    ``offset = log(exposure)``, and scoring uses ``y / exposure`` vs the model's rate
+    (``predict`` with no offset) weighted by exposure. For everything else the weight is passed
+    as ``sample_weight`` and scoring is on the raw scale.
     """
 
     family: FamilyName
@@ -287,11 +287,8 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
         frame, task, models, folds, n_bins, weight_fit, offset, y, expo, progress=progress
     )
     scored = ~np.isnan(next(iter(pooled.values())))  # rows that were in some test fold
-    y_s, _, w_s = _scoring_scale(task, y[scored], y[scored], None if expo is None else expo[scored])
-    preds_s = {
-        label: _scoring_scale(task, y[scored], p[scored], None if expo is None else expo[scored])[1]
-        for label, p in pooled.items()
-    }
+    y_s, w_s = _scored(task, y[scored], None if expo is None else expo[scored])
+    preds_s = {label: p[scored] for label, p in pooled.items()}
     feature_cols = {
         name: np.asarray(
             frame[name].to_numpy() if hasattr(frame[name], "to_numpy") else frame[name]
@@ -348,13 +345,17 @@ def _fit_folds(  # noqa: PLR0913, PLR0917 — internal plumbing shared by run()
             model = spec.make()
             model.fit(frame[spec.columns], y, sample_weight=weight_fit, offset=offset, fold=fold)
             te = fold.test_idx
-            off_te = None if offset is None else offset[te]
-            mu = model.predict(frame[spec.columns].iloc[te], offset=off_te)
-            pooled[spec.label][te] = mu
-            y_s, mu_s, w_s = _scoring_scale(task, y[te], mu, None if expo is None else expo[te])
+            # No offset at prediction time: for a rate task this is the model's rate per unit
+            # of exposure, scored against y / exposure with exposure as the weight. Predicting
+            # with the offset and dividing by exposure gives the same rate in exact arithmetic
+            # but breaks exact ties by rounding, and a tie-aware Gini then moves at the fourth
+            # decimal with the solver's last bits. (A non-rate task has no offset anyway.)
+            pred = model.predict(frame[spec.columns].iloc[te])
+            pooled[spec.label][te] = pred
+            y_s, w_s = _scored(task, y[te], None if expo is None else expo[te])
             card = scorecard(
                 y_s,
-                mu_s,
+                pred,
                 family=task.family,
                 sample_weight=w_s,
                 power=task.power,
@@ -384,13 +385,15 @@ def _check_columns(
         raise ValueError(msg)
 
 
-def _scoring_scale(
-    task: TaskSpec, y: F64, mu: F64, expo: F64 | None
-) -> tuple[F64, F64, F64 | None]:
-    """Rates per unit of exposure for a rate task; raw scale (with weight) otherwise."""
+def _scored(task: TaskSpec, y: F64, expo: F64 | None) -> tuple[F64, F64 | None]:
+    """Return the outcome and weight a fold is scored on.
+
+    The rate per unit of exposure for a rate task (the prediction is already a rate); the raw
+    scale, with the weight, otherwise.
+    """
     if task.rate and expo is not None:
-        return y / expo, mu / expo, expo
-    return y, mu, expo
+        return y / expo, expo
+    return y, expo
 
 
 __all__ = ["BenchResult", "FoldResult", "Model", "ModelSpec", "TaskSpec", "run"]

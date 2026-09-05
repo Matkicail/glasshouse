@@ -70,6 +70,13 @@ The ordered-Lorenz Gini of Frees, Meyers & Cummings (rank by `score / base premi
 accumulate base premium) is the same computation with a different key and weight; it is
 deferred until there is a base model to compare against.
 
+Because tie groups are kept whole, the score must carry its ties exactly. For a rate model
+that means scoring the model's own rate (`predict` with no offset), not the offset
+prediction divided by exposure: the two agree in exact arithmetic, but the division splits
+rows with identical features into distinct floats, and on freMTPL2 that rounding noise moves
+the Gini at the fourth decimal and makes it depend on the solver's last bits. The bench
+scores the rate directly for this reason.
+
 References: Frees, Meyers & Cummings, "Summarizing Insurance Scores Using a Gini Index",
 *JASA* 106 (2011); "Insurance Ratemaking and a Gini Index", *J. Risk & Insurance* 81 (2014);
 Wüthrich, "Model selection with Gini indices under auto-calibration", *Eur. Actuarial J.* 13

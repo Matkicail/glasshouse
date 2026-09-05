@@ -4,6 +4,21 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 
 ## Unreleased
 
+### Changed
+- The GLM solver runs its row passes in parallel (rayon) with fixed-chunk partial sums, so a
+  fit is identical whatever the thread count; a full fit on a 540k-row fold went from
+  3.4 s to 0.4 s. The GCV search for smooths warm-starts each evaluation from the previous
+  one and skips the inference it does not read: one smooth on that fold went from 65 s to
+  8 s. `_core.glm_fit` gains `warm_start=` and `inference=`.
+- `fremtpl2_challengers` gains a `glm_smooth` row (GCV smooths on the four numeric
+  features), and all four benchmarks are re-pinned on the fixes below.
+
+### Fixed
+- `bench` scored rate tasks on `mu / exposure`, which breaks exact ties by rounding and let
+  the Gini of a model with many identical rows move at the fourth decimal with the solver's
+  last bits. It now scores the model's rate (`predict` with no offset); the pins are stable
+  to 1e-6 across solver changes again.
+
 ### Added
 - `encoders.Smooth` and GLM `terms={"age": "smooth"}`: penalised P-spline smooths whose
   wiggliness is chosen by GCV during `fit` (pin it with `Smooth(lam=...)`). The model gains

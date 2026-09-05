@@ -19,4 +19,4 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | f1 | **0.72091 ± 0.036** | 0 |
 | balance | **1.0043 ± 0.047** | 1 |
 
-Fit time (all folds): logistic 5.2s.
+Fit time (all folds): logistic 2.2s.

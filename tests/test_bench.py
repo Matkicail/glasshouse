@@ -14,6 +14,7 @@ from glasshouse import GLM, bench, report, splits
 from glasshouse.bench import ModelSpec, TaskSpec
 from glasshouse.benchmarks import run_named
 from glasshouse.cli import main
+from glasshouse.metrics import gini
 
 rng = np.random.default_rng(10)
 N = 3000
@@ -46,6 +47,30 @@ def test_run_scores_every_model_on_every_fold_and_pools_curves() -> None:
     assert all(r.card.naive["d2"] == pytest.approx(0.0, abs=1e-12) for r in res.folds)
     assert res.naive_summary()["d2"][0] == pytest.approx(0.0, abs=1e-12)
     assert [t["feature"] for t in res.doc["residuals"]["full"]["by_feature"]] == ["region"]
+
+
+def test_rate_task_is_scored_on_the_rate_so_exact_ties_stay_ties() -> None:
+    """Rows with identical features must score as one tie group whatever their exposure.
+
+    Predicting with the offset and dividing by exposure gives the same rate in exact
+    arithmetic but not in floats, and a tie-aware Gini then depends on rounding noise.
+    """
+    tied = df.assign(age=np.round(df.age / 10) * 10)  # seven distinct ages: many exact ties
+    fold = splits.kfold(N, k=2, seed=3)[0]
+    models = [ModelSpec("full", MODELS[1].make, ["region", "age"])]
+    res = bench.run(tied, TASK, models, splits.Splits((fold,), "random", N, {}))
+    te = fold.test_idx
+    y, e = tied.ClaimNb.to_numpy(), tied.Exposure.to_numpy()
+    m = GLM(family="poisson", terms={"region": "onehot"}).fit(
+        tied[["region", "age"]], y, offset=np.log(e), fold=fold
+    )
+    rate = m.predict(tied[["region", "age"]].iloc[te])
+    assert len(np.unique(rate)) == 21  # 3 regions x 7 ages
+    expected = gini(y[te] / e[te], rate, sample_weight=e[te])
+    assert res.folds[0].card.metrics["gini"] == expected
+    divided = m.predict(tied[["region", "age"]].iloc[te], offset=np.log(e[te])) / e[te]
+    assert len(np.unique(divided)) > 21  # the ties rounding breaks
+    assert gini(y[te] / e[te], divided, sample_weight=e[te]) != expected
 
 
 def test_report_json_markdown_and_html(tmp_path: Path) -> None:
