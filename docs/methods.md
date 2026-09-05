@@ -252,6 +252,51 @@ statsmodels `GLMGam` — it penalises the log-likelihood where we penalise the d
 (−2·loglik), so `S = 2·α·cov_der2` must and does reproduce its coefficients and edf to
 machine precision. mgcv itself needs R, which the test machines do not have.
 
+## Elastic-net (lasso, ridge) GLM
+
+`GLM(alpha=a, l1_ratio=r)` minimises, in glmnet's and glum's convention,
+
+`D(β) / (2 Σw) + a · ( r · Σ_j |β_j| + (1 − r)/2 · Σ_j β_j² )`
+
+over every column but the intercept, `D` being the total weighted deviance. `r = 1` is the
+lasso, `r = 0` ridge. The same `alpha` therefore means the same model here, in glum and in
+glmnet (with `standardize = FALSE`); the golden test checks that directly. Columns are
+penalised on their own scale, so a column measured in thousands is penalised less than one
+measured in units: standardise first (`terms={"x": "standardize"}`) when the features are
+not comparable.
+
+Each IRLS step solves its weighted least squares as the penalised quadratic problem by
+cyclic coordinate descent with soft-thresholding (Friedman, Hastie & Tibshirani, *JSS* 33,
+2010): coefficient `j` moves to `S(ρ_j, Σw·a·r) / (Σ_i W_i x_ij² + Σw·a·(1 − r))`, with
+`ρ_j` the weighted partial-residual correlation and `S` the soft-threshold; full sweeps,
+then sweeps over the active set until it settles, then a confirming full sweep. The outer
+loop, its step-halving on the penalised deviance and the warm starts are the ones every
+GLM here uses. Exact zeros are exact: a coefficient the threshold switches off is `0.0`,
+not small.
+
+The effective degrees of freedom of a lasso fit count the non-zero coefficients, with the
+ridge part of an elastic-net shrinking that count as for any quadratic penalty (Zou,
+Hastie & Tibshirani, "On the degrees of freedom of the lasso", *Ann. Statist.* 35, 2007).
+Standard errors are not offered for an L1 fit: the selection is part of the estimator, and
+a covariance that ignores it would be wrong (refit the selected columns unpenalised if you
+need one, with the usual post-selection caveats). Ridge fits report the posterior
+covariance as the smooths do.
+
+`alpha="cv"` walks a path of `n_alphas` values, log-spaced from `alpha_max` (the largest
+gradient of half the mean deviance at the fit of the unpenalised columns, divided by
+`l1_ratio`; everything is zero from there up) down to `alpha_ratio · alpha_max`. On each
+inner fold (random k-fold on the training rows; a time-ordered outer fold is refused, as
+the inner folds would let the future score the past) the path is fitted with warm starts
+and scored by held-out mean deviance. `"min"` takes the lowest mean; `"1se"` takes the most
+penalised alpha within one standard error of it, the usual choice when the simpler model is
+worth a decimal. The path, the fold means, the standard errors and the number of non-zero
+coefficients are kept on the model (`path_`), so the choice can be read, not re-run.
+
+Golden references: glum `GeneralizedLinearRegressor` at the same `alpha` / `l1_ratio` for
+gaussian, poisson (with offset) and binomial, and the ridge case against the quadratic
+penalty solver with `S = Σw·a·I`; the coordinate-descent step against its own KKT
+conditions and the closed-form ridge.
+
 ## Win sets and the tournament
 
 Several models price the same rows; every row goes to the model whose prediction is lowest,

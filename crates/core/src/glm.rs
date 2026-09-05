@@ -9,21 +9,17 @@
 //! column if one is wanted. `offset` is added to the linear predictor (log exposure for a
 //! rate model). `w` are prior weights.
 //!
-//! Every pass over the rows runs in parallel over fixed-size chunks (rayon). Partial sums are
-//! formed per chunk and combined in chunk order, so a fit is bit-for-bit the same whatever
-//! the thread count — reproducible first, fast second.
-
-use rayon::prelude::*;
+//! Every pass over the rows runs in parallel over fixed-size chunks (see [`crate::par`]),
+//! so a fit is bit-for-bit the same whatever the thread count.
 
 use crate::constraints::{self, Chain};
+use crate::elastic::{self, CdSettings, ElasticNet};
 use crate::error::{all_values, same_length, GlassError};
 use crate::family::Family;
 use crate::linalg::Square;
 use crate::link::Link;
-
-/// Rows per parallel chunk. Small enough to feed every core on a modest fold, large enough
-/// that the per-chunk `p x p` partials are noise next to the row work.
-const CHUNK: usize = 4096;
+use crate::par::{chunk_sum, chunks, per_row, transpose};
+use rayon::prelude::*;
 
 /// One IRLS iteration, for the trace.
 #[derive(Debug, Clone, PartialEq)]
@@ -91,6 +87,50 @@ pub struct GlmFit {
     pub trace: Vec<TraceRow>,
 }
 
+/// What the fit is penalised with.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Penalty<'a> {
+    /// The ordinary GLM.
+    None,
+    /// `beta' S beta` with `S` a row-major symmetric `p x p` matrix, already scaled by the
+    /// smoothing parameter. Zero rows and columns leave those coefficients unpenalised.
+    Quadratic(&'a [f64]),
+    /// glmnet's lasso / ridge / elastic-net on the marked columns (see [`crate::elastic`]).
+    ElasticNet(ElasticNet<'a>),
+}
+
+impl Penalty<'_> {
+    /// The penalty term in deviance units: what is added to `D` to make the objective.
+    fn value(&self, coef: &[f64], weight_sum: f64) -> f64 {
+        match self {
+            Penalty::None => 0.0,
+            Penalty::Quadratic(s) => quad_form(s, coef),
+            Penalty::ElasticNet(en) => en.value(coef, weight_sum),
+        }
+    }
+
+    /// Add the penalty's curvature (of half the objective) to an information matrix.
+    fn add_to(&self, m: &mut Square, weight_sum: f64) {
+        match self {
+            Penalty::None => {}
+            Penalty::Quadratic(s) => {
+                for (v, add) in m.data.iter_mut().zip(*s) {
+                    *v += add;
+                }
+            }
+            Penalty::ElasticNet(en) => {
+                let ridge = en.ridge_diagonal(weight_sum);
+                for (j, &pen) in en.penalised.iter().enumerate() {
+                    if pen {
+                        let v = m.get(j, j) + ridge;
+                        m.set(j, j, v);
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// Knobs for the solver.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Settings {
@@ -98,6 +138,8 @@ pub struct Settings {
     /// Relative deviance change that counts as converged.
     pub tol: f64,
     pub max_halvings: usize,
+    /// The inner coordinate-descent loop of an elastic-net fit.
+    pub cd: CdSettings,
     /// Fit the null model and form the covariances. Off, the fit returns coefficients,
     /// deviance and edf only — all a smoothing-parameter search needs, at a third of the
     /// row work.
@@ -110,6 +152,7 @@ impl Default for Settings {
             max_iter: 100,
             tol: 1e-10,
             max_halvings: 20,
+            cd: CdSettings::default(),
             inference: true,
         }
     }
@@ -142,12 +185,12 @@ impl Data<'_> {
     }
 }
 
-/// Fit by IRLS, optionally with a quadratic penalty `beta' S beta` on the coefficients.
+/// Fit by IRLS, optionally penalised (see [`Penalty`]).
 ///
-/// `penalty` is a row-major symmetric `p x p` matrix `S`, already scaled by the smoothing
-/// parameter. Zero rows and columns (the intercept, plain linear terms) leave those
-/// coefficients unpenalised; `None` is the ordinary GLM. The penalised fit minimises the
-/// penalised deviance `D + beta' S beta` — the PIRLS fixed point.
+/// A penalised fit minimises the penalised deviance `D + penalty` — the PIRLS fixed point.
+/// For a quadratic penalty every step is a Cholesky solve; for an elastic-net it is a
+/// coordinate-descent solve of the same weighted least squares, so the outer loop, the
+/// step-halving and the warm starts are shared.
 ///
 /// `warm_start` are coefficients to start from instead of R's `mustart` — a converged fit at
 /// a neighbouring smoothing parameter, typically, which lands within a couple of iterations.
@@ -162,44 +205,47 @@ impl Data<'_> {
 ///
 /// # Errors
 /// Bad shapes; `y` outside the family's support; non-finite or negative weights; a
-/// rank-deficient design; a penalty that is not symmetric; a warm start of the wrong length,
-/// whose mean leaves the family's support, or that violates a constraint; a chain naming a
-/// column twice or out of range; `max_iter == 0`.
+/// rank-deficient design; a penalty that is not symmetric, or an elastic-net with a bad
+/// `alpha` / `l1_ratio` / mask, or combined with constraints; a warm start of the wrong
+/// length, whose mean leaves the family's support, or that violates a constraint; a chain
+/// naming a column twice or out of range; `max_iter == 0`.
 pub fn fit(
     family: Family,
     link: Link,
     data: Data<'_>,
-    penalty: Option<&[f64]>,
+    penalty: Penalty<'_>,
     warm_start: Option<&[f64]>,
     chains: &[Chain],
     settings: Settings,
 ) -> Result<GlmFit, GlassError> {
     validate(family, data, penalty, warm_start, chains, settings)?;
-    let state = irls(family, link, data, penalty, warm_start, chains, settings)?;
+    let problem = Problem::new(family, link, data, penalty, chains);
+    let state = irls(&problem, warm_start, settings)?;
 
-    // information matrix at the final mean, for the covariance and the effective dof; with
-    // constraints, on the reduced design the final ties imply
+    // information matrix at the final mean, for the covariance and the effective dof: on
+    // the reduced design when ties (constraints) or zeros (an L1 penalty) leave fewer free
+    // coefficients than columns
     let ww = working_weights(family, link, data, &state.eta, &state.mu);
     let xtwx = cross_product(data, &ww);
     let mut bread = xtwx.clone();
-    add_penalty(&mut bread, penalty);
-    let (inv, edf) = if chains.is_empty() {
+    penalty.add_to(&mut bread, problem.weight_sum);
+    let groups = problem.free_groups(&state.coef);
+    let (inv, edf) = if let Some(groups) = groups {
+        let inv_r = Square::inverse_with(&constraints::reduce(&bread, &groups).cholesky()?);
+        let edf = trace_product(&inv_r, &constraints::reduce(&xtwx, &groups));
+        (constraints::expand(&inv_r, &groups, data.n_features), edf)
+    } else {
         let inv = Square::inverse_with(&bread.cholesky()?);
         #[allow(clippy::cast_precision_loss)]
-        let edf = if penalty.is_none() {
+        let edf = if matches!(penalty, Penalty::None) {
             data.n_features as f64
         } else {
             trace_product(&inv, &xtwx)
         };
         (inv, edf)
-    } else {
-        let groups = constraints::groups_at(chains, &state.coef);
-        let inv_r = Square::inverse_with(&constraints::reduce(&bread, &groups).cholesky()?);
-        let edf = trace_product(&inv_r, &constraints::reduce(&xtwx, &groups));
-        (constraints::expand(&inv_r, &groups, data.n_features), edf)
     };
     let inference = if settings.inference {
-        Some(inference(family, link, data, &state, edf, &inv, settings)?)
+        Some(inference(&problem, &state, edf, &inv, settings)?)
     } else {
         None
     };
@@ -230,14 +276,13 @@ fn trace_product(a: &Square, b: &Square) -> f64 {
 
 /// The null model, the dispersion and both covariances at a converged fit.
 fn inference(
-    family: Family,
-    link: Link,
-    data: Data<'_>,
+    problem: &Problem<'_>,
     state: &State,
     edf: f64,
     inv: &Square,
     settings: Settings,
 ) -> Result<Inference, GlassError> {
+    let (family, link, data) = (problem.family, problem.link, problem.data);
     let dispersion = if family.fixed_dispersion() {
         1.0
     } else {
@@ -253,7 +298,7 @@ fn inference(
 
     // the intercept-only model with the same offset and weights: what a model must beat
     let ones = vec![1.0; data.n_rows];
-    let null = irls(
+    let null_problem = Problem::new(
         family,
         link,
         Data {
@@ -261,17 +306,75 @@ fn inference(
             n_features: 1,
             ..data
         },
-        None,
-        None,
+        Penalty::None,
         &[],
-        settings,
-    )?;
+    );
+    let null = irls(&null_problem, None, settings)?;
     Ok(Inference {
         null_deviance: null.deviance,
         dispersion,
         cov,
         cov_robust,
     })
+}
+
+/// Everything about the model the loop needs, gathered once.
+struct Problem<'a> {
+    family: Family,
+    link: Link,
+    data: Data<'a>,
+    penalty: Penalty<'a>,
+    chains: &'a [Chain],
+    /// `sum(w)` (or `n`): the elastic-net penalty's normaliser.
+    weight_sum: f64,
+    /// The design transposed, only for coordinate descent (it walks columns).
+    xt: Option<Vec<f64>>,
+}
+
+impl<'a> Problem<'a> {
+    fn new(
+        family: Family,
+        link: Link,
+        data: Data<'a>,
+        penalty: Penalty<'a>,
+        chains: &'a [Chain],
+    ) -> Self {
+        #[allow(clippy::cast_precision_loss)]
+        let weight_sum = data
+            .weights
+            .map_or(data.n_rows as f64, |w| chunk_sum(w.len(), |i| w[i]));
+        let xt = matches!(penalty, Penalty::ElasticNet(_))
+            .then(|| transpose(data.x, data.n_rows, data.n_features));
+        Self {
+            family,
+            link,
+            data,
+            penalty,
+            chains,
+            weight_sum,
+            xt,
+        }
+    }
+
+    /// The free coefficients at `coef`, grouped, when fewer than the columns: ties under
+    /// the constraints, or the non-zero (and unpenalised) columns of an L1 fit. `None` when
+    /// every column is its own free coefficient.
+    fn free_groups(&self, coef: &[f64]) -> Option<Vec<Vec<usize>>> {
+        if !self.chains.is_empty() {
+            return Some(constraints::groups_at(self.chains, coef));
+        }
+        if let Penalty::ElasticNet(en) = self.penalty {
+            if en.l1_ratio > 0.0 {
+                return Some(
+                    (0..coef.len())
+                        .filter(|&j| !en.penalised[j] || coef[j] != 0.0)
+                        .map(|j| vec![j])
+                        .collect(),
+                );
+            }
+        }
+        None
+    }
 }
 
 /// The state IRLS carries between iterations.
@@ -292,13 +395,8 @@ struct State {
 /// A cold start's mean is not the mean of any coefficient vector, so iteration 1 is always
 /// accepted; a warm start is a real fit and is judged from its first step. `warmed` says
 /// which.
-fn start(
-    family: Family,
-    link: Link,
-    data: Data<'_>,
-    penalty: Option<&[f64]>,
-    warm_start: Option<&[f64]>,
-) -> Result<(State, bool), GlassError> {
+fn start(problem: &Problem<'_>, warm_start: Option<&[f64]>) -> Result<(State, bool), GlassError> {
+    let (family, link, data) = (problem.family, problem.link, problem.data);
     let (coef, eta, mu, warmed) = if let Some(coef) = warm_start {
         let eta = linear_predictor(data, coef);
         let mu = per_row(data.n_rows, |i| link.inverse(eta[i]));
@@ -316,7 +414,7 @@ fn start(
         (vec![0.0; data.n_features], eta, mu, false)
     };
     let deviance = total_deviance(family, data, &mu);
-    let objective = deviance + quad_form(penalty, &coef);
+    let objective = deviance + problem.penalty.value(&coef, problem.weight_sum);
     let state = State {
         coef,
         eta,
@@ -331,15 +429,12 @@ fn start(
 
 /// The IRLS loop: linearise, solve, step-halve until the objective drops, repeat.
 fn irls(
-    family: Family,
-    link: Link,
-    data: Data<'_>,
-    penalty: Option<&[f64]>,
+    problem: &Problem<'_>,
     warm_start: Option<&[f64]>,
-    chains: &[Chain],
     settings: Settings,
 ) -> Result<State, GlassError> {
-    let (mut state, warmed) = start(family, link, data, penalty, warm_start)?;
+    let (family, link, data) = (problem.family, problem.link, problem.data);
+    let (mut state, warmed) = start(problem, warm_start)?;
 
     for iteration in 1..=settings.max_iter {
         // working response and weights at the current mean
@@ -348,7 +443,7 @@ fn irls(
             (state.eta[i] - data.offset_at(i))
                 + (data.y[i] - state.mu[i]) / link.mu_eta(state.eta[i])
         });
-        let proposal = weighted_least_squares(data, &z, &ww, penalty, chains, &state.coef)?;
+        let proposal = weighted_least_squares(problem, &z, &ww, &state.coef, settings)?;
 
         // step-halving: shrink toward the previous coefficients until the objective drops
         // (a convex combination of two feasible points, so the constraints hold throughout).
@@ -372,7 +467,7 @@ fn irls(
             } else {
                 f64::INFINITY
             };
-            let cand_obj = cand_dev + quad_form(penalty, &cand);
+            let cand_obj = cand_dev + problem.penalty.value(&cand, problem.weight_sum);
             let first_cold_step = iteration == 1 && !warmed;
             if cand_obj.is_finite() && (first_cold_step || cand_obj <= state.objective + slack) {
                 break Some((cand, cand_eta, cand_mu, cand_dev, cand_obj));
@@ -450,36 +545,6 @@ fn sandwich(
         }
     }
     out
-}
-
-// ---------------------------------------------------------------- row passes (parallel)
-
-/// The row ranges `[lo, hi)` of the fixed-size chunks, in order.
-fn chunks(n_rows: usize) -> impl IndexedParallelIterator<Item = (usize, usize)> {
-    (0..n_rows.div_ceil(CHUNK))
-        .into_par_iter()
-        .map(move |c| (c * CHUNK, ((c + 1) * CHUNK).min(n_rows)))
-}
-
-/// One value per row, computed in parallel; the order of the output is the order of the rows.
-fn per_row(n_rows: usize, f: impl Fn(usize) -> f64 + Sync) -> Vec<f64> {
-    let mut out = vec![0.0; n_rows];
-    out.par_chunks_mut(CHUNK)
-        .enumerate()
-        .for_each(|(c, chunk)| {
-            for (k, v) in chunk.iter_mut().enumerate() {
-                *v = f(c * CHUNK + k);
-            }
-        });
-    out
-}
-
-/// `sum_i f(i)`: sequential within each chunk, chunk partials added in chunk order.
-fn chunk_sum(n_rows: usize, f: impl Fn(usize) -> f64 + Sync) -> f64 {
-    let partials: Vec<f64> = chunks(n_rows)
-        .map(|(lo, hi)| (lo..hi).map(&f).sum::<f64>())
-        .collect();
-    partials.iter().sum()
 }
 
 /// `w * (d mu / d eta)^2 / V(mu)` per row.
@@ -564,44 +629,99 @@ fn weighted_rhs(data: Data<'_>, z: &[f64], ww: &[f64]) -> Vec<f64> {
     out
 }
 
-/// `m += S` (no-op without a penalty).
-fn add_penalty(m: &mut Square, penalty: Option<&[f64]>) {
-    if let Some(s) = penalty {
-        for (v, add) in m.data.iter_mut().zip(s) {
-            *v += add;
-        }
-    }
-}
-
-/// `beta' S beta`: the wiggliness the penalty charges.
-fn quad_form(penalty: Option<&[f64]>, coef: &[f64]) -> f64 {
-    let Some(s) = penalty else {
-        return 0.0;
-    };
+/// `beta' S beta`: the wiggliness a quadratic penalty charges.
+fn quad_form(s: &[f64], coef: &[f64]) -> f64 {
     let p = coef.len();
     (0..p)
         .map(|a| coef[a] * (0..p).map(|b| s[a * p + b] * coef[b]).sum::<f64>())
         .sum()
 }
 
-/// Solve `(X' W X + S) beta = X' W z`, subject to the chains if there are any (then the
-/// active-set solve starts from `start`, the current feasible coefficients).
+/// The penalised weighted least squares of one IRLS step, from `start` (the current
+/// coefficients): a Cholesky solve, an active-set solve under the constraints, or
+/// coordinate descent for an elastic-net.
 fn weighted_least_squares(
-    data: Data<'_>,
+    problem: &Problem<'_>,
     z: &[f64],
     ww: &[f64],
-    penalty: Option<&[f64]>,
-    chains: &[Chain],
     start: &[f64],
+    settings: Settings,
 ) -> Result<Vec<f64>, GlassError> {
+    let data = problem.data;
+    if let (Penalty::ElasticNet(en), Some(xt)) = (problem.penalty, problem.xt.as_ref()) {
+        let cd = elastic::CdProblem {
+            xt,
+            n_rows: data.n_rows,
+            ww,
+            z,
+            scale: problem.weight_sum * en.alpha,
+            l1_ratio: en.l1_ratio,
+            penalised: en.penalised,
+        };
+        return elastic::coordinate_descent(&cd, start, settings.cd);
+    }
     let mut xtwx = cross_product(data, ww);
-    add_penalty(&mut xtwx, penalty);
+    problem.penalty.add_to(&mut xtwx, problem.weight_sum);
     let rhs = weighted_rhs(data, z, ww);
-    if chains.is_empty() {
+    if problem.chains.is_empty() {
         let chol = xtwx.cholesky()?;
         return Ok(Square::solve_with(&chol, &rhs));
     }
-    constraints::solve_constrained(&xtwx, &rhs, chains, start)
+    constraints::solve_constrained(&xtwx, &rhs, problem.chains, start)
+}
+
+/// The smallest elastic-net `alpha` at which every penalised coefficient is zero: the
+/// largest gradient of half the mean deviance, at the fit of the unpenalised columns alone,
+/// divided by `l1_ratio` (floored at 0.001 as glmnet does, so a ridge path has a top too).
+/// The place a regularisation path starts.
+///
+/// # Errors
+/// As [`fit`] on the unpenalised columns.
+pub fn alpha_max(
+    family: Family,
+    link: Link,
+    data: Data<'_>,
+    l1_ratio: f64,
+    penalised: &[bool],
+    settings: Settings,
+) -> Result<f64, GlassError> {
+    let free: Vec<usize> = (0..data.n_features).filter(|&j| !penalised[j]).collect();
+    let mu = if free.is_empty() {
+        per_row(data.n_rows, |i| family.mu_start(data.y[i], data.weight(i)))
+    } else {
+        let sub: Vec<f64> = (0..data.n_rows)
+            .flat_map(|i| free.iter().map(move |&j| data.x[i * data.n_features + j]))
+            .collect();
+        let sub_data = Data {
+            x: &sub,
+            n_features: free.len(),
+            ..data
+        };
+        let lean = Settings {
+            inference: false,
+            ..settings
+        };
+        fit(family, link, sub_data, Penalty::None, None, &[], lean)?.mu
+    };
+    let eta: Vec<f64> = mu.iter().map(|&m| link.link(m)).collect();
+    #[allow(clippy::cast_precision_loss)]
+    let weight_sum = data
+        .weights
+        .map_or(data.n_rows as f64, |w| chunk_sum(w.len(), |i| w[i]));
+    let largest = (0..data.n_features)
+        .filter(|&j| penalised[j])
+        .map(|j| {
+            chunk_sum(data.n_rows, |i| {
+                data.weight(i) * (data.y[i] - mu[i]) * link.mu_eta(eta[i]) / family.variance(mu[i])
+                    * data.row(i)[j]
+            })
+            .abs()
+                / weight_sum
+        })
+        .fold(0.0_f64, f64::max);
+    // one part in 1e10 above the exact boundary, so a fit at alpha_max is all-zero despite
+    // rounding in the soft-threshold comparison
+    Ok(largest / l1_ratio.max(1e-3) * (1.0 + 1e-10))
 }
 
 /// Total weighted deviance (not the mean: the fitter compares sums).
@@ -614,7 +734,7 @@ fn total_deviance(family: Family, data: Data<'_>, mu: &[f64]) -> f64 {
 fn validate(
     family: Family,
     data: Data<'_>,
-    penalty: Option<&[f64]>,
+    penalty: Penalty<'_>,
     warm_start: Option<&[f64]>,
     chains: &[Chain],
     settings: Settings,
@@ -687,8 +807,10 @@ fn validate(
             f64::is_finite,
         )?;
     }
-    if let Some(s) = penalty {
-        validate_penalty(s, n_features)?;
+    match penalty {
+        Penalty::None => {}
+        Penalty::Quadratic(s) => validate_penalty(s, n_features)?,
+        Penalty::ElasticNet(en) => validate_elastic_net(en, n_features, chains)?,
     }
     validate_chains(chains, n_features)?;
     if let Some(c) = warm_start {
@@ -699,6 +821,44 @@ fn validate(
             name: "max_iter",
             problem: "must be at least 1",
             fix: "the default is 100",
+        });
+    }
+    Ok(())
+}
+
+/// `alpha >= 0`, `0 <= l1_ratio <= 1`, one flag per column, and no constraints alongside.
+fn validate_elastic_net(
+    en: ElasticNet<'_>,
+    n_features: usize,
+    chains: &[Chain],
+) -> Result<(), GlassError> {
+    if !(en.alpha.is_finite() && en.alpha >= 0.0) {
+        return Err(GlassError::BadArgument {
+            name: "alpha",
+            problem: "must be finite and >= 0",
+            fix: "0 is the unpenalised GLM; see alpha_max for where a path starts",
+        });
+    }
+    if !(0.0..=1.0).contains(&en.l1_ratio) {
+        return Err(GlassError::BadArgument {
+            name: "l1_ratio",
+            problem: "must be between 0 (ridge) and 1 (lasso)",
+            fix: "0.5 is the usual elastic-net compromise",
+        });
+    }
+    if en.penalised.len() != n_features {
+        return Err(GlassError::LengthMismatch {
+            left: "penalised",
+            left_len: en.penalised.len(),
+            right: "X columns",
+            right_len: n_features,
+        });
+    }
+    if !chains.is_empty() {
+        return Err(GlassError::BadArgument {
+            name: "elastic_net",
+            problem: "cannot be combined with monotone constraints",
+            fix: "fit the constrained smooth without the elastic-net, or the other way round",
         });
     }
     Ok(())
@@ -793,6 +953,7 @@ fn validate_penalty(s: &[f64], n_features: usize) -> Result<(), GlassError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::par::CHUNK;
 
     /// Two-column design: intercept + one feature.
     fn design(feature: &[f64]) -> Vec<f64> {
@@ -825,7 +986,7 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -844,7 +1005,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -872,7 +1033,7 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 3, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -889,7 +1050,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -900,7 +1061,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            Some(&zeros),
+            Penalty::Quadratic(&zeros),
             None,
             &[],
             Settings::default(),
@@ -926,7 +1087,7 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 2, &y),
-            Some(&s),
+            Penalty::Quadratic(&s),
             None,
             &[],
             Settings::default(),
@@ -955,7 +1116,7 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 2, &y),
-            Some(&s_loose),
+            Penalty::Quadratic(&s_loose),
             None,
             &[],
             Settings::default(),
@@ -980,7 +1141,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            Some(&s),
+            Penalty::Quadratic(&s),
             None,
             &[],
             Settings::default(),
@@ -992,7 +1153,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -1032,7 +1193,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 4, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -1042,7 +1203,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 4, &y),
-            None,
+            Penalty::None,
             None,
             &chains,
             Settings::default(),
@@ -1098,7 +1259,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 3, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -1108,7 +1269,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 3, &y),
-            None,
+            Penalty::None,
             None,
             &chains,
             Settings::default(),
@@ -1123,7 +1284,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 3, &y),
-            None,
+            Penalty::None,
             Some(&bad_start),
             &chains,
             Settings::default(),
@@ -1139,7 +1300,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 3, &y),
-            None,
+            Penalty::None,
             None,
             &twice,
             Settings::default(),
@@ -1157,7 +1318,7 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 2, &y),
-            Some(&s),
+            Penalty::Quadratic(&s),
             None,
             &[],
             Settings::default(),
@@ -1174,7 +1335,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),
@@ -1184,7 +1345,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             Some(&cold.coef),
             &[],
             Settings::default(),
@@ -1215,7 +1376,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             start_data,
-            None,
+            Penalty::None,
             Some(&far),
             &[],
             Settings::default(),
@@ -1236,7 +1397,7 @@ mod tests {
             Family::Poisson,
             Link::Identity,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             Some(&bad),
             &[],
             Settings::default(),
@@ -1248,7 +1409,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             Some(&short),
             &[],
             Settings::default(),
@@ -1269,7 +1430,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            Some(&s),
+            Penalty::Quadratic(&s),
             None,
             &[],
             Settings::default(),
@@ -1279,7 +1440,7 @@ mod tests {
             Family::Poisson,
             Link::Log,
             data(&x, 2, &y),
-            Some(&s),
+            Penalty::Quadratic(&s),
             None,
             &[],
             Settings {
@@ -1317,7 +1478,7 @@ mod tests {
             Family::Gaussian,
             Link::Identity,
             data(&x, 2, &y),
-            None,
+            Penalty::None,
             None,
             &[],
             Settings::default(),

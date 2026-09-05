@@ -6,12 +6,14 @@
 pub mod calibration;
 pub mod classification;
 pub mod constraints;
+pub mod elastic;
 pub mod error;
 pub mod family;
 pub mod glm;
 pub mod linalg;
 pub mod link;
 pub mod metrics;
+pub mod par;
 pub mod ranking;
 pub mod regression;
 pub mod splines;

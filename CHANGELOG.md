@@ -5,6 +5,11 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `GLM(alpha=..., l1_ratio=...)`: lasso, ridge and elastic-net GLMs by coordinate descent
+  inside the same IRLS, in glmnet's and glum's convention (golden against glum for three
+  families). `alpha="cv"` walks the path from `alpha_max` with warm starts and picks by
+  k-fold cross-validation (`"1se"` or `"min"`); the path stays on the model as `path_`.
+  Exact zeros; edf counts the active set; standard errors refused for an L1 fit.
 - `tournament.win_sets` / `tournament.tournament` and the report's `tournament` block: every
   row goes to the cheapest model (ties split), and each model is judged on the business it
   won: share, predicted, actual, profit, A/E. The Compare tab shows the pair's win sets

@@ -81,7 +81,19 @@ def glm_fit(
     warm_start: npt.NDArray[np.float64] | None = None,
     inference: bool = True,
     monotone: list[tuple[list[int], bool, bool]] | None = None,
+    elastic_net: tuple[float, float, list[bool]] | None = None,
 ) -> dict[str, Any]: ...
+def glm_alpha_max(
+    family: str,
+    link: str,
+    x: npt.NDArray[np.float64],
+    y: npt.NDArray[np.float64],
+    sample_weight: npt.NDArray[np.float64] | None = None,
+    offset: npt.NDArray[np.float64] | None = None,
+    power: float | None = None,
+    l1_ratio: float = 0.5,
+    penalised: list[bool] | None = None,
+) -> float: ...
 def win_sets(
     y: npt.NDArray[np.float64],
     predictions: list[npt.NDArray[np.float64]],
