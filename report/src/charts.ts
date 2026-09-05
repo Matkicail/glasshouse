@@ -132,8 +132,9 @@ function aeByFeatureSpec(tables: AEByFeature[], models: string[]): ChartSpec {
     title: `A/E by ${first ? first.feature : "feature"}`,
     caption: "1 is calibrated for that segment. Above 1 the model under-predicts there; below, it over-predicts. Small-weight bins are noisy.",
     data: [
-      { type: "scatter", mode: "lines", x: [levels[0] ?? "", levels[levels.length - 1] ?? ""], y: [1, 1], name: "A/E = 1", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
       ...tables.map((t) => ({ type: "bar", x: t.level, y: t.actual_over_expected, name: t.label, marker: { color: colourOf(models, t.label) }, text: t.weight.map((w) => `weight ${fmt(w)}`), hovertemplate: "%{x}<br>A/E %{y:.3f}<br>%{text}<extra></extra>" })),
+      // drawn last so the bars cannot hide it
+      { type: "scatter", mode: "lines", x: [levels[0] ?? "", levels[levels.length - 1] ?? ""], y: [1, 1], name: "A/E = 1", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
     ],
     layout: { ...LAYOUT_BASE, barmode: "group", xaxis: { ...(LAYOUT_BASE.xaxis as object), title: first ? first.feature : "", type: "category" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "actual / expected" } },
     table: { columns: ["model", "level", "weight", "predicted", "actual", "A/E"], rows },
@@ -144,18 +145,21 @@ function onewaySpec(tables: AEByFeature[], models: string[]): ChartSpec {
   const first = tables[0];
   const data: Record<string, unknown>[] = [];
   if (first) {
+    // Plotly draws an overlaying axis above the base axis. The bars go on the base axis and
+    // the lines on the overlay, so the lines are never hidden behind an opaque bar; the axis
+    // sides are swapped so the reader still sees the outcome on the left, weight on the right.
     data.push({
-      type: "bar", x: first.level, y: first.weight, name: "exposure", yaxis: "y2",
+      type: "bar", x: first.level, y: first.weight, name: "exposure",
       marker: { color: "#ececec" }, hovertemplate: "%{x}<br>weight %{y:.4g}<extra></extra>",
     });
     data.push({
-      type: "scatter", mode: "lines+markers", x: first.level, y: first.actual, name: "actual",
+      type: "scatter", mode: "lines+markers", x: first.level, y: first.actual, name: "actual", yaxis: "y2",
       line: { color: "#000000", width: 2.5 }, marker: { size: 5 },
     });
   }
   for (const t of tables) {
     data.push({
-      type: "scatter", mode: "lines+markers", x: t.level, y: t.predicted, name: t.label,
+      type: "scatter", mode: "lines+markers", x: t.level, y: t.predicted, name: t.label, yaxis: "y2",
       line: { color: colourOf(models, t.label), width: 2 }, marker: { size: 5 },
     });
   }
@@ -168,8 +172,8 @@ function onewaySpec(tables: AEByFeature[], models: string[]): ChartSpec {
     layout: {
       ...LAYOUT_BASE,
       xaxis: { ...(LAYOUT_BASE.xaxis as object), title: first ? first.feature : "", type: "category" },
-      yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "mean outcome" },
-      yaxis2: { overlaying: "y", side: "right", showgrid: false, title: "weight", rangemode: "tozero" },
+      yaxis: { side: "right", showgrid: false, title: "weight", rangemode: "tozero" },
+      yaxis2: { ...(LAYOUT_BASE.yaxis as object), overlaying: "y", side: "left", title: "mean outcome" },
       legend: { orientation: "h", y: -0.25 },
     },
     table: { columns: ["model", "level", "weight", "actual", "predicted"], rows },

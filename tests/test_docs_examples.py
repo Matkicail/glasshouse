@@ -15,6 +15,13 @@ from pathlib import Path
 
 import pytest
 
+try:  # example 1 fits LightGBM, which needs libomp at load time; skip with the fix named
+    import lightgbm  # noqa: F401
+except (ImportError, OSError) as _err:
+    pytest.skip(
+        f"lightgbm unavailable: {_err} (macOS: brew install libomp)", allow_module_level=True
+    )
+
 DOC = Path(__file__).resolve().parent.parent / "docs" / "comparing-models.md"
 
 
@@ -23,7 +30,6 @@ def _python_blocks(text: str) -> list[str]:
 
 
 def test_every_python_block_runs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    pytest.importorskip("lightgbm")  # example 1 fits LightGBM; the gbdt tests skip the same way
     blocks = _python_blocks(DOC.read_text(encoding="utf-8"))
     assert len(blocks) >= 5
     monkeypatch.chdir(tmp_path)  # the examples write reports/ into the working directory
