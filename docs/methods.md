@@ -70,6 +70,13 @@ The ordered-Lorenz Gini of Frees, Meyers & Cummings (rank by `score / base premi
 accumulate base premium) is the same computation with a different key and weight; it is
 deferred until there is a base model to compare against.
 
+Because tie groups are kept whole, the score must carry its ties exactly. For a rate model
+that means scoring the model's own rate (`predict` with no offset), not the offset
+prediction divided by exposure: the two agree in exact arithmetic, but the division splits
+rows with identical features into distinct floats, and on freMTPL2 that rounding noise moves
+the Gini at the fourth decimal and makes it depend on the solver's last bits. The bench
+scores the rate directly for this reason.
+
 References: Frees, Meyers & Cummings, "Summarizing Insurance Scores Using a Gini Index",
 *JASA* 106 (2011); "Insurance Ratemaking and a Gini Index", *J. Risk & Insurance* 81 (2014);
 Wüthrich, "Model selection with Gini indices under auto-calibration", *Eur. Actuarial J.* 13
@@ -153,9 +160,18 @@ score is pinned by tests: `D² = R² = Gini = 0`, `balance = 1`; for binomial `R
 With design `X` (intercept column included), link `g`, offset `o` and prior weights `w`, each
 iteration forms the working response `z = (eta − o) + (y − mu) / g'(mu)⁻¹` and working weights
 `W = w · (dmu/deta)² / V(mu)`, solves `(XᵀWX) β = XᵀWz` by Cholesky, and accepts the step only
-if the total deviance did not increase — otherwise the step toward the proposal is halved
-(up to 20 times). Convergence is a relative deviance change below `tol` (default `1e-10`; R
-uses `1e-8`). Starting means follow R's `mustart`. Every iteration is kept in the trace.
+if the total deviance did not increase by more than `tol`'s worth of noise — otherwise the
+step toward the proposal is halved (up to 20 times). Convergence is a relative deviance
+change below `tol` (default `1e-10`; R uses `1e-8`); a step that moves the deviance by less
+than that, either way, is accepted and counts as converged, so a solver started at its
+optimum stops after one iteration instead of halving twenty times. Starting means follow R's `mustart`, or the fit starts from supplied
+coefficients (a *warm start*: judged from its first step like any other, and allowed to
+converge at once). Every iteration is kept in the trace.
+
+Every pass over the rows (`XᵀWX`, `XᵀWz`, the linear predictor, the deviance, the sandwich)
+runs in parallel over fixed chunks of 4,096 rows. Each chunk forms its own partial sum and
+the partials are added in chunk order, so a fit is bit-for-bit identical whatever the thread
+count (`RAYON_NUM_THREADS` caps it). Reproducible first, fast second.
 
 Covariance `= φ · (XᵀWX)⁻¹` at the final mean, with dispersion `φ` fixed at 1 for Poisson and
 binomial and otherwise the Pearson estimate `Σ w (y − mu)² / V(mu) / (n − p)`. The null
@@ -221,6 +237,12 @@ free). Every `(λ, GCV, edf)` evaluated stays on the model in `gcv_`, so the cho
 read, not re-run. Because only the smooth's block is penalised, the intercept's score
 equation is untouched and the balance property survives penalisation exactly.
 
+The search is exact but not expensive: every evaluation is a converged penalised IRLS fit at
+that `λ`, warm-started from the previous evaluation's coefficients (the fine pass from the
+coarse winner) and skipping the null model and the covariances, which only the final fit
+needs. Neighbouring `λ` have neighbouring optima, so an evaluation typically takes one to
+three iterations instead of seven.
+
 The reported covariance is `φ (X'WX + S)⁻¹` (the Bayesian posterior covariance, mgcv's
 convention) and dispersion divides by `n − edf`.
 
@@ -248,8 +270,9 @@ training rows only (the GLM's `fold=` guarantees it), and:
 
 ## Numerical notes
 
-- Sums are plain `f64` accumulations in row order. Against scikit-learn on ~5k rows they agree
-  to `1e-12`; on millions of rows the accumulated error grows and pairwise or compensated
-  summation may be warranted — to be measured, not assumed, before it is changed.
+- Metric sums are plain `f64` accumulations in row order. Against scikit-learn on ~5k rows
+  they agree to `1e-12`; on millions of rows the accumulated error grows and pairwise or
+  compensated summation may be warranted — to be measured, not assumed, before it is changed.
+  The GLM solver's sums are chunked (see above), which is a fixed pairwise-by-chunk order.
 - Ties are exact float equality, everywhere, by one shared helper. Property tests that
   transform scores must use exact transforms (`s * 0.5`, `−s`), never `s*a + b` or `1 − s`.

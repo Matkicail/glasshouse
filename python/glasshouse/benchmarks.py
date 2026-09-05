@@ -137,6 +137,33 @@ BENCHMARKS: dict[str, Benchmark] = {
                 ],
             ),
             ModelSpec(
+                "glm_smooth",
+                lambda: GLM(
+                    family="poisson",
+                    terms={
+                        "Area": "onehot",
+                        "VehGas": "onehot",
+                        "VehBrand": "onehot",
+                        "Region": "target",
+                        "DrivAge": "smooth",
+                        "VehAge": "smooth",
+                        "BonusMalus": "smooth",
+                        "LogDensity": "smooth",
+                    },
+                ),
+                [
+                    "Area",
+                    "VehGas",
+                    "VehBrand",
+                    "Region",
+                    "DrivAge",
+                    "VehAge",
+                    "VehPower",
+                    "BonusMalus",
+                    "LogDensity",
+                ],
+            ),
+            ModelSpec(
                 "lightgbm",
                 lambda: LightGBM(
                     family="poisson", categorical=["Area", "VehGas", "VehBrand", "Region"]

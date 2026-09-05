@@ -26,8 +26,10 @@ uv sync        # builds the Rust extension into .venv
 ./check.sh     # the gate: fmt, clippy, cargo test, ruff, mypy, pytest
 ```
 
-See `COMMANDS.md` for what every command does and why, `CLAUDE.md` for the rules, and
-`docs/methods.md` for the formulas, references and the weights convention.
+See `docs/comparing-models.md` for the comparison report end to end (GLM vs GBM vs GCV
+smooth, binary and regression tasks, reading the tabs), `COMMANDS.md` for what every
+command does and why, `CLAUDE.md` for the rules, and `docs/methods.md` for the formulas,
+references and the weights convention.
 
 ## Licence
 

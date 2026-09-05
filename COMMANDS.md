@@ -36,6 +36,7 @@ Tools on Windows).
 | `cd report && npm run check` | build → checked-in `dist/report.js` must be unchanged → vitest on the fixture → size budget → `npm audit` | The viewer's gate. If `dist` differs, you forgot to rebuild after editing `src/` |
 | `uv run python -c "from glasshouse import report; ..."; r.to_html('out.html')` | Writes one self-contained HTML report | Double-click to open; Plotly from a pinned CDN, tables if offline |
 | `uv run python tests/make_report_fixture.py` | Regenerates `tests/fixtures/report_small.json` | The document the TypeScript report tests render; regenerate when `report.build` changes shape (and bump `report/schema.json`) |
+| `RAYON_NUM_THREADS=4 uv run glasshouse bench fremtpl2_glm` | Caps the Rust solver at 4 threads (default: every core) | Results are identical whatever the count; cap it on a shared machine or to compare timings |
 | `GLASSHOUSE_NETWORK_TESTS=1 uv run pytest -k pinned` | Reruns the committed benchmark and checks the numbers match to 1e-6 | The regression test that stops numbers drifting silently; needs the cached data |
 
 ## 2. Where things live
@@ -46,7 +47,8 @@ Tools on Windows).
   `_core.pyi` is the type stub for the extension — update it when `crates/py/src/lib.rs` changes
   (`tests/test_stub_sync.py` fails if you forget).
 - `tests/` — pytest: golden tests vs scikit-learn/statsmodels/glum/R fixtures, hypothesis properties.
-- `docs/` — mkdocs-material (methods with citations, metrics guide, API). Tracked.
+- `docs/` — `methods.md` (formulas, citations, weights), `comparing-models.md` (the report
+  end to end, every example run by `tests/test_docs_examples.py`), `report-suite.md` (plan). Tracked.
 - `report/` — the TypeScript viewer: `schema.json` (the JSON contract), `src/*.ts`, `dist/report.js`
   (built, checked in), `template.html`, `test/`. Python `report.to_html` glues them.
 - `check.sh` — the gate. `COMMANDS.md` — this file. `CLAUDE.md` — the rules.
