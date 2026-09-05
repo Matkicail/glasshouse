@@ -321,6 +321,49 @@ function profileSpec(p) {
         table: { columns: ["level", "rows", "weight", "share", "mean outcome"], rows: p.level.map((lv, i) => [lv, p.n_rows[i] ?? 0, fmt(p.weight[i]), `${(100 * ((p.weight[i] ?? 0) / total)).toFixed(1)} %`, fmt(p.actual[i])]) },
     };
 }
+function heatmapSpec(g) {
+    // A/E is a ratio, so the colour scale is symmetric in log terms around 1: 0.5 and 2 are the
+    // same distance from calibrated. Thin cells (weight under the floor) are left blank and the
+    // plot background is grey, so a gap reads as "not enough data", not as "fine".
+    let extreme = 1;
+    const z = g.actual_over_expected.map((row, i) => row.map((v, j) => {
+        const thin = (g.weight[i]?.[j] ?? 0) < g.weight_floor;
+        if (thin || v === null || !Number.isFinite(v) || v <= 0)
+            return null;
+        extreme = Math.max(extreme, v, 1 / v);
+        return v;
+    }));
+    const span = Math.min(extreme, 2.5);
+    const text = g.level_a.map((la, i) => g.level_b.map((lb, j) => {
+        const w = g.weight[i]?.[j] ?? 0, n = g.n_rows[i]?.[j] ?? 0, ae = g.actual_over_expected[i]?.[j];
+        const thin = w < g.weight_floor;
+        return `${g.feature_a} ${la} · ${g.feature_b} ${lb}<br>A/E ${ae === null || ae === undefined ? "—" : fmt(ae, 3)}${thin ? " (thin)" : ""}<br>weight ${fmt(w)} · ${fmtInt(n)} rows`;
+    }));
+    const rows = [];
+    g.level_a.forEach((la, i) => g.level_b.forEach((lb, j) => {
+        const w = g.weight[i]?.[j] ?? 0;
+        rows.push([la, lb, fmt(w), fmtInt(g.n_rows[i]?.[j] ?? 0), w < g.weight_floor ? "thin" : fmt(g.actual_over_expected[i]?.[j], 3)]);
+    }));
+    const thinCount = g.weight.flat().filter((w) => w < g.weight_floor).length;
+    return {
+        title: `A/E by ${g.feature_a} and ${g.feature_b}`,
+        caption: `Blue is under-predicted (A/E above 1), red over-predicted; white is calibrated. Grey cells hold less than the weight floor (${fmt(g.weight_floor)}, a fifth of the average cell; ${thinCount} of ${g.weight.flat().length} cells) and are not shown. A one-way A/E of 1 on both axes can still hide a coloured corner here: that corner is the interaction a model is missing.`,
+        data: [{
+                type: "heatmap", x: g.level_b, y: g.level_a, z, text, hovertemplate: "%{text}<extra></extra>",
+                colorscale: [[0, "#B2182B"], [0.5, "#FFFFFF"], [1, "#2166AC"]],
+                zmin: 1 / span, zmax: span, zmid: 1, hoverongaps: false,
+                colorbar: { title: "A/E", thickness: 12, tickvals: [1 / span, 1, span], ticktext: [fmt(1 / span, 2), "1", fmt(span, 2)] },
+            }],
+        layout: {
+            ...LAYOUT_BASE,
+            plot_bgcolor: "#e6e6e6",
+            xaxis: { ...LAYOUT_BASE.xaxis, title: g.feature_b, type: "category", showgrid: false },
+            yaxis: { ...LAYOUT_BASE.yaxis, title: g.feature_a, type: "category", showgrid: false, automargin: true },
+            margin: { l: 96, r: 16, t: 36, b: 72 },
+        },
+        table: { columns: [g.feature_a, g.feature_b, "weight", "rows", "A/E"], rows },
+    };
+}
 function histogramSpec(r, label, models) {
     const edges = r.histogram.edges;
     const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
@@ -719,6 +762,20 @@ function residualsScreen(doc, root) {
         out.append(charts);
         renderChart(c1, histogramSpec(r, label, doc.models));
         renderChart(c2, scatterSpec(r, label, doc.models, doc.provenance.sample_rows));
+        const pairs = r.by_pair ?? [];
+        if (pairs.length) {
+            out.append(el("h3", {}, ["Segments: A/E by two features"]));
+            const pairSel = select(pairs.map((g) => `${g.feature_a} × ${g.feature_b}`), `${pairs[0].feature_a} × ${pairs[0].feature_b}`);
+            const heat = el("div", { class: "chart heatmap" });
+            out.append(el("div", { class: "controls" }, ["Pair ", pairSel]), heat);
+            const drawPair = () => {
+                const g = pairs[pairSel.selectedIndex];
+                if (g)
+                    renderChart(heat, heatmapSpec(g));
+            };
+            pairSel.addEventListener("change", drawPair);
+            drawPair();
+        }
     };
     sel.addEventListener("change", draw);
     draw();

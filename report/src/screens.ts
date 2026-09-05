@@ -323,6 +323,19 @@ function residualsScreen(doc: ReportDoc, root: HTMLElement): void {
     out.append(charts);
     renderChart(c1, histogramSpec(r, label, doc.models));
     renderChart(c2, scatterSpec(r, label, doc.models, doc.provenance.sample_rows));
+    const pairs = r.by_pair ?? [];
+    if (pairs.length) {
+      out.append(el("h3", {}, ["Segments: A/E by two features"]));
+      const pairSel = select(pairs.map((g) => `${g.feature_a} × ${g.feature_b}`), `${pairs[0]!.feature_a} × ${pairs[0]!.feature_b}`);
+      const heat = el("div", { class: "chart heatmap" });
+      out.append(el("div", { class: "controls" }, ["Pair ", pairSel]), heat);
+      const drawPair = () => {
+        const g = pairs[pairSel.selectedIndex];
+        if (g) renderChart(heat, heatmapSpec(g));
+      };
+      pairSel.addEventListener("change", drawPair);
+      drawPair();
+    }
   };
   sel.addEventListener("change", draw);
   draw();

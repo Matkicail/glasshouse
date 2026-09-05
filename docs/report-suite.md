@@ -162,8 +162,10 @@ the residuals tab. Adopted into the backlog, in order of value:
 1. **Profit matrix / tournament** — DONE (2026-09-05): `glasshouse.tournament`, the
    `tournament` block of the document (pairs + overall), the win-set table on Compare and
    the tournament on Overview. Priced tasks only; ties split equally.
-2. **Two-feature A/P heatmap** — A/E on a bins-times-bins grid of two features, cells under a
-   weight floor greyed out. Finds interaction segments one-way views miss.
+2. **Two-feature A/P heatmap** — DONE (2026-09-05): `residuals.ae_by_two` on a Rust
+   `grid_table` (the one binning rule, `bin_index`, shared with the one-way table), the
+   `by_pair` list on every residual entry (all pairs of `features`), and a heatmap per pair
+   on the Residuals tab with cells under the weight floor left blank.
 3. **Data overview tab** — DONE (2026-09-05): `glasshouse.profile`, the `data` block of the
    document (outcome and weight histograms with weighted summaries, one profile per
    feature: weight and mean outcome per even-width bin or level) and the Data tab after

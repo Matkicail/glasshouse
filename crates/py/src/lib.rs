@@ -110,6 +110,42 @@ fn calibration_table<'py>(
     Ok(out)
 }
 
+/// Equal-weight bin index per row, ties whole. See `glasshouse.residuals.ae_by_two`.
+#[pyfunction]
+#[pyo3(signature = (key, sample_weight=None, n_bins=10))]
+fn bin_index(key: Arr<'_>, sample_weight: Option<Arr<'_>>, n_bins: usize) -> PyResult<Vec<usize>> {
+    let w = opt_slice(sample_weight.as_ref())?;
+    calibration::bin_index(key.as_slice()?, w, n_bins).map_err(to_py)
+}
+
+/// A/E on an `n_a x n_b` grid of bin indices, row-major. See `glasshouse.residuals.ae_by_two`.
+#[pyfunction]
+#[pyo3(signature = (index_a, n_a, index_b, n_b, y, mu, sample_weight=None))]
+#[allow(clippy::too_many_arguments)]
+fn grid_table<'py>(
+    py: Python<'py>,
+    index_a: Vec<usize>,
+    n_a: usize,
+    index_b: Vec<usize>,
+    n_b: usize,
+    y: Arr<'_>,
+    mu: Arr<'_>,
+    sample_weight: Option<Arr<'_>>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let w = opt_slice(sample_weight.as_ref())?;
+    let cells = calibration::grid_table(
+        &index_a,
+        n_a,
+        &index_b,
+        n_b,
+        y.as_slice()?,
+        mu.as_slice()?,
+        w,
+    )
+    .map_err(to_py)?;
+    bins_dict(py, &cells)
+}
+
 /// Calibration-style table binned by any column. See `glasshouse.residuals.ae_by_feature`.
 #[pyfunction]
 #[pyo3(signature = (key, y, mu, sample_weight=None, n_bins=10))]
@@ -124,6 +160,14 @@ fn binned_table<'py>(
     let w = opt_slice(sample_weight.as_ref())?;
     let bins = calibration::binned_table(key.as_slice()?, y.as_slice()?, mu.as_slice()?, w, n_bins)
         .map_err(to_py)?;
+    bins_dict(py, &bins)
+}
+
+/// The calibration-bin columns as a dict of lists, once.
+fn bins_dict<'py>(
+    py: Python<'py>,
+    bins: &[calibration::CalibrationBin],
+) -> PyResult<Bound<'py, PyDict>> {
     let out = PyDict::new(py);
     out.set_item("n_rows", bins.iter().map(|b| b.n_rows).collect::<Vec<_>>())?;
     out.set_item("weight", bins.iter().map(|b| b.weight).collect::<Vec<_>>())?;
@@ -512,6 +556,8 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(pr_curve, m)?)?;
     m.add_function(wrap_pyfunction!(calibration_table, m)?)?;
     m.add_function(wrap_pyfunction!(binned_table, m)?)?;
+    m.add_function(wrap_pyfunction!(bin_index, m)?)?;
+    m.add_function(wrap_pyfunction!(grid_table, m)?)?;
     m.add_function(wrap_pyfunction!(residuals, m)?)?;
     m.add_function(wrap_pyfunction!(balance, m)?)?;
     m.add_function(wrap_pyfunction!(deviance, m)?)?;

@@ -74,6 +74,21 @@ interface AEByFeature extends Binned {
   level: string[];
 }
 
+interface AEGridDoc {
+  kind: "ae_by_two";
+  feature_a: string;
+  feature_b: string;
+  label: string;
+  level_a: string[];
+  level_b: string[];
+  n_rows: number[][];
+  weight: number[][];
+  predicted: (number | null)[][];
+  actual: (number | null)[][];
+  actual_over_expected: (number | null)[][];
+  weight_floor: number;
+}
+
 interface ResidualStats { mean: number; std: number; median: number; [q: string]: number }
 
 interface ResidualDoc {
@@ -82,6 +97,7 @@ interface ResidualDoc {
   histogram: { edges: number[]; counts: number[] };
   scatter: { fitted: number[]; deviance: number[]; actual: number[] };
   by_feature: AEByFeature[];
+  by_pair?: AEGridDoc[];
   over_time: AEByFeature | null;
 }
 

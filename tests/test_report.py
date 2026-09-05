@@ -59,6 +59,13 @@ def test_frequency_report_is_complete_and_valid() -> None:
     res = doc["residuals"]["glm"]
     assert [b["feature"] for b in res["by_feature"]] == ["region", "age"]
     assert res["over_time"]["feature"] == "time"
+    (pair,) = res["by_pair"]
+    assert (pair["feature_a"], pair["feature_b"]) == ("region", "age")
+    assert len(pair["actual_over_expected"]) == 3 and len(pair["actual_over_expected"][0]) == 10
+    assert sum(map(sum, pair["weight"])) == pytest.approx(EXPO.sum()) and pair["weight_floor"] > 0
+    assert (
+        report.build("regression", PROB, {"m": PROB}).to_dict()["residuals"]["m"]["by_pair"] == []
+    )
     assert len(res["scatter"]["fitted"]) == N  # under the sample cap: all rows
     assert doc["provenance"]["sample_rows"] == N and doc["provenance"]["n_rows"] == N
     data = doc["data"]

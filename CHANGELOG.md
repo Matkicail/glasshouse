@@ -5,6 +5,12 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `residuals.ae_by_two`: actual over expected on the grid of two features, each cut exactly
+  as the one-way table cuts it, with a weight floor marking cells too thin to read. The
+  report carries one grid per pair of `features` and the Residuals tab draws it as a
+  heatmap with thin cells greyed out: the interaction view, and the honest case for an
+  interaction term. In Rust the one-way and two-way tables now share one binning rule
+  (`bin_index`) and one accumulator (`grid_table`).
 - `glasshouse.profile`: `histogram` and `feature_profile`, the data before any model. The
   report gains a `data` block and a Data tab after the Overview: the outcome and the weight
   summarised (weighted mean, spread, quantiles, share of the weight on exact zeros) and

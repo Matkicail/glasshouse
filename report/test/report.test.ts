@@ -136,8 +136,26 @@ describe("glasshouse report viewer", () => {
     expect(pane.hidden).toBe(false);
     const rows = Array.from(pane.querySelectorAll("table.panel tbody tr > th")).map((n) => n.textContent);
     expect(rows).toEqual(["deviance", "pearson"]);
-    expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(3); // histogram, scatter, one pair heatmap
     expect(pane.textContent).toContain("Residual vs fitted");
+    expect(pane.textContent).toContain("A/E by region and age");
+    const pairSel = pane.querySelectorAll("select")[1] as HTMLSelectElement;
+    expect(Array.from(pairSel.options).map((o) => o.value)).toEqual(["region × age"]);
+  });
+
+  it("the heatmap leaves thin cells blank and keeps every other cell", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    tab(root, "Residuals").click();
+    const calls = (root.ownerDocument.defaultView as any).Plotly.__calls as unknown[][];
+    const heat = calls.flat().find((t: any) => t.type === "heatmap") as any;
+    expect(heat).toBeDefined();
+    const doc = api.parse(text) as any;
+    const g = doc.residuals.glm.by_pair[0];
+    const thin = g.weight.flat().filter((w: number) => w < g.weight_floor).length;
+    const blank = heat.z.flat().filter((v: unknown) => v === null).length;
+    expect(blank).toBeGreaterThanOrEqual(thin);
+    expect(heat.z.length).toBe(g.level_a.length);
   });
 
   it("binary reports get a Threshold tab whose slider walks the precomputed grid", () => {

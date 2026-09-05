@@ -108,8 +108,9 @@ def build(  # noqa: PLR0913 — the report's inputs are its recipe; all after `t
         exposure / claim count / none. For a rate task pass rates and exposure.
     features
         ``{name: column}`` to slice A/E and residuals by; numeric columns are binned by
-        weighted decile, categoricals by level. The same columns are profiled for the Data
-        tab (even-width bins with the mean outcome in each).
+        weighted decile, categoricals by level. Every pair of them also gets a two-feature
+        A/E grid (the interaction view), and the same columns are profiled for the Data tab
+        (even-width bins with the mean outcome in each).
     time
         A time column for residuals over time (binned by weighted decile of time).
     power, threshold, n_bins
@@ -296,6 +297,7 @@ def _residuals(  # noqa: PLR0913, PLR0917
 ) -> dict[str, Any]:
     out: dict[str, Any] = {}
     time_col = None if time is None else to_vector(time, "time")
+    names = list(features)
     for label, mu in preds.items():
         dev = residuals.deviance(y, mu, family=family, sample_weight=w, power=power)
         pea = residuals.pearson(y, mu, family=family, sample_weight=w, power=power)
@@ -320,6 +322,13 @@ def _residuals(  # noqa: PLR0913, PLR0917
                     col, y, mu, w, name=name, n_bins=n_bins, label=label
                 ).to_dict()
                 for name, col in features.items()
+            ],
+            "by_pair": [
+                residuals.ae_by_two(
+                    features[a], features[b], y, mu, w, names=(a, b), n_bins=n_bins, label=label
+                ).to_dict()
+                for i, a in enumerate(names)
+                for b in names[i + 1 :]
             ],
             "over_time": None
             if time_col is None

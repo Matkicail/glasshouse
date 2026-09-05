@@ -246,8 +246,11 @@ The tabs, in the order a reader meets them:
   it comes from `bench.run`; a report built from predictions alone does not have it.
 - **Residuals.** Deviance and Pearson residuals, a one-way view of actual vs predicted by
   each feature you passed in `features=` (with exposure bars), and residuals over time when
-  a `time=` column was given. This is where a model that scores well but misprices one
-  segment gets caught.
+  a `time=` column was given. Then the segments: A/E on the grid of every pair of features,
+  as a heatmap with cells too thin to read greyed out. A model can be calibrated on every
+  one-way view and still be wrong for young drivers in powerful cars; this is the view that
+  shows it, and the honest case for an interaction term. This is where a model that scores
+  well but misprices one segment gets caught.
 - **Threshold** (binary only). The slider described above.
 
 What to look at first depends on who you are:

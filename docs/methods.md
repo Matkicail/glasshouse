@@ -203,6 +203,12 @@ References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized L
 - **A/E by feature**: the calibration table with the rows binned by a feature instead of the
   prediction — equal-weight bins (ties whole) for a numeric column, one row per level for a
   categorical — reporting weight, mean prediction, mean outcome and their ratio per bin.
+- **A/E by two features**: the same ratio on the grid of two features, each cut exactly as
+  the one-way table cuts it, so the grid's marginals are the one-way tables. A cell is
+  *thin* when its weight is below `floor` (default 0.2) times the average cell's weight,
+  `floor · Σw / (n_a · n_b)`; the report greys thin cells out rather than dropping them.
+  This is the interaction view: a one-way A/E of 1 for young drivers and 1 for powerful
+  cars says nothing about young drivers in powerful cars.
 
 Golden references: statsmodels `resid_deviance`, `resid_pearson` (with `var_weights`).
 
