@@ -47,7 +47,8 @@ Tools on Windows).
   `_core.pyi` is the type stub for the extension — update it when `crates/py/src/lib.rs` changes
   (`tests/test_stub_sync.py` fails if you forget).
 - `tests/` — pytest: golden tests vs scikit-learn/statsmodels/glum/R fixtures, hypothesis properties.
-- `docs/` — mkdocs-material (methods with citations, metrics guide, API). Tracked.
+- `docs/` — `methods.md` (formulas, citations, weights), `comparing-models.md` (the report
+  end to end, every example run by `tests/test_docs_examples.py`), `report-suite.md` (plan). Tracked.
 - `report/` — the TypeScript viewer: `schema.json` (the JSON contract), `src/*.ts`, `dist/report.js`
   (built, checked in), `template.html`, `test/`. Python `report.to_html` glues them.
 - `check.sh` — the gate. `COMMANDS.md` — this file. `CLAUDE.md` — the rules.

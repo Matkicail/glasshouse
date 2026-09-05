@@ -20,6 +20,9 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   to 1e-6 across solver changes again.
 
 ### Added
+- `docs/comparing-models.md`: the comparison report end to end, with a worked example per
+  task type (frequency GLM vs GCV smooth vs LightGBM on folds; binary and regression from
+  scikit-learn predictions) and how to read each tab. Every code block runs as a test.
 - `encoders.Smooth` and GLM `terms={"age": "smooth"}`: penalised P-spline smooths whose
   wiggliness is chosen by GCV during `fit` (pin it with `Smooth(lam=...)`). The model gains
   `edf_`, `lambda_` and the searched `gcv_` grid; the intercept stays unpenalised so balance
