@@ -569,7 +569,9 @@
           "partial_dependence",
           "importance",
           "coefficients",
-          "attributions"
+          "attributions",
+          "path",
+          "gcv"
         ],
         "properties": {
           "partial_dependence": {
@@ -757,6 +759,115 @@
               }
             ],
             "description": "Glass-box models only: held-out rows worth explaining (the highest and lowest predictions across folds, and a random few) with each feature's contribution on the link scale, intercept first; they add up to the linear predictor."
+          },
+          "path": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "alphas",
+                  "cv_deviance",
+                  "cv_se",
+                  "n_nonzero",
+                  "chosen",
+                  "rule",
+                  "coef",
+                  "terms",
+                  "chosen_alphas"
+                ],
+                "properties": {
+                  "alphas": {
+                    "$ref": "#/$defs/numbers"
+                  },
+                  "cv_deviance": {
+                    "$ref": "#/$defs/numbers"
+                  },
+                  "cv_se": {
+                    "$ref": "#/$defs/numbers"
+                  },
+                  "n_nonzero": {
+                    "type": "array",
+                    "items": {
+                      "type": "integer"
+                    }
+                  },
+                  "chosen": {
+                    "type": "integer"
+                  },
+                  "rule": {
+                    "enum": [
+                      "min",
+                      "1se"
+                    ]
+                  },
+                  "coef": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/$defs/numbers"
+                    }
+                  },
+                  "terms": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "chosen_alphas": {
+                    "$ref": "#/$defs/numbers"
+                  }
+                }
+              }
+            ],
+            "description": "Elastic-net models fitted with alpha='cv': the first fold's path (held-out deviance with its standard error per alpha, the coefficients fitted on all training rows per alpha, the row the rule chose) and the alpha every fold chose."
+          },
+          "gcv": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "smooths"
+                ],
+                "properties": {
+                  "smooths": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": [
+                        "lambda",
+                        "gcv",
+                        "edf",
+                        "chosen",
+                        "chosen_lambdas"
+                      ],
+                      "properties": {
+                        "lambda": {
+                          "$ref": "#/$defs/numbers"
+                        },
+                        "gcv": {
+                          "$ref": "#/$defs/numbers"
+                        },
+                        "edf": {
+                          "$ref": "#/$defs/numbers"
+                        },
+                        "chosen": {
+                          "type": "number"
+                        },
+                        "chosen_lambdas": {
+                          "$ref": "#/$defs/numbers"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "description": "Models with smooth terms: every (lambda, GCV, edf) the first fold's search evaluated per smooth, the lambda it chose, and the lambda every fold chose."
           }
         }
       }

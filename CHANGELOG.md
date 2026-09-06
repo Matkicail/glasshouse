@@ -26,6 +26,13 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   majorisation step per group inside the same coordinate descent; the cross-validated path
   and `alpha_max` understand groups. Checked against the grouped KKT conditions.
   `telco_churn` gains a `group_lasso_logistic` row and is re-pinned.
+- The Model tab draws the solver's choices: for a model fitted with `alpha="cv"`, the
+  cross-validated deviance along the path with its standard error band, the one-standard-
+  error line and the chosen alpha, next to every coefficient's path as the penalty relaxes
+  (`AlphaPath` now carries the coefficients per alpha and serialises); for a model with
+  smooth terms, each smooth's GCV trace against lambda with the chosen point and the
+  effective degrees of freedom on hover. The alpha or lambda every fold chose is listed
+  under the chart, so the spread is on the record.
 - `GLM.term_contributions`: per-row contributions summed per input column, intercept first,
   adding up to the linear predictor. The bench keeps, for every glass-box model, thirty
   held-out rows worth explaining (the ten priced highest across folds, the ten lowest, ten at

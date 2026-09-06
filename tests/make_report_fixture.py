@@ -28,9 +28,15 @@ if __name__ == "__main__":
         TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
         [
             ModelSpec(
-                "glm", lambda: GLM(family="poisson", terms={"region": "onehot"}), ["region", "age"]
+                "glm",
+                lambda: GLM(family="poisson", terms={"region": "onehot", "age": "smooth"}),
+                ["region", "age"],
             ),
-            ModelSpec("mean", lambda: GLM(family="poisson"), ["age"]),
+            ModelSpec(
+                "mean",
+                lambda: GLM(family="poisson", alpha="cv", l1_ratio=1.0, cv=3, alpha_rule="min"),
+                ["age"],
+            ),
         ],
         splits.kfold(N, k=3, seed=0),
         features=["region", "age"],

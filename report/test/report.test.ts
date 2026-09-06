@@ -72,7 +72,7 @@ describe("glasshouse report viewer", () => {
     tab(root, "Model").click();
     const pane = root.querySelector("#pane-model") as HTMLElement;
     expect(pane.hidden).toBe(false);
-    expect(pane.querySelectorAll("[data-plotly]").length).toBe(4); // importance, partial dependence, one attribution chart per GLM
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(7); // importance, partial dependence, the path pair, one GCV trace, one attribution chart per GLM
     const options = Array.from(pane.querySelectorAll("select")[0]!.options).map((o) => o.value);
     expect(options).toEqual(["region", "age"]);
     const tables = pane.querySelectorAll("table.coefficients");
@@ -97,6 +97,22 @@ describe("glasshouse report viewer", () => {
     expect(bars.length).toBeGreaterThanOrEqual(1);
     const sum = (bars[0].x as number[]).reduce((s, v) => s + v, 0) + a.rows[0].contributions[a.terms.indexOf("intercept")];
     expect(sum).toBeCloseTo(Math.log(a.rows[0].prediction), 6);
+  });
+
+  it("model screen draws the regularisation path for a cross-validated model and the GCV trace for a smooth", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    tab(root, "Model").click();
+    const pane = root.querySelector("#pane-model") as HTMLElement;
+    expect(pane.textContent).toContain("mean: regularisation path");
+    expect(pane.textContent).toContain("glm: smoothing, chosen by GCV");
+    const doc = api.parse(text) as any;
+    expect(doc.explain.mean.path.chosen_alphas.length).toBe(3);
+    const calls = (root.ownerDocument.defaultView as any).Plotly.__calls as unknown[][];
+    const traces = calls.flat() as any[];
+    expect(traces.some((t) => t.name === "cv deviance")).toBe(true);
+    expect(traces.some((t) => t.name === "GCV")).toBe(true);
+    expect(traces.some((t) => t.name === "chosen alpha")).toBe(true);
   });
 
   it("data screen summarises the outcome and the weight and profiles every feature", () => {

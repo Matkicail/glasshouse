@@ -78,6 +78,19 @@ class AlphaPath:
     n_nonzero: npt.NDArray[np.int64]
     chosen: int
     rule: str
+    coef: F64  # one row per alpha: the coefficients fitted on all training rows there
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-ready: what the report draws as the regularisation path."""
+        return {
+            "alphas": self.alphas.tolist(),
+            "cv_deviance": self.cv_deviance.tolist(),
+            "cv_se": self.cv_se.tolist(),
+            "n_nonzero": self.n_nonzero.tolist(),
+            "chosen": int(self.chosen),
+            "rule": self.rule,
+            "coef": self.coef.tolist(),
+        }
 
     def __str__(self) -> str:
         """Fixed-width table with the chosen row marked."""
@@ -398,11 +411,13 @@ class GLM:
             else int(np.flatnonzero(cv_mean <= cv_mean[best] + cv_se[best])[0])
         )
         n_nonzero = np.empty(len(alphas), dtype=np.int64)
+        coefs = np.empty((len(alphas), matrix.shape[1]))
         coef = None
         for a, alpha in enumerate(alphas):
             coef = self._lean_fit(matrix, y, w, o, (alpha, penalised, groups), coef)
+            coefs[a] = coef
             n_nonzero[a] = int(np.count_nonzero(coef[1:] if self.fit_intercept else coef))
-        path = AlphaPath(alphas, cv_mean, cv_se, n_nonzero, chosen, self.alpha_rule)
+        path = AlphaPath(alphas, cv_mean, cv_se, n_nonzero, chosen, self.alpha_rule, coefs)
         return float(alphas[chosen]), path
 
     def _lean_fit(

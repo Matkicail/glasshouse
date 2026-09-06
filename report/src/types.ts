@@ -174,11 +174,37 @@ interface AttributionsDoc {
   rows: AttributionRow[];
 }
 
+interface PathDoc {
+  alphas: number[];
+  cv_deviance: number[];
+  cv_se: number[];
+  n_nonzero: number[];
+  chosen: number;
+  rule: "min" | "1se";
+  coef: number[][]; // one row per alpha
+  terms: string[];
+  chosen_alphas: number[]; // what every fold chose
+}
+
+interface GcvTrace {
+  lambda: number[];
+  gcv: number[];
+  edf: number[];
+  chosen: number;
+  chosen_lambdas: number[];
+}
+
+interface GcvDoc {
+  smooths: Record<string, GcvTrace>;
+}
+
 interface ExplainDoc {
   partial_dependence: PartialDependenceDoc[];
   importance: ImportanceDoc;
   coefficients: CoefficientsDoc | null;
   attributions: AttributionsDoc | null;
+  path: PathDoc | null;
+  gcv: GcvDoc | null;
 }
 
 interface HistogramDoc {

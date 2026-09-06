@@ -245,8 +245,12 @@ The tabs, in the order a reader meets them:
   their spread and, on a log link, the relativities. And "explain a row": thirty held-out
   rows per glass-box model (the ten priced highest, the ten lowest, ten at random), each
   drawn as one bar per feature on the link scale that add up to the prediction, with the
-  relativity on hover. This tab needs the fitted models, so it comes from `bench.run`; a
-  report built from predictions alone does not have it.
+  relativity on hover. For a model fitted with `alpha="cv"`, the regularisation path: the
+  held-out deviance along the path with its standard error band and the chosen alpha, and
+  every coefficient's path as the penalty relaxes. For a model with smooth terms, the GCV
+  trace per smooth with the chosen lambda. Every choice the solver made is a picture, not
+  a number to take on trust. This tab needs the fitted models, so it comes from
+  `bench.run`; a report built from predictions alone does not have it.
 - **Residuals.** Deviance and Pearson residuals, a one-way view of actual vs predicted by
   each feature you passed in `features=` (with exposure bars), and residuals over time when
   a `time=` column was given. Then the segments: A/E on the grid of every pair of features,
