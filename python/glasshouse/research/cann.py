@@ -4,6 +4,23 @@ Keep the GLM exactly as it is and let a small network learn only what the GLM go
 
     link(mu) = [GLM linear predictor, frozen] + [network output] + offset
 
+Three networks fit that slot, and they are the first three models of the research track:
+
+- ``"mlp"`` (the CANN proper): one small net on all inputs; it can learn interactions and
+  says so with one number per row.
+- ``"additive"`` (a neural additive model, Agarwal et al. 2021): one small net per input
+  column, summed, so each correction is a curve you can draw and no interaction is
+  possible; a one-hot or spline block gets a linear correction per column.
+- ``"localglm"`` (LocalGLMnet, Richman & Wüthrich 2023): a net that outputs one coefficient
+  per design column *for each row*, ``sum_j beta_j(x) x_j``, so the GLM's coefficients
+  become functions of the row; ``attention`` returns them, the paper's regression
+  attentions.
+
+All three start at the GLM (zero-initialised output layers), train on the same deviance,
+stop early the same way, are re-balanced the same way, and show up on the report the same
+way: ``term_contributions`` returns the GLM's terms plus the network's, so "explain a row"
+reads either "GLM plus one correction" or "GLM plus a correction per feature".
+
 The GLM is fitted first, on the training rows, then frozen. The network's last layer starts
 at zero, so before training the CANN *is* the GLM to the last decimal; training minimises
 the family deviance, the same one every score uses, and the network moves away from zero
@@ -64,6 +81,8 @@ class CANN:
         ``patience`` epochs without improvement and keeps the best weights.
     seed
         For the validation slice, the shuffling and the weights.
+    network
+        ``"mlp"``, ``"additive"`` or ``"localglm"``: see the module docstring.
 
     Examples
     --------
@@ -88,7 +107,9 @@ class CANN:
     valid_fraction: float = 0.2
     patience: int = 10
     seed: int = 0
+    network: str = "mlp"
     glm_: GLM = field(init=False, repr=False)
+    slices_: list[tuple[str, int, int]] = field(init=False, repr=False, default_factory=list)
     net_: Any = field(init=False, repr=False, default=None)
     mean_: F64 = field(init=False, repr=False, default_factory=lambda: np.empty(0))
     std_: F64 = field(init=False, repr=False, default_factory=lambda: np.empty(0))
@@ -129,7 +150,8 @@ class CANN:
         x = (inputs - self.mean_) / self.std_
 
         torch.manual_seed(self.seed)
-        self.net_ = _mlp(torch, x.shape[1], self.hidden)
+        self.slices_ = self._term_slices()
+        self.net_ = _network(torch, self.network, x.shape[1], self.hidden, self.slices_)
         self.shift_ = 0.0
         self.history_ = []
         if self.epochs > 0:
@@ -224,13 +246,50 @@ class CANN:
         return np.asarray(self._net(x) + self.shift_, dtype=np.float64)
 
     def term_contributions(self, X: ArrayLike) -> tuple[F64, list[str]]:  # noqa: N803
-        """Return the GLM's per-term contributions plus one ``network`` column.
+        """Return the GLM's per-term contributions plus the network's.
 
-        They add up to ``predict_linear`` without the offset, so "explain a row" shows the
-        glass-box terms and the network's correction side by side.
+        One ``network`` column for the ``"mlp"`` net; one ``<term> (net)`` column per input
+        column for the additive and local nets. Either way they add up to ``predict_linear``
+        without the offset, so "explain a row" shows both sides.
         """
         parts, names = self.glm_.term_contributions(X)
-        return np.column_stack([parts, self.correction(X)]), [*names, "network"]
+        x = (self._inputs_all(X) - self.mean_) / self.std_
+        torch = _torch()
+        with torch.no_grad():
+            terms = self.net_.double().terms(torch.tensor(x, dtype=torch.float64)).numpy()
+        terms = np.asarray(terms, dtype=np.float64)
+        terms[:, 0] += self.shift_  # the balance shift rides on the first column
+        net_names = (
+            ["network"] if self.network == "mlp" else [f"{n} (net)" for n, _, _ in self.slices_]
+        )
+        return np.column_stack([parts, terms]), [*names, *net_names]
+
+    def attention(self, X: ArrayLike) -> tuple[F64, list[str]]:  # noqa: N803
+        """Return LocalGLMnet's per-row coefficients, one per design column (standardised).
+
+        The paper's regression attentions: a column whose coefficient is near zero on every
+        row is not used; one whose coefficient moves with the row is an interaction.
+        """
+        if self.network != "localglm":
+            msg = "attention is only defined for network='localglm'"
+            raise ValueError(msg)
+        x = (self._inputs_all(X) - self.mean_) / self.std_
+        torch = _torch()
+        with torch.no_grad():
+            beta = self.net_.double().beta(torch.tensor(x, dtype=torch.float64)).numpy()
+        names = (
+            self.glm_.feature_names_in_[1:]
+            if self.glm_.fit_intercept
+            else self.glm_.feature_names_in_
+        )
+        return np.asarray(beta, dtype=np.float64), list(names)
+
+    def _term_slices(self) -> list[tuple[str, int, int]]:
+        """Return the design's columns per input column, without the intercept."""
+        slices = self.glm_._slices
+        if slices:
+            return [(name, lo, hi) for name, (lo, hi) in slices.items()]
+        return [(name, i, i + 1) for i, name in enumerate(self.glm_.input_columns_)]
 
     def _link_name(self) -> str:
         return self.glm_._link_name()
@@ -258,6 +317,8 @@ class CANN:
             "family": self.family,
             "power": self.power,
             "hidden": list(self.hidden),
+            "network": self.network,
+            "slices": [list(t) for t in self.slices_],
             "glm": self.glm_.to_dict(),
             "weights": {k: v.tolist() for k, v in self.net_.state_dict().items()},
             "mean": self.mean_.tolist(),
@@ -273,12 +334,18 @@ class CANN:
         torch = _torch()
         glm = GLM.from_dict(payload["glm"])
         model = cls(
-            family=payload["family"], power=payload["power"], hidden=tuple(payload["hidden"])
+            family=payload["family"],
+            power=payload["power"],
+            hidden=tuple(payload["hidden"]),
+            network=payload.get("network", "mlp"),
         )
         model.glm_ = glm
         model.mean_ = np.asarray(payload["mean"], dtype=np.float64)
         model.std_ = np.asarray(payload["std"], dtype=np.float64)
-        model.net_ = _mlp(torch, len(model.mean_), model.hidden).double()
+        model.slices_ = [(str(n), int(lo), int(hi)) for n, lo, hi in payload.get("slices", [])]
+        model.net_ = _network(
+            torch, model.network, len(model.mean_), model.hidden, model.slices_
+        ).double()
         model.net_.load_state_dict(
             {k: torch.as_tensor(v, dtype=torch.float64) for k, v in payload["weights"].items()}
         )
@@ -301,18 +368,102 @@ def _torch() -> Any:
     return torch
 
 
-def _mlp(torch: Any, n_in: int, hidden: tuple[int, ...]) -> Any:
-    """Tanh layers, then a linear output whose weights start at zero: the CANN is the GLM."""
+def _mlp(torch: Any, n_in: int, hidden: tuple[int, ...], n_out: int = 1) -> Any:
+    """Tanh layers, then a linear output whose weights start at zero: the model is the GLM."""
     layers: list[Any] = []
     width = n_in
     for h in hidden:
         layers += [torch.nn.Linear(width, h), torch.nn.Tanh()]
         width = h
-    out = torch.nn.Linear(width, 1)
+    out = torch.nn.Linear(width, n_out)
     torch.nn.init.zeros_(out.weight)
     torch.nn.init.zeros_(out.bias)
     layers.append(out)
     return torch.nn.Sequential(*layers)
+
+
+def _network(
+    torch: Any, kind: str, n_in: int, hidden: tuple[int, ...], slices: list[tuple[str, int, int]]
+) -> Any:
+    """Build the correction network of the asked kind.
+
+    Every kind has ``forward`` (the total per row) and ``terms`` (per-column corrections that
+    add up to it); ``localglm`` also has ``beta``.
+    """
+    builders = {"mlp": _mlp_net, "additive": _additive_net, "localglm": _localglm_net}
+    if kind not in builders:
+        msg = f"network must be one of {sorted(builders)}, not {kind!r}"
+        raise ValueError(msg)
+    return builders[kind](torch, n_in, hidden, slices)
+
+
+def _mlp_net(torch: Any, n_in: int, hidden: tuple[int, ...], _: list[tuple[str, int, int]]) -> Any:
+    class Mlp(torch.nn.Module):  # type: ignore[misc]
+        """One net on every input: the CANN proper. Its correction is one column."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.body = _mlp(torch, n_in, hidden)
+
+        def forward(self, x: Any) -> Any:
+            return self.body(x).squeeze(-1)
+
+        def terms(self, x: Any) -> Any:
+            return self.body(x)
+
+    return Mlp()
+
+
+def _additive_net(
+    torch: Any, _: int, hidden: tuple[int, ...], slices: list[tuple[str, int, int]]
+) -> Any:
+    class Additive(torch.nn.Module):  # type: ignore[misc]
+        """One small net per numeric column; a zero-initialised linear map per block."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            parts = []
+            for _, lo, hi in slices:
+                if hi - lo == 1:
+                    parts.append(_mlp(torch, 1, hidden))
+                else:
+                    linear = torch.nn.Linear(hi - lo, 1)
+                    torch.nn.init.zeros_(linear.weight)
+                    torch.nn.init.zeros_(linear.bias)
+                    parts.append(linear)
+            self.parts = torch.nn.ModuleList(parts)
+
+        def terms(self, x: Any) -> Any:
+            pieces = zip(self.parts, slices, strict=True)
+            return torch.cat([part(x[:, lo:hi]) for part, (_, lo, hi) in pieces], dim=1)
+
+        def forward(self, x: Any) -> Any:
+            return self.terms(x).sum(dim=1)
+
+    return Additive()
+
+
+def _localglm_net(
+    torch: Any, n_in: int, hidden: tuple[int, ...], slices: list[tuple[str, int, int]]
+) -> Any:
+    class LocalGlm(torch.nn.Module):  # type: ignore[misc]
+        """A coefficient per design column, per row: ``sum_j beta_j(x) x_j``."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.body = _mlp(torch, n_in, hidden, n_out=n_in)
+
+        def beta(self, x: Any) -> Any:
+            return self.body(x)
+
+        def terms(self, x: Any) -> Any:
+            per_column = self.beta(x) * x
+            return torch.stack([per_column[:, lo:hi].sum(dim=1) for _, lo, hi in slices], dim=1)
+
+        def forward(self, x: Any) -> Any:
+            return (self.beta(x) * x).sum(dim=1)
+
+    return LocalGlm()
 
 
 def _inverse_link(torch: Any, link: str, eta: Any) -> Any:
@@ -361,4 +512,18 @@ def deviance_torch(
     return torch.sum(w * unit) / torch.sum(w)
 
 
-__all__ = ["CANN", "deviance_torch"]
+@dataclass
+class AdditiveNet(CANN):
+    """The CANN with one small net per input column: corrections you can draw, no interactions."""
+
+    network: str = "additive"
+
+
+@dataclass
+class LocalGLMnet(CANN):
+    """The CANN whose network outputs a coefficient per design column for each row."""
+
+    network: str = "localglm"
+
+
+__all__ = ["CANN", "AdditiveNet", "LocalGLMnet", "deviance_torch"]

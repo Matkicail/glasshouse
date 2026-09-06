@@ -26,6 +26,13 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   majorisation step per group inside the same coordinate descent; the cross-validated path
   and `alpha_max` understand groups. Checked against the grouped KKT conditions.
   `telco_churn` gains a `group_lasso_logistic` row and is re-pinned.
+- `AdditiveNet` and `LocalGLMnet` in `glasshouse.research`: the second and third models of
+  the fenced track, sharing the CANN's class and training loop and differing only in what
+  the correction may be. The additive net gives each input column its own small net
+  (corrections you can draw, no interactions possible); LocalGLMnet lets a net output one
+  coefficient per design column per row, with `attention(X)` returning them. Both start at
+  the GLM, and "explain a row" shows one `<term> (net)` column per feature for either.
+  `fremtpl2_cann` now runs all three against the smooth GLM and LightGBM.
 - `glasshouse.research` and the `[research]` extra (torch, CPU build): the fenced neural
   track. First model: `CANN`, the GLM frozen as a skip connection and a small tanh net on
   its residual, trained on the family deviance (`deviance_torch`, checked against the Rust

@@ -15,11 +15,18 @@ same importances and partial dependence, and nothing more. The order of the trac
 smallest step first:
 
 1. **CANN**, the GLM frozen as a skip connection and a small net on its residual. Built.
-2. An additive net (one small net per feature), whose shapes are curves you can draw.
-3. LocalGLMnet, where the coefficients themselves become functions of the row.
+2. **An additive net** (one small net per feature), whose corrections are curves you can
+   draw and which cannot learn an interaction. Built, as `AdditiveNet`.
+3. **LocalGLMnet**, where the GLM's coefficients become functions of the row. Built, as
+   `LocalGLMnet`.
 4. A KAN-style additive model, run with three numeric encodings side by side (raw,
    piecewise linear, periodic), so the feature-encoding trade-off is a picture, not an
    argument.
+
+The first three are one class and one training loop: `CANN(network=...)`, with
+`AdditiveNet` and `LocalGLMnet` as the named versions. Only the shape of the correction
+differs, so a difference between their rows on the leaderboard is a difference in what the
+correction is allowed to be, nothing else.
 
 The go/no-go sits at each step. A model that fails it stays a notebook, and the report
 shows why.
@@ -71,33 +78,72 @@ cann = CANN(
 It takes a factory for the GLM, so the bench fits a fresh one per fold. The network's inputs
 are the GLM's own encoded columns, standardised, so it sees what the GLM sees.
 
+## The additive net and LocalGLMnet
+
+Both keep the frozen GLM and change what the network is allowed to add.
+
+**AdditiveNet** gives each input column its own small net (a one-hot or spline block gets a
+linear map per column) and sums them: `link(mu) = GLM + Σ_j g_j(x_j)`. Every correction is a
+function of one feature, so `term_contributions` returns one `<term> (net)` column per
+feature and "explain a row" reads as the GLM's terms plus a bend per feature. What it
+cannot do, by construction, is an interaction; on data where the GLM already has smooth
+terms it should add close to nothing, and that is the honest test of whether the CANN's
+gain came from shapes or from interactions.
+
+**LocalGLMnet** (Richman & Wüthrich, "LocalGLMnet: interpretable deep learning for tabular
+data", 2023) lets a net output one coefficient per design column *for each row*:
+`link(mu) = GLM + Σ_j β_j(x) x_j`. A coefficient that stays near zero on every row is a
+column the net does not use; one that moves with another feature is an interaction, and
+`attention(X)` returns the β's so you can chart them. Its contributions are `β_j(x) x_j`
+summed per term, so "explain a row" works the same way.
+
+```python
+from glasshouse.research import AdditiveNet, LocalGLMnet
+
+add = AdditiveNet(family="poisson", glm=lambda: GLM(family="poisson", terms={...}))
+local = LocalGLMnet(family="poisson", glm=lambda: GLM(family="poisson", terms={...}))
+beta, names = local.fit(df, y, offset=offset).attention(df)
+```
+
 ## The go/no-go run
 
-`uv run glasshouse bench fremtpl2_cann` fits the smooth GLM (the bar), the CANN built on
-that same GLM, and LightGBM on the challengers' stratified five-fold split of freMTPL2.
+`uv run glasshouse bench fremtpl2_cann` fits the smooth GLM (the bar), the three nets built
+on that same GLM, and LightGBM on the challengers' stratified five-fold split of freMTPL2.
 The committed `benchmarks/fremtpl2_cann/report.md` is its summary and `pinned.json` its
 drift test.
 
 Run on 2026-09-06 (held-out, mean ± std over five folds; best per metric in bold):
 
-| metric | glm_smooth | cann | lightgbm | naive |
-|---|---|---|---|---|
-| deviance | 0.59198 ± 0.0021 | 0.58414 ± 0.0027 | **0.5724 ± 0.0026** | 0.62488 |
-| d2 | 0.0527 ± 0.0011 | 0.0652 ± 0.0016 | **0.0840 ± 0.0023** | 0 |
-| gini | 0.4894 ± 0.016 | 0.4799 ± 0.026 | **0.5351 ± 0.021** | 0 |
-| balance | **1.0000 ± 0.0033** | 0.9997 ± 0.0039 | 0.9991 ± 0.0037 | 1 |
+| metric | glm_smooth | cann | additive | localglm | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 0.59198 ± 0.0021 | 0.58414 ± 0.0027 | 0.59438 ± 0.0017 | 0.58869 ± 0.0023 | **0.5724 ± 0.0026** | 0.62488 |
+| d2 | 0.0527 ± 0.0011 | 0.0652 ± 0.0016 | 0.0488 ± 0.0023 | 0.0579 ± 0.0034 | **0.0840 ± 0.0023** | 0 |
+| gini | 0.4894 ± 0.016 | 0.4799 ± 0.026 | 0.4785 ± 0.021 | 0.4771 ± 0.022 | **0.5351 ± 0.021** | 0 |
+| balance | **1.0000 ± 0.0033** | 0.9997 ± 0.0039 | 1.0000 ± 0.0028 | 1.0001 ± 0.0045 | 0.9991 ± 0.0037 | 1 |
 
-Fit time over all folds: glm_smooth 188 s, cann 286 s (it contains the GLM), lightgbm 47 s.
+Fit time over all folds: glm_smooth 199 s, cann 293 s, additive 357 s, localglm 246 s,
+lightgbm 49 s (each net contains the GLM).
 
-**Verdict: no-go, and the fence is doing its job.** The CANN beats the GLM on held-out
-deviance, by 1.3 % and by more than three fold standard deviations, and closes about forty
-percent of the gap to LightGBM. It does not beat the GLM on calibration: the balance is
-within a tenth of a percent either way, which is a tie, not a win, and the Gini is lower
-(within the fold spread, but lower). The rule asks for both, so the CANN stays in the
-research fence as a challenger row. What it earned is a place on the report: its correction
-column on "explain a row" and the two-feature A/E grids say where the 1.3 % lives, which is
-the input to the next model in the track, not a reason to ship this one.
+**Verdicts, all three no-go, and each one says something.**
 
+- **CANN**: beats the GLM on held-out deviance by 1.3 %, more than three fold standard
+  deviations, and closes about forty percent of the gap to LightGBM. Balance is a tie within
+  a tenth of a percent and the Gini is a little lower. The rule asks for both, so it stays
+  in the fence as a challenger row.
+- **Additive net**: *worse* than the smooth GLM on deviance (0.5944 against 0.5920). The
+  GLM's smooths already hold every marginal shape the data supports, and a second bend per
+  feature only fits noise. This is the useful result of the run: the CANN's gain is not
+  shapes, it is interactions, because the one model that cannot learn interactions gains
+  nothing.
+- **LocalGLMnet**: better than the GLM by 0.6 %, less than half the CANN's gain, on the same
+  interactions expressed as row-dependent coefficients. Balance is a tie, Gini a little
+  lower. It stays in the fence too, but its `attention` output is the most readable account
+  of *which* interactions matter, which is what the next model should be built from.
+
+What the three rows together say is that on this data the honest route from a smooth GLM
+to LightGBM's deviance runs through interaction terms, not through more flexible marginals.
+The two-feature A/E grids on the Residuals tab already name the first of them, DrivAge by
+BonusMalus.
 
 ## Save and load
 

@@ -7,11 +7,12 @@ is a challenger row on the leaderboard, scored by the same Rust deviance, drawn 
 curves, explained by the same importances and partial dependence, and nothing more.
 
 Order of the track, smallest step first: :class:`~glasshouse.research.cann.CANN` (the GLM
-frozen as a skip connection, a small net learning the residual), then an additive net, then
-LocalGLMnet, then a KAN-style additive model with the numeric encodings compared side by
-side. See ``docs/research.md``.
+frozen as a skip connection, a small net learning the residual), :class:`AdditiveNet` (one
+net per feature: corrections you can draw), :class:`LocalGLMnet` (coefficients that depend
+on the row), then a KAN-style additive model with the numeric encodings compared side by
+side. The first three share one class and one training loop. See ``docs/research.md``.
 """
 
-from glasshouse.research.cann import CANN
+from glasshouse.research.cann import CANN, AdditiveNet, LocalGLMnet
 
-__all__ = ["CANN"]
+__all__ = ["CANN", "AdditiveNet", "LocalGLMnet"]

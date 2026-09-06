@@ -99,11 +99,17 @@ def _smooth_glm() -> GLM:
     )
 
 
-def _cann() -> Any:
-    """Build the first model past the fence: the smooth GLM frozen, a small net on its residual."""
-    from glasshouse.research import CANN  # noqa: PLC0415 — the research extra (torch)
+def _research(network: str) -> Callable[[], Any]:
+    """Build a research model: the smooth GLM frozen, this kind of net on its residual."""
 
-    return CANN(family="poisson", glm=_smooth_glm, hidden=(20, 15, 10), epochs=100, patience=10)
+    def make() -> Any:
+        from glasshouse.research import CANN  # noqa: PLC0415 — the research extra (torch)
+
+        return CANN(
+            family="poisson", glm=_smooth_glm, hidden=(20, 15, 10), epochs=100, network=network
+        )
+
+    return make
 
 
 def _foss_models() -> list[ModelSpec]:
@@ -353,14 +359,17 @@ BENCHMARKS: dict[str, Benchmark] = {
         features=["Contract", "tenure", "InternetService", "MonthlyCharges"],
     ),
     "fremtpl2_cann": Benchmark(
-        # the research fence's go/no-go: the CANN must beat the smooth GLM on held-out
-        # deviance AND calibration on these splits, or it stays a notebook
+        # the research fence's go/no-go: a model must beat the smooth GLM on held-out
+        # deviance AND calibration on these splits, or it stays a notebook. The three nets
+        # share one class and one training loop; only the correction's shape differs
         name="fremtpl2_cann",
         dataset="fremtpl2_freq",
         task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
         models=[
             ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
-            ModelSpec("cann", _cann, list(_FOSS_COLUMNS)),
+            ModelSpec("cann", _research("mlp"), list(_FOSS_COLUMNS)),
+            ModelSpec("additive", _research("additive"), list(_FOSS_COLUMNS)),
+            ModelSpec("localglm", _research("localglm"), list(_FOSS_COLUMNS)),
             ModelSpec(
                 "lightgbm",
                 lambda: LightGBM(
