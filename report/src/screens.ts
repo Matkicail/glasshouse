@@ -269,6 +269,35 @@ function modelScreen(doc: ReportDoc, root: HTMLElement): void {
   }
 
   for (const m of labels) {
+    const p = explain[m]!.path;
+    if (!p) continue;
+    root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: regularisation path`]));
+    const charts = el("div", { class: "charts two" });
+    const c1 = el("div", { class: "chart" }), c2 = el("div", { class: "chart" });
+    charts.append(c1, c2);
+    root.append(charts);
+    renderChart(c1, cvPathSpec(p, colourOf(doc.models, m)));
+    renderChart(c2, coefPathSpec(p));
+  }
+
+  for (const m of labels) {
+    const g = explain[m]!.gcv;
+    if (!g) continue;
+    const names = Object.keys(g.smooths);
+    if (names.length === 0) continue;
+    root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: smoothing, chosen by GCV`]));
+    const sel = select(names, names[0]!);
+    const chart = el("div", { class: "chart gcv" });
+    root.append(el("div", { class: "controls" }, ["Smooth on ", sel]), chart);
+    const drawGcv = () => {
+      const t = g.smooths[sel.value];
+      if (t) renderChart(chart, gcvSpec(sel.value, t, colourOf(doc.models, m)));
+    };
+    sel.addEventListener("change", drawGcv);
+    drawGcv();
+  }
+
+  for (const m of labels) {
     const a = explain[m]!.attributions;
     if (!a || a.rows.length === 0) continue;
     root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: explain a row`]));

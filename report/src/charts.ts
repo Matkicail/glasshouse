@@ -345,6 +345,64 @@ function attributionSpec(a: AttributionsDoc, row: AttributionRow, logLink: boole
   };
 }
 
+function cvPathSpec(p: PathDoc, colour: string): ChartSpec {
+  const x = p.alphas.map((a) => Math.log10(a));
+  const chosen = x[p.chosen] ?? 0;
+  const best = p.cv_deviance.reduce((b, v, i) => (v < (p.cv_deviance[b] ?? Infinity) ? i : b), 0);
+  const level = (p.cv_deviance[best] ?? 0) + (p.cv_se[best] ?? 0);
+  const rows = p.alphas.map((a, i) => [fmt(a), fmt(p.cv_deviance[i]), fmt(p.cv_se[i]), p.n_nonzero[i] ?? 0, i === p.chosen ? `<- ${p.rule}` : ""]);
+  return {
+    title: `Cross-validated deviance along the path (rule: ${p.rule})`,
+    caption: `Held-out mean deviance on the inner folds at each alpha, with its standard error as the band; the dashed line is the minimum plus one standard error. The marker is the alpha the rule chose on this fold; the other folds chose ${p.chosen_alphas.map((a) => fmt(a, 3)).join(", ")}. Read right to left: the penalty relaxes, coefficients enter (hover for how many), the deviance falls until noise starts to fit.`,
+    data: [
+      { type: "scatter", mode: "lines", x, y: p.cv_deviance.map((v, i) => v + (p.cv_se[i] ?? 0)), line: { width: 0 }, showlegend: false, hoverinfo: "skip" },
+      { type: "scatter", mode: "lines", x, y: p.cv_deviance.map((v, i) => v - (p.cv_se[i] ?? 0)), line: { width: 0 }, fill: "tonexty", fillcolor: colour + "22", showlegend: false, hoverinfo: "skip" },
+      { type: "scatter", mode: "lines+markers", x, y: p.cv_deviance, name: "cv deviance", line: { color: colour, width: 2 }, marker: { size: 4 }, text: p.n_nonzero.map((k) => `${k} nonzero`), hovertemplate: "alpha 1e%{x:.2f}<br>deviance %{y:.5f}<br>%{text}<extra></extra>" },
+      { type: "scatter", mode: "lines", x: [x[0] ?? 0, x[x.length - 1] ?? 0], y: [level, level], name: "min + 1 se", line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" },
+      { type: "scatter", mode: "markers", x: [chosen], y: [p.cv_deviance[p.chosen] ?? 0], name: `chosen (${p.rule})`, marker: { color: "#000000", size: 10, symbol: "diamond" }, hovertemplate: "chosen alpha 1e%{x:.2f}<extra></extra>" },
+    ],
+    layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "log10 alpha", autorange: "reversed" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "held-out mean deviance" } },
+    table: { columns: ["alpha", "cv deviance", "se", "nonzero", ""], rows },
+  };
+}
+
+function coefPathSpec(p: PathDoc): ChartSpec {
+  const x = p.alphas.map((a) => Math.log10(a));
+  const chosen = x[p.chosen] ?? 0;
+  const terms = p.terms.map((t, j) => ({ t, j })).filter(({ t }) => t !== "intercept");
+  const names = terms.map(({ t }) => t);
+  const flat = p.coef.flat();
+  const rows = terms.map(({ t, j }) => [t, fmt(p.coef[p.chosen]?.[j] ?? 0)]);
+  return {
+    title: "Coefficient paths",
+    caption: "Each line is one coefficient as the penalty relaxes (right to left); a line that leaves zero late is a term the data supports only weakly. The vertical line is the chosen alpha: the model's coefficients are the values there.",
+    data: [
+      ...terms.map(({ t, j }) => ({ type: "scatter", mode: "lines", x, y: p.coef.map((row) => row[j] ?? 0), name: t, line: { color: colourOf(names, t), width: 1.5 }, hovertemplate: `${t}<br>alpha 1e%{x:.2f}<br>%{y:.4f}<extra></extra>` })),
+      { type: "scatter", mode: "lines", x: [chosen, chosen], y: [Math.min(0, ...flat), Math.max(0, ...flat)], name: "chosen alpha", line: { color: "#000000", dash: "dot", width: 1 }, hoverinfo: "skip" },
+    ],
+    layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "log10 alpha", autorange: "reversed" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "coefficient (link scale)" }, legend: { orientation: "v", x: 1.02, y: 1 }, margin: { l: 56, r: 140, t: 36, b: 48 } },
+    table: { columns: ["term", "coefficient at the chosen alpha"], rows },
+  };
+}
+
+function gcvSpec(name: string, t: GcvTrace, colour: string): ChartSpec {
+  const order = t.lambda.map((_, i) => i).sort((i, j) => (t.lambda[i] ?? 0) - (t.lambda[j] ?? 0));
+  const x = order.map((i) => Math.log10(t.lambda[i] ?? 1));
+  const y = order.map((i) => t.gcv[i] ?? 0);
+  const edf = order.map((i) => t.edf[i] ?? 0);
+  const chosenIdx = t.lambda.indexOf(t.chosen);
+  return {
+    title: `GCV for the smooth on ${name}`,
+    caption: `Every lambda the search evaluated, sorted, with the generalised cross-validation score; hover for the effective degrees of freedom the smooth spends there. The marker is the chosen lambda on this fold (the other folds chose ${t.chosen_lambdas.map((l) => fmt(l, 3)).join(", ")}). A flat valley means the data does not much care how wiggly the curve is; a sharp one means it does.`,
+    data: [
+      { type: "scatter", mode: "lines+markers", x, y, name: "GCV", line: { color: colour, width: 2 }, marker: { size: 4 }, text: edf.map((e) => `edf ${fmt(e, 3)}`), hovertemplate: "lambda 1e%{x:.2f}<br>GCV %{y:.6f}<br>%{text}<extra></extra>" },
+      { type: "scatter", mode: "markers", x: [Math.log10(t.chosen)], y: [t.gcv[chosenIdx] ?? 0], name: "chosen", marker: { color: "#000000", size: 10, symbol: "diamond" }, hovertemplate: "chosen lambda 1e%{x:.2f}<extra></extra>" },
+    ],
+    layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "log10 lambda" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "GCV" } },
+    table: { columns: ["lambda", "GCV", "edf"], rows: order.map((i) => [fmt(t.lambda[i]), fmt(t.gcv[i], 6), fmt(t.edf[i], 3)]) },
+  };
+}
+
 function histogramSpec(r: ResidualDoc, label: string, models: string[]): ChartSpec {
   const edges = r.histogram.edges;
   const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);

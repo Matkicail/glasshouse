@@ -446,6 +446,35 @@ def _explain_fold(  # noqa: PLR0913, PLR0917 — the fold's own pieces, threaded
         "coefficients": explain_mod.coefficients(model),
         "link": link() if callable(link) else None,
         "attributions": _attributions(model, sub, te[pick], y_s[pick], fold_number),
+        "path": _path(model),
+        "gcv": _gcv(model),
+    }
+
+
+def _path(model: Model) -> dict[str, Any] | None:
+    """Return the cross-validated regularisation path, when the model walked one."""
+    path = getattr(model, "path_", None)
+    if path is None:
+        return None
+    return {**path.to_dict(), "terms": list(getattr(model, "feature_names_in_", []))}
+
+
+def _gcv(model: Model) -> dict[str, Any] | None:
+    """Return every (lambda, GCV, edf) a smooth's search evaluated, and the lambda it chose."""
+    traces = getattr(model, "gcv_", None)
+    if not traces:
+        return None
+    chosen = getattr(model, "lambda_", {})
+    return {
+        "smooths": {
+            name: {
+                "lambda": [row[0] for row in trace],
+                "gcv": [row[1] for row in trace],
+                "edf": [row[2] for row in trace],
+                "chosen": float(chosen[name]),
+            }
+            for name, trace in traces.items()
+        }
     }
 
 
@@ -523,6 +552,28 @@ def _aggregate_explain(
             "coefficients": None,
         }
         entry["attributions"] = _merge_attributions(folds)
+        # the path and the GCV trace are per fold: the first fold's is drawn, and the
+        # value every fold chose is listed so the spread is on the record
+        paths = [fold["path"] for fold in folds if fold.get("path")]
+        entry["path"] = (
+            {**paths[0], "chosen_alphas": [p["alphas"][p["chosen"]] for p in paths]}
+            if paths
+            else None
+        )
+        traces = [fold["gcv"] for fold in folds if fold.get("gcv")]
+        entry["gcv"] = (
+            {
+                "smooths": {
+                    name: {
+                        **smooth,
+                        "chosen_lambdas": [t["smooths"][name]["chosen"] for t in traces],
+                    }
+                    for name, smooth in traces[0]["smooths"].items()
+                }
+            }
+            if traces
+            else None
+        )
         coefs = [fold["coefficients"] for fold in folds if fold["coefficients"] is not None]
         if len(coefs) == len(folds):
             terms = list(coefs[0])
