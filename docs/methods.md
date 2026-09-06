@@ -237,16 +237,17 @@ penalty times `λ`; the fixed point minimises the penalised deviance `D + β'Sβ
 step-halving and convergence run on that same objective.
 
 `λ` is chosen by minimising GCV, `n·D / (n − edf)²`, with effective degrees of freedom
-`edf = tr((X'WX + S)⁻¹ X'WX)` — mgcv's criterion with `γ = 1` — over a coarse log-spaced
-grid plus one finer pass around the winner (two coordinate sweeps when several smooths are
-free). Every `(λ, GCV, edf)` evaluated stays on the model in `gcv_`, so the choice can be
-read, not re-run. Because only the smooth's block is penalised, the intercept's score
+`edf = tr((X'WX + S)⁻¹ X'WX)` — mgcv's criterion with `γ = 1` — over `log λ`: a grid of one
+point a decade from `1e-4` to `1e7` brackets the minimum, and golden section narrows the
+decade either side of the best point to a twentieth of a decade (22 evaluations). With
+several free smooths the 1-D searches run as two coordinate sweeps, the second starting from
+a bracket around each smooth's previous optimum (10 evaluations). Every `(λ, GCV, edf)`
+evaluated stays on the model in `gcv_`, so the choice can be read, not re-run. Because only the smooth's block is penalised, the intercept's score
 equation is untouched and the balance property survives penalisation exactly.
 
 The search is exact but not expensive: every evaluation is a converged penalised IRLS fit at
-that `λ`, warm-started from the previous evaluation's coefficients (the fine pass from the
-coarse winner) and skipping the null model and the covariances, which only the final fit
-needs. Neighbouring `λ` have neighbouring optima, so an evaluation typically takes one to
+that `λ`, warm-started from the previous evaluation's coefficients and skipping the null
+model and the covariances, which only the final fit needs. Neighbouring `λ` have neighbouring optima, so an evaluation typically takes one to
 three iterations instead of seven.
 
 The reported covariance is `φ (X'WX + S)⁻¹` (the Bayesian posterior covariance, mgcv's
