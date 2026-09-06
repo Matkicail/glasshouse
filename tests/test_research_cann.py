@@ -4,6 +4,7 @@ GLM cannot; the balance is restored and "explain a row" shows the network's colu
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -14,7 +15,7 @@ from glasshouse.bench import ModelSpec, TaskSpec
 from glasshouse.metrics import FamilyName, deviance
 
 torch = pytest.importorskip("torch", reason="the research track needs torch: uv sync installs it")
-from glasshouse.research import CANN  # noqa: E402
+from glasshouse.research import CANN, AdditiveNet, LocalGLMnet  # noqa: E402
 from glasshouse.research.cann import deviance_torch  # noqa: E402
 
 rng = np.random.default_rng(21)
@@ -134,3 +135,88 @@ def test_the_bench_treats_a_cann_like_any_model_and_the_report_validates() -> No
         doc["bench"]["summary"]["cann"]["deviance"]["mean"]
         < doc["bench"]["summary"]["glm"]["deviance"]["mean"]
     )
+
+
+def _held_out_deviance(model: Any, te: np.ndarray) -> float:
+    rate = DF.ClaimNb.to_numpy()[te] / DF.Exposure.to_numpy()[te]
+    w = DF.Exposure.to_numpy()[te]
+    return float(
+        deviance(rate, model.predict(DF[COLS].iloc[te]), family="poisson", sample_weight=w)
+    )
+
+
+def test_the_additive_net_learns_a_marginal_shape_but_not_an_interaction() -> None:
+    # a bent marginal in age that the linear GLM term cannot follow, and no interaction
+    frame = DF[COLS].copy()
+    eta = -1.5 + 1.5 * np.sin(2.5 * frame.age) + frame.region.map({"n": 0.0, "s": 0.4, "e": -0.3})
+    y = rng.poisson(np.exp(eta) * DF.Exposure).astype(float)
+    fold = splits.kfold(N, k=4, seed=1)[0]
+    te = fold.test_idx
+    glm = _glm().fit(frame, y, offset=OFFSET, fold=fold)
+    add = AdditiveNet(glm=_glm, epochs=200, patience=20).fit(frame, y, offset=OFFSET, fold=fold)
+    rate, w = y[te] / DF.Exposure.to_numpy()[te], DF.Exposure.to_numpy()[te]
+    dev_glm = deviance(rate, glm.predict(frame.iloc[te]), family="poisson", sample_weight=w)
+    dev_add = deviance(rate, add.predict(frame.iloc[te]), family="poisson", sample_weight=w)
+    assert dev_add < dev_glm * 0.97, (dev_add, dev_glm)
+    parts, names = add.term_contributions(frame.iloc[:300])
+    assert names == [
+        "intercept",
+        "region",
+        "age",
+        "power",
+        "region (net)",
+        "age (net)",
+        "power (net)",
+    ]
+    np.testing.assert_allclose(parts.sum(axis=1), add.predict_linear(frame.iloc[:300]), rtol=1e-10)
+    # the net's age column carries the bend: it varies with age and with nothing else
+    corr_age = parts[:, names.index("age (net)")]
+    bend = np.sin(2.5 * frame.age.to_numpy()[:300])
+    assert np.std(corr_age) > 0.05 and abs(np.corrcoef(corr_age, bend)[0, 1]) > 0.6
+    # on the interaction data the additive net cannot do what the CANN does
+    fold2 = splits.kfold(N, k=4, seed=0)[0]
+    add2 = AdditiveNet(glm=_glm, epochs=100, patience=10).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold2
+    )
+    cann = CANN(glm=_glm, epochs=200, patience=20).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold2
+    )
+    assert _held_out_deviance(cann, fold2.test_idx) < _held_out_deviance(add2, fold2.test_idx)
+
+
+def test_localglmnet_learns_the_interaction_and_its_attentions_say_where() -> None:
+    fold = splits.kfold(N, k=4, seed=0)[0]
+    te = fold.test_idx
+    glm = _glm().fit(DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold)
+    local = LocalGLMnet(glm=_glm, epochs=200, patience=20).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold
+    )
+    assert _held_out_deviance(local, te) < _held_out_deviance(glm, te) * 0.985
+    beta, names = local.attention(DF[COLS].iloc[te])
+    assert names == glm.feature_names_in_[1:] and beta.shape == (len(te), len(names))
+    # the coefficient on age moves with power (and the other way round): the interaction
+    age_beta = beta[:, names.index("age")]
+    assert abs(np.corrcoef(age_beta, DF.power.to_numpy()[te])[0, 1]) > 0.5
+    parts, tnames = local.term_contributions(DF[COLS].iloc[:30])
+    assert tnames[-3:] == ["region (net)", "age (net)", "power (net)"]
+    np.testing.assert_allclose(
+        parts.sum(axis=1), local.predict_linear(DF[COLS].iloc[:30]), rtol=1e-10
+    )
+    with pytest.raises(ValueError, match="localglm"):
+        CANN(glm=_glm, epochs=0).fit(DF[COLS], DF.ClaimNb).attention(DF[COLS])
+    back = LocalGLMnet.from_dict(json.loads(json.dumps(local.to_dict())))
+    np.testing.assert_allclose(back.predict(DF[COLS]), local.predict(DF[COLS]), rtol=1e-12)
+    assert back.network == "localglm"
+
+
+def test_every_network_starts_as_the_glm() -> None:
+    glm = _glm().fit(DF[COLS], DF.ClaimNb, offset=OFFSET)
+    for model in (
+        CANN(glm=_glm, epochs=0),
+        AdditiveNet(glm=_glm, epochs=0),
+        LocalGLMnet(glm=_glm, epochs=0),
+    ):
+        m = model.fit(DF[COLS], DF.ClaimNb, offset=OFFSET)
+        np.testing.assert_allclose(m.predict(DF[COLS]), glm.predict(DF[COLS]), rtol=1e-9)
+    with pytest.raises(ValueError, match="network must be"):
+        CANN(glm=_glm, epochs=0, network="kan").fit(DF[COLS], DF.ClaimNb)

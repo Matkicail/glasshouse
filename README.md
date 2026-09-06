@@ -181,8 +181,10 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
 
 - **A research fence** (`pip install "glasshouse[research]"`, torch): neural models that
   must beat the spline plus monotone GLM on held-out deviance and calibration before they
-  leave it. First through the gate: the CANN, the GLM frozen and a small net learning its
-  residual, whose correction shows up on "explain a row" as one more column.
+  leave it. So far: the CANN (the GLM frozen, a small net learning its residual), an
+  additive net (one net per feature, corrections you can draw) and LocalGLMnet (the GLM's
+  coefficients as functions of the row), one class and one training loop, each showing up on
+  "explain a row" as extra columns next to the GLM's terms.
 
 Not trying to be scikit-learn. It does a few things and does them well.
 
