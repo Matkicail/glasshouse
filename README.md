@@ -137,16 +137,17 @@ hidden that; the time split and the residuals-over-time view show it.
 **Telco customer churn** (7,043 customers, 26.5% churn, logistic vs lasso logistic on
 fifteen one-hot factors, stratified 5-fold): `uv run glasshouse bench telco_churn`.
 
-| metric | logistic | lasso_logistic | naive |
-|---|---|---|---|
-| log_loss | 0.4186 ± 0.0097 | **0.4183 ± 0.01** | 0.5786 |
-| roc_auc | 0.8433 ± 0.0088 | **0.8434 ± 0.0093** | 0.5 |
-| average_precision | 0.6539 ± 0.016 | **0.6543 ± 0.018** | 0.2654 |
-| mcc | **0.4663 ± 0.024** | 0.4642 ± 0.022 | 0 |
+| metric | logistic | lasso_logistic | group_lasso_logistic | naive |
+|---|---|---|---|---|
+| log_loss | 0.4186 ± 0.0097 | **0.4183 ± 0.01** | 0.4266 ± 0.012 | 0.5786 |
+| roc_auc | 0.8433 ± 0.0088 | **0.8434 ± 0.0093** | 0.8373 ± 0.012 | 0.5 |
+| average_precision | 0.6539 ± 0.016 | **0.6543 ± 0.018** | 0.6484 ± 0.014 | 0.2654 |
+| mcc | **0.4663 ± 0.024** | 0.4642 ± 0.022 | 0.4400 ± 0.02 | 0 |
 
 The lasso path chosen by cross-validation lands on the same model as the plain logistic,
-which is the honest answer on a book this size with fifteen well-chosen factors: the
-penalty buys nothing here, and the report says so rather than flattering it.
+which is the honest answer on a book this size with fifteen well-chosen factors. The group
+lasso on the one-standard-error rule drops whole factors and pays a little log-loss for a
+shorter rating table; the report shows the price of that choice rather than hiding it.
 
 **Credit-card fraud** (284,807 transactions, 0.17% positives, logistic, stratified 5-fold):
 `uv run glasshouse bench creditcard_glm`.
@@ -171,7 +172,7 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
   standard errors, one-hot and target encoders that never let a row see its own y, B-spline,
   piecewise linear and penalised smooth terms with the penalty chosen by GCV, monotone
   constraints, per-row attributions, and lasso,
-  ridge and elastic-net with a cross-validated path. Parallel row passes that give the same
+  ridge, elastic-net and group lasso with a cross-validated path. Parallel row passes that give the same
   bits whatever the thread count.
 - **Splits** that declare what the data is (random, stratified, grouped, time-ordered), so
   leakage is a property of the split, not of the transform.

@@ -20,6 +20,12 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   the piecewise linear encoding of Gorishniy et al. (2022) as a GLM term. It is a degree-1
   B-spline on quantile knots, one alias and no second implementation; a test checks the
   fitted curve equals the bin-fill encoding's. Takes `monotone=` like any spline.
+- `GLM(group_lasso=True)`: the group lasso, where a one-hot factor or a spline term leaves
+  the model whole or stays whole. Groups are the model's own terms, so nothing new to
+  declare; a plain column is a group of one and gets the ordinary lasso update exactly. One
+  majorisation step per group inside the same coordinate descent; the cross-validated path
+  and `alpha_max` understand groups. Checked against the grouped KKT conditions.
+  `telco_churn` gains a `group_lasso_logistic` row and is re-pinned.
 - `GLM.term_contributions`: per-row contributions summed per input column, intercept first,
   adding up to the linear predictor. The bench keeps, for every glass-box model, thirty
   held-out rows worth explaining (the ten priced highest across folds, the ten lowest, ten at

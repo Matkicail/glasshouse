@@ -26,6 +26,8 @@ fn to_py(err: GlassError) -> PyErr {
 }
 
 type Arr<'a> = PyReadonlyArray1<'a, f64>;
+/// `(alpha, l1_ratio, penalised, groups)` as Python passes it.
+type ElasticNetSpec = (f64, f64, Vec<bool>, Option<Vec<usize>>);
 
 /// The optional-weights dance, once: borrow the slice out of an optional array.
 fn opt_slice<'py>(arr: Option<&'py Arr<'py>>) -> PyResult<Option<&'py [f64]>> {
@@ -339,7 +341,7 @@ fn glm_fit<'py>(
     warm_start: Option<Arr<'_>>,
     inference: bool,
     monotone: Option<Vec<(Vec<usize>, bool, bool)>>,
-    elastic_net: Option<(f64, f64, Vec<bool>)>,
+    elastic_net: Option<ElasticNetSpec>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let fam = Family::parse(family, power).map_err(to_py)?;
     let link_fn = Link::parse(link).map_err(to_py)?;
@@ -353,10 +355,11 @@ fn glm_fit<'py>(
             ))
         }
         (Some(arr), None) => Penalty::Quadratic(arr.as_slice()?),
-        (None, Some((alpha, l1_ratio, penalised))) => Penalty::ElasticNet(ElasticNet {
+        (None, Some((alpha, l1_ratio, penalised, groups))) => Penalty::ElasticNet(ElasticNet {
             alpha: *alpha,
             l1_ratio: *l1_ratio,
             penalised,
+            groups: groups.as_deref(),
         }),
         (None, None) => Penalty::None,
     };
@@ -428,7 +431,7 @@ fn glm_fit<'py>(
 
 /// The elastic-net alpha at which every penalised coefficient is zero. See `glasshouse.glm`.
 #[pyfunction]
-#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, l1_ratio=0.5, penalised=None))]
+#[pyo3(signature = (family, link, x, y, sample_weight=None, offset=None, power=None, l1_ratio=0.5, penalised=None, groups=None))]
 #[allow(clippy::too_many_arguments)]
 fn glm_alpha_max(
     family: &str,
@@ -440,6 +443,7 @@ fn glm_alpha_max(
     power: Option<f64>,
     l1_ratio: f64,
     penalised: Option<Vec<bool>>,
+    groups: Option<Vec<usize>>,
 ) -> PyResult<f64> {
     let fam = Family::parse(family, power).map_err(to_py)?;
     let link_fn = Link::parse(link).map_err(to_py)?;
@@ -455,7 +459,16 @@ fn glm_alpha_max(
         offset: o,
     };
     let mask = penalised.unwrap_or_else(|| vec![true; shape[1]]);
-    glm::alpha_max(fam, link_fn, data, l1_ratio, &mask, Settings::default()).map_err(to_py)
+    glm::alpha_max(
+        fam,
+        link_fn,
+        data,
+        l1_ratio,
+        &mask,
+        groups.as_deref(),
+        Settings::default(),
+    )
+    .map_err(to_py)
 }
 
 /// Every row to the cheapest model, ties split. See `glasshouse.tournament`.
