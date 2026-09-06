@@ -360,11 +360,13 @@ dev = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "statsmodels" },
-    { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
-    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
 ]
 docs = [
     { name = "mkdocs-material" },
+]
+research = [
+    { name = "torch", version = "2.14.0", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform == 'darwin'" },
+    { name = "torch", version = "2.14.0+cpu", source = { registry = "https://download.pytorch.org/whl/cpu" }, marker = "sys_platform != 'darwin'" },
 ]
 
 [package.metadata]
@@ -395,9 +397,9 @@ dev = [
     { name = "scikit-learn", specifier = ">=1.5" },
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "statsmodels", specifier = ">=0.15.0" },
-    { name = "torch", specifier = ">=2.4", index = "https://download.pytorch.org/whl/cpu" },
 ]
 docs = [{ name = "mkdocs-material", specifier = ">=9.5" }]
+research = [{ name = "torch", specifier = ">=2.4", index = "https://download.pytorch.org/whl/cpu" }]
 
 [[package]]
 name = "glum"

@@ -143,8 +143,8 @@ class CANN:
         perm = rng.permutation(len(y))
         n_valid = max(1, round(self.valid_fraction * len(y)))
         valid, train = torch.as_tensor(perm[:n_valid]), torch.as_tensor(perm[n_valid:])
-        tensors = {
-            k: torch.as_tensor(v, dtype=torch.float64)
+        tensors = {  # torch.tensor copies: a read-only numpy view must not be shared
+            k: torch.tensor(v, dtype=torch.float64)
             for k, v in (("x", x), ("y", y), ("w", w), ("eta", eta_glm))
         }
         net = self.net_.double()
@@ -241,7 +241,7 @@ class CANN:
     def _net(self, x: F64) -> F64:
         torch = _torch()
         with torch.no_grad():
-            out = self.net_.double()(torch.as_tensor(x, dtype=torch.float64)).squeeze(-1)
+            out = self.net_.double()(torch.tensor(x, dtype=torch.float64)).squeeze(-1)
         return np.asarray(out.numpy(), dtype=np.float64)
 
     def _inputs_all(self, X: ArrayLike) -> F64:  # noqa: N803
