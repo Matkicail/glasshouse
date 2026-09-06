@@ -92,7 +92,7 @@ def test_fitted_curve_is_monotone_and_the_constraint_binds(direction: Monotone) 
     assert np.any(sign * np.diff(_curve(free, grid)) < 0.0), "the free smooth does dip"
     assert held.deviance_ >= free.deviance_
     assert held.edf_ < free.edf_ + 1e-9
-    assert held.lambda_["x"] > 0.0 and len(held.gcv_["x"]) == 32
+    assert held.lambda_["x"] > 0.0 and len(held.gcv_["x"]) == 22
     # the intercept is unconstrained, so the fit stays balanced
     np.testing.assert_allclose(held.predict(df).sum(), y.sum(), rtol=1e-8)
 

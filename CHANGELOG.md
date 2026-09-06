@@ -16,6 +16,16 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   over it; set it whenever the split is time-ordered.
 - `Dataset.requires`: a loader can join to another dataset's cleaned frame.
 
+### Changed
+- The design build is vectorised: the missing-value check on a categorical column, the
+  one-hot construction and the out-of-fold target encoding looped over rows in Python. A
+  full-design GLM fit on freMTPL2 went from 2.1 s to 1.2 s, of which the solver is 0.4 s.
+- The GCV search for a smooth's penalty brackets the optimum on a one-point-a-decade grid
+  and narrows it by golden section to a twentieth of a decade, instead of walking a 23-point
+  grid and then a 9-point one; a second coordinate sweep starts from a bracket around the
+  previous optimum. 22 evaluations a smooth instead of 32, and 10 instead of 32 on the
+  second sweep. `fremtpl2_challengers` is re-pinned on the new `glm_smooth` numbers.
+
 ### Fixed
 - The elastic-net coordinate descent crawled, or hit its sweep cap, on designs with an
   intercept next to frequent 0/1 columns (any one-hot factor): the intercept was swept like

@@ -99,30 +99,53 @@ def _gcv_minimise(
     n_rows: int,
     trace: list[tuple[float, float, float]],
     start: F64 | None = None,
+    around: float | None = None,
 ) -> tuple[float, F64 | None]:
-    """1-D GCV minimisation: a coarse log-spaced grid, then a finer pass around the winner.
+    """1-D GCV minimisation over log lambda: a coarse grid to bracket, then golden section.
 
     GCV is ``n * deviance / (n - edf)^2`` — mgcv's criterion with gamma = 1. The numerator
     rewards fit; the shrinking denominator charges for every effective coefficient spent.
     Each evaluation is appended to ``trace`` as ``(lambda, gcv, edf)``.
 
-    Neighbouring lambdas have neighbouring optima, so each fit warm-starts from the previous
-    one and the fine pass from the coarse winner: the same fixed points, reached in a couple
-    of iterations instead of seven. Returns the chosen lambda and its coefficients.
+    The grid is one point a decade from 1e-4 to 1e7; the bracket is the decade either side
+    of the best point, and golden section narrows it to a twentieth of a decade. Given
+    ``around`` (a previous optimum, on a later coordinate sweep) the grid is skipped and the
+    bracket is the decade either side of it. Neighbouring lambdas have neighbouring optima,
+    so each fit warm-starts from the last one. Returns the chosen lambda and its coefficients.
     """
+    best: dict[str, Any] = {"lam": float("nan"), "gcv": float("inf"), "coef": start}
+    coef = start
 
-    def sweep(grid: F64, start: F64 | None) -> tuple[float, F64 | None]:
-        best_lam, best, best_coef, coef = float(grid[0]), float("inf"), start, start
-        for lam in grid:
-            deviance, edf, coef = fit_at(float(lam), coef)
-            gcv = n_rows * deviance / (n_rows - edf) ** 2
-            trace.append((float(lam), float(gcv), float(edf)))
-            if gcv < best:
-                best_lam, best, best_coef = float(lam), float(gcv), coef
-        return best_lam, best_coef
+    def evaluate(log_lam: float) -> float:
+        nonlocal coef
+        lam = float(10.0**log_lam)
+        deviance, edf, coef = fit_at(lam, coef)
+        gcv = n_rows * deviance / (n_rows - edf) ** 2
+        trace.append((lam, float(gcv), float(edf)))
+        if gcv < best["gcv"]:
+            best.update(lam=lam, gcv=float(gcv), coef=coef)
+        return float(gcv)
 
-    coarse, coef = sweep(np.logspace(-4.0, 7.0, 23), start)
-    return sweep(np.logspace(np.log10(coarse) - 0.5, np.log10(coarse) + 0.5, 9), coef)
+    if around is None:
+        grid = np.linspace(-4.0, 7.0, 12)
+        scores = [evaluate(float(g)) for g in grid]
+        i = int(np.argmin(scores))
+        lo, hi = grid[max(i - 1, 0)], grid[min(i + 1, len(grid) - 1)]
+    else:
+        lo, hi = np.log10(around) - 1.0, np.log10(around) + 1.0
+    phi = (np.sqrt(5.0) - 1.0) / 2.0
+    c, d = hi - phi * (hi - lo), lo + phi * (hi - lo)
+    fc, fd = evaluate(c), evaluate(d)
+    while hi - lo > 0.05:  # noqa: PLR2004 — a twentieth of a decade
+        if fc < fd:
+            hi, d, fd = d, c, fc
+            c = hi - phi * (hi - lo)
+            fc = evaluate(c)
+        else:
+            lo, c, fc = c, d, fd
+            d = lo + phi * (hi - lo)
+            fd = evaluate(d)
+    return best["lam"], best["coef"]
 
 
 @dataclass
@@ -511,7 +534,7 @@ class GLM:
         free = [n for n, e in smooths.items() if e.lam is None]
         self.gcv_ = {n: [] for n in free}
         start: F64 | None = None
-        for _ in range(2 if len(free) > 1 else 1):
+        for sweep in range(2 if len(free) > 1 else 1):
             for name in free:
                 # `lambdas` is shared state on purpose: each 1-D search sees the others'
                 # current values, which is what makes the sweeps coordinate descent
@@ -521,7 +544,11 @@ class GLM:
                     return fit_at({**lambdas, _name: lam}, start)
 
                 lambdas[name], start = _gcv_minimise(
-                    fit_at_lam, matrix.shape[0], self.gcv_[name], start
+                    fit_at_lam,
+                    matrix.shape[0],
+                    self.gcv_[name],
+                    start,
+                    around=lambdas[name] if sweep else None,  # the second sweep refines
                 )
         self.lambda_ = {n: float(v) for n, v in lambdas.items()}
         return combined(self.lambda_)

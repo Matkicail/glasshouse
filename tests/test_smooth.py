@@ -74,7 +74,7 @@ def test_glm_smooth_term_picks_its_own_wiggliness() -> None:
     d_smooth = deviance(y[te], smooth.predict(df.iloc[te]), family="poisson")
     assert d_smooth < d_lin
     assert smooth.lambda_["age"] > 0.0
-    assert len(smooth.gcv_["age"]) == 32  # 23 coarse + 9 fine: the search is on the record
+    assert len(smooth.gcv_["age"]) == 22  # 12 on the grid + 10 golden section: on the record
     assert 2.0 < smooth.edf_ < 10.0  # a curve, not the whole 9-column budget
     # the intercept is unpenalised, so the fit stays balanced on its training rows
     tr = fold.train_idx
@@ -133,7 +133,10 @@ def test_two_smooths_get_their_own_lambdas() -> None:
     df = pd.DataFrame({"a": a, "b": b})
     m = GLM(family="gaussian", terms={"a": "smooth", "b": "smooth"}).fit(df, y)
     assert set(m.lambda_) == {"a", "b"}
-    assert all(len(m.gcv_[k]) == 64 for k in ("a", "b"))  # two coordinate sweeps of 32
+    # first sweep 21 or 22 (a best grid point at an end brackets one decade, not two), second 10
+    assert all(len(m.gcv_[k]) in (31, 32) for k in ("a", "b")), {
+        k: len(v) for k, v in m.gcv_.items()
+    }
     flat = GLM(family="gaussian").fit(df, y)
     assert m.deviance_ < flat.deviance_
 

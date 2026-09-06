@@ -36,11 +36,28 @@ def _labels(x: ArrayLike, name: str) -> np.ndarray:
         n = int(np.isnan(arr).sum())
         msg = f"{name} has {n} missing value(s): give missing its own level (e.g. 'unknown') first"
         raise ValueError(msg)
-    if arr.dtype.kind == "O" and any(_missing(v) for v in arr):
-        n = sum(_missing(v) for v in arr)
-        msg = f"{name} has {n} missing value(s): give missing its own level (e.g. 'unknown') first"
-        raise ValueError(msg)
-    return arr.astype(str)
+    labels = arr.astype(str)
+    if arr.dtype.kind == "O":
+        # a missing value in an object column prints as "None" or "nan"; check only those
+        # candidates element-wise (a Python loop over every row cost 2 s on 680k rows)
+        candidates = np.flatnonzero(np.isin(labels, ("None", "nan")))
+        n = sum(_missing(v) for v in arr[candidates])
+        if n:
+            msg = (
+                f"{name} has {n} missing value(s): give missing its own level "
+                "(e.g. 'unknown') first"
+            )
+            raise ValueError(msg)
+    return labels
+
+
+def _codes(labels: np.ndarray, levels: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Position of each label in the sorted ``levels``, and whether it was found there."""
+    code = np.searchsorted(levels, labels)
+    inside = code < len(levels)
+    known = inside.copy()
+    known[inside] = levels[code[inside]] == labels[inside]
+    return code, known
 
 
 def _missing(v: object) -> bool:
@@ -80,33 +97,44 @@ class OneHot:
     ) -> OneHot:
         """Learn the levels from the training rows (sorted, so the reference is stable)."""
         _ = y, sample_weight
-        self.levels_ = sorted(set(_labels(x, self.name).tolist()))
-        if len(self.levels_) < 2:  # noqa: PLR2004
-            msg = f"{self.name} has a single level {self.levels_}: nothing to encode; drop it"
-            raise ValueError(msg)
+        self._fit_labels(_labels(x, self.name))
         return self
 
     def transform(self, x: ArrayLike) -> tuple[F64, list[str]]:
         """0/1 columns for the kept levels, in level order."""
+        return self._encode(_labels(x, self.name))
+
+    def fit_transform(
+        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
+    ) -> tuple[F64, list[str]]:
+        """``fit`` then ``transform`` on the same rows (the labels are read once)."""
+        _ = y, sample_weight
         labels = _labels(x, self.name)
-        kept = self.levels_[1:] if self.drop_first else self.levels_
-        unseen = sorted(set(labels.tolist()) - set(self.levels_))
-        if unseen and self.unknown == "error":
+        self._fit_labels(labels)
+        return self._encode(labels)
+
+    def _fit_labels(self, labels: np.ndarray) -> None:
+        self.levels_ = np.unique(labels).tolist()
+        if len(self.levels_) < 2:  # noqa: PLR2004
+            msg = f"{self.name} has a single level {self.levels_}: nothing to encode; drop it"
+            raise ValueError(msg)
+
+    def _encode(self, labels: np.ndarray) -> tuple[F64, list[str]]:
+        levels = np.asarray(self.levels_)
+        code, known = _codes(labels, levels)
+        if not known.all() and self.unknown == "error":
+            unseen = np.unique(labels[~known]).tolist()
             msg = (
                 f"{self.name} has {len(unseen)} level(s) not seen at fit: {unseen[:5]} — "
                 "fit on data that has them, or use unknown='zero' to encode them as the reference"
             )
             raise ValueError(msg)
+        first = 1 if self.drop_first else 0
+        kept = self.levels_[first:]
         out = np.zeros((len(labels), len(kept)), dtype=np.float64)
-        for j, level in enumerate(kept):
-            out[:, j] = labels == level
+        rows = np.flatnonzero(known & (code >= first))
+        out[rows, code[rows] - first] = 1.0
         return out, [f"{self.name}={level}" for level in kept]
-
-    def fit_transform(
-        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
-    ) -> tuple[F64, list[str]]:
-        """``fit`` then ``transform`` on the same rows."""
-        return self.fit(x, y, sample_weight).transform(x)
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-ready state."""
@@ -194,7 +222,10 @@ class TargetEncode:
     def transform(self, x: ArrayLike) -> tuple[F64, list[str]]:
         """Encode new rows from the full training table; unseen levels get the prior."""
         labels = _labels(x, self.name)
-        out = np.array([self.table_.get(v, self.prior_) for v in labels], dtype=np.float64)
+        levels = np.asarray(list(self.table_))
+        values = np.asarray(list(self.table_.values()), dtype=np.float64)
+        code, known = _codes(labels, levels)
+        out = np.where(known, values[np.where(known, code, 0)], self.prior_)
         return out[:, None], [f"{self.name}_te"]
 
     def fit_transform(
@@ -206,10 +237,14 @@ class TargetEncode:
 
     def _table(self, labels: np.ndarray, y: F64, w: F64, prior: float) -> dict[str, float]:
         levels, codes = np.unique(labels, return_inverse=True)
-        sw = np.bincount(codes, weights=w, minlength=len(levels))
-        swy = np.bincount(codes, weights=w * y, minlength=len(levels))
-        values = (swy + self.smoothing * prior) / (sw + self.smoothing)
+        values = self._values(codes, len(levels), y, w, prior)
         return dict(zip(levels.tolist(), values.tolist(), strict=True))
+
+    def _values(self, codes: np.ndarray, n_levels: int, y: F64, w: F64, prior: float) -> F64:
+        """Return the smoothed per-level means; a level with no weight is the prior."""
+        sw = np.bincount(codes, weights=w, minlength=n_levels)
+        swy = np.bincount(codes, weights=w * y, minlength=n_levels)
+        return np.asarray((swy + self.smoothing * prior) / (sw + self.smoothing), dtype=np.float64)
 
     def _out_of_fold(self, labels: np.ndarray, y: F64, w: F64) -> F64:
         n = len(y)
@@ -218,12 +253,13 @@ class TargetEncode:
             return np.full(n, self.prior_)
         rng = np.random.default_rng(self.seed)
         fold = rng.permutation(n) % k
+        levels, codes = np.unique(labels, return_inverse=True)
         out = np.empty(n, dtype=np.float64)
         for i in range(k):
             train, held = fold != i, fold == i
             prior = float(np.sum(w[train] * y[train]) / np.sum(w[train]))
-            table = self._table(labels[train], y[train], w[train], prior)
-            out[held] = [table.get(v, prior) for v in labels[held]]
+            values = self._values(codes[train], len(levels), y[train], w[train], prior)
+            out[held] = values[codes[held]]  # a level absent from the fold's training rows: prior
         return out
 
     def _cumulative(self, labels: np.ndarray, y: F64, w: F64) -> F64:
