@@ -1,4 +1,4 @@
-// The shape of a glasshouse-report/1 document. Hand-written to mirror report/schema.json;
+// The shape of a glasshouse-report/1 document. Hand-written to mirror python/glasshouse/_report/schema.json;
 // the vitest suite renders the Python-produced fixture, so a drift between the two fails a test.
 // Nothing here is computed: the browser only draws what Python wrote.
 

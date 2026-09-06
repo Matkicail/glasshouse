@@ -7,9 +7,9 @@ name: report
 on:
   push:
     branches: [main]
-    paths: ["report/**", "tests/fixtures/**", ".github/workflows/report.yml"]
+    paths: ["report/**", "python/glasshouse/_report/**", "tests/fixtures/**", ".github/workflows/report.yml"]
   pull_request:
-    paths: ["report/**", "tests/fixtures/**", ".github/workflows/report.yml"]
+    paths: ["report/**", "python/glasshouse/_report/**", "tests/fixtures/**", ".github/workflows/report.yml"]
 
 permissions:
   contents: read
@@ -30,7 +30,7 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: checked-in build must match a fresh build
-        run: git diff --exit-code -- dist
+        run: git diff --exit-code -- ../python/glasshouse/_report/report.js
       - run: npm test
       - run: npm run size
       - run: npm audit --audit-level=high

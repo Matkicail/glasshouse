@@ -62,5 +62,5 @@ function renderReport(doc: ReportDoc, root: HTMLElement): void {
   root.append(el("footer", {}, [dl]));
 }
 
-const GlasshouseReport: GlasshouseReportApi = { render: renderReport, parse: parseReport, version: "0.0.1" };
+const GlasshouseReport: GlasshouseReportApi = { render: renderReport, parse: parseReport, version: "0.1.0" };
 (globalThis as unknown as { GlasshouseReport: GlasshouseReportApi }).GlasshouseReport = GlasshouseReport;

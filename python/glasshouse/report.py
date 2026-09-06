@@ -4,7 +4,7 @@
 type**, and optional features / time / provenance, and computes — in Python, from the Rust
 metrics — every score, curve and residual table the report suite shows. The TypeScript side
 only draws what is here; nothing is recomputed in a browser. The document conforms to
-``report/schema.json`` (checked in) and a test validates it.
+``glasshouse/_report/schema.json`` (checked in) and a test validates it.
 
 Task types and what they select (see ``docs/report-suite.md``):
 
@@ -372,7 +372,7 @@ def _summary(r: F64) -> dict[str, float]:
 
 
 def validate(doc: dict[str, Any]) -> None:
-    """Validate a document against ``report/schema.json`` (needs the ``jsonschema`` package).
+    """Validate a document against the packaged ``schema.json`` (needs ``jsonschema``).
 
     Raises ``ValueError`` with the first problem found.
     """
@@ -414,7 +414,7 @@ def to_html(doc: dict[str, Any], path: str | Path) -> Path:
     True
     """
     template = (_report_dir() / "template.html").read_text(encoding="utf-8")
-    viewer = (_report_dir() / "dist" / "report.js").read_text(encoding="utf-8")
+    viewer = (_report_dir() / "report.js").read_text(encoding="utf-8")
     # `</script` inside the JSON would end the data block early; escape it the standard way.
     payload = json.dumps(doc).replace("</", "<\\/")
     html = (
@@ -429,13 +429,12 @@ def to_html(doc: dict[str, Any], path: str | Path) -> Path:
 
 
 def _report_dir() -> Path:
-    """Return the ``report/`` folder: schema, template, and the checked-in viewer build."""
-    here = Path(__file__).resolve()
-    for parent in here.parents:
-        if (parent / "report" / "template.html").exists():
-            return parent / "report"
-    msg = "report/ folder not found next to the package: is glasshouse installed from the repo?"
-    raise FileNotFoundError(msg)
+    """Return the package's ``_report/`` folder: schema, template, and the viewer build.
+
+    The TypeScript source lives in ``report/`` at the repo root and compiles into here, so an
+    installed wheel carries everything ``to_html`` needs.
+    """
+    return Path(__file__).resolve().parent / "_report"
 
 
 __all__ = ["SCHEMA_VERSION", "Report", "TaskType", "build", "schema_path", "to_html", "validate"]

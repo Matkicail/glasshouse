@@ -33,9 +33,9 @@ Tools on Windows).
 | `uv run python -c "import glasshouse; print(glasshouse.__version__)"` | Smoke test the install | Proves the extension loaded |
 | `uv run glasshouse list` | Lists the named benchmarks | Recipes anyone can rerun |
 | `uv run glasshouse bench fremtpl2_glm` | Runs a benchmark, writes `benchmarks/<name>/report.{json,md,html}` — the html is the interactive suite | First run fetches the data from OpenML (~70 s) into `~/.cache/glasshouse`; after that ~25 s |
-| `cd report && npm run check` | build → checked-in `dist/report.js` must be unchanged → vitest on the fixture → size budget → `npm audit` | The viewer's gate. If `dist` differs, you forgot to rebuild after editing `src/` |
+| `cd report && npm run check` | build → checked-in `python/glasshouse/_report/report.js` must be unchanged → vitest on the fixture → size budget → `npm audit` | The viewer's gate. If the built file differs, you forgot to rebuild after editing `src/` |
 | `uv run python -c "from glasshouse import report; ..."; r.to_html('out.html')` | Writes one self-contained HTML report | Double-click to open; Plotly from a pinned CDN, tables if offline |
-| `uv run python tests/make_report_fixture.py` | Regenerates `tests/fixtures/report_small.json` | The document the TypeScript report tests render; regenerate when `report.build` changes shape (and bump `report/schema.json`) |
+| `uv run python tests/make_report_fixture.py` | Regenerates `tests/fixtures/report_small.json` | The document the TypeScript report tests render; regenerate when `report.build` changes shape (and bump `python/glasshouse/_report/schema.json`) |
 | `RAYON_NUM_THREADS=4 uv run glasshouse bench fremtpl2_glm` | Caps the Rust solver at 4 threads (default: every core) | Results are identical whatever the count; cap it on a shared machine or to compare timings |
 | `GLASSHOUSE_NETWORK_TESTS=1 uv run pytest -k pinned` | Reruns the committed benchmark and checks the numbers match to 1e-6 | The regression test that stops numbers drifting silently; needs the cached data |
 
@@ -49,7 +49,7 @@ Tools on Windows).
 - `tests/` — pytest: golden tests vs scikit-learn/statsmodels/glum/R fixtures, hypothesis properties.
 - `docs/` — `methods.md` (formulas, citations, weights), `comparing-models.md` (the report
   end to end, every example run by `tests/test_docs_examples.py`), `report-suite.md` (plan). Tracked.
-- `report/` — the TypeScript viewer: `schema.json` (the JSON contract), `src/*.ts`, `dist/report.js`
+- `report/` — the TypeScript viewer source (`src/*.ts`, vitest); it compiles into `python/glasshouse/_report/report.js`, which sits next to `schema.json` (the JSON contract) and `template.html` so the wheel ships them
   (built, checked in), `template.html`, `test/`. Python `report.to_html` glues them.
 - `check.sh` — the gate. `COMMANDS.md` — this file. `CLAUDE.md` — the rules.
 - `*.md` at the top level other than the whitelisted ones (README, CLAUDE, COMMANDS, CHANGELOG)
@@ -82,8 +82,28 @@ at numpy (+ optional pyarrow/polars).
 | `git push -u origin HEAD` | Push the branch (never `HEAD:main`) then open a PR |
 
 CI runs the same `./check.sh` steps on Linux + macOS + Windows and both Python versions, plus
-`cargo audit`, `pip-audit`, gitleaks. Tags `vX.Y.Z` build wheels and publish to PyPI (Trusted
-Publishing; no token in the repo).
+`cargo audit`, `pip-audit`, gitleaks.
+
+### Cutting a release
+
+| Step | Command | Why |
+|---|---|---|
+| 1 | Bump `version` in `pyproject.toml`, `Cargo.toml`, `python/glasshouse/__init__.py`, `report/package.json`, `report/src/main.ts`; turn `## Unreleased` in `CHANGELOG.md` into `## X.Y.Z — date` | One version everywhere; the release workflow refuses a tag that does not match `pyproject.toml` |
+| 2 | Open the PR, get it green, merge | Releases are cut from `main` only |
+| 3 | `git switch main && git pull && git tag -a vX.Y.Z -m "vX.Y.Z" && git push origin vX.Y.Z` | The tag is the trigger. `.github/workflows/release.yml` builds wheels (Linux, macOS, Windows; 3.12 and 3.13) and the sdist, then publishes |
+| rc | Tag `vX.Y.ZrcN` instead | Goes to TestPyPI; `pip install -i https://test.pypi.org/simple/ glasshouse==X.Y.ZrcN` to try it |
+
+Publishing uses PyPI Trusted Publishing: no token in the repo, GitHub proves the job's identity
+to PyPI. One-time setup by the project owner, on pypi.org (and test.pypi.org): add a pending
+publisher for `Matkicail/glasshouse`, workflow `release.yml`, environment `pypi` (`testpypi`).
+Then create the two environments under the repo's Settings → Environments.
+
+### The docs site
+
+| Command | What it does | Why |
+|---|---|---|
+| `uv run --group docs mkdocs serve` | Serves the docs at http://127.0.0.1:8000 with live reload | Preview `docs/` as the site reads |
+| `uv run --group docs mkdocs build --strict` | Builds `site/`; a broken link fails the build | The docs check `.github/workflows/docs.yml` runs on every PR; a push to `main` deploys to GitHub Pages (enable Pages → Source: GitHub Actions once) |
 
 ## 5. When it breaks
 
