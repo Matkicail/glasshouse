@@ -26,6 +26,11 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   majorisation step per group inside the same coordinate descent; the cross-validated path
   and `alpha_max` understand groups. Checked against the grouped KKT conditions.
   `telco_churn` gains a `group_lasso_logistic` row and is re-pinned.
+- `encoders.Interaction` and `terms={"a*b": Interaction(df=4)}`: a tensor-product spline of
+  two numeric columns, the interaction and only that, unpenalised, one group under the group
+  lasso, one bar on "explain a row". The research run said the CANN's gain on freMTPL2 was
+  interactions, so the smooth GLM gets one, DrivAge by BonusMalus, as `glm_interaction` in
+  both `fremtpl2_challengers` and `fremtpl2_cann`; both are re-pinned.
 - `AdditiveNet` and `LocalGLMnet` in `glasshouse.research`: the second and third models of
   the fenced track, sharing the CANN's class and training loop and differing only in what
   the correction may be. The additive net gives each input column its own small net

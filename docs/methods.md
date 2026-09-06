@@ -231,6 +231,14 @@ at them. It spans exactly the piecewise linear encoding of Gorishniy, Rubachev &
 (NeurIPS 2022), whose bin-fill columns are a different basis for the same functions, so the
 two fit the same curve; it is the term to reach for when a spline's smoothness is not wanted.
 
+**Interaction terms.** `terms={"a*b": Interaction(df=4)}` adds the tensor product of two
+B-spline bases, one per column with the first basis function dropped as for any spline
+term: every product of one column of each, `df² ` columns. With the two main effects in
+the model as their own terms, the products are the part of the surface the main effects
+cannot carry, so the term is the interaction and only that. It is unpenalised (choose `df`
+small), enters the group lasso as one block, and reads as one bar on "explain a row". The
+picture that says it worked is the two-feature A/E grid going flat.
+
 **Per-row attributions.** With `β` on the link scale, row `i`'s linear predictor is
 `β₀ + Σ_j β_j x_ij`; `GLM.term_contributions` sums the `β_j x_ij` of the design columns that
 belong to each input column (a one-hot factor, a spline's basis), so a row reads as the

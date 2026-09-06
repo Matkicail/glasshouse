@@ -114,15 +114,15 @@ drift test.
 
 Run on 2026-09-06 (held-out, mean ± std over five folds; best per metric in bold):
 
-| metric | glm_smooth | cann | additive | localglm | lightgbm | naive |
-|---|---|---|---|---|---|---|
-| deviance | 0.59198 ± 0.0021 | 0.58414 ± 0.0027 | 0.59438 ± 0.0017 | 0.58869 ± 0.0023 | **0.5724 ± 0.0026** | 0.62488 |
-| d2 | 0.0527 ± 0.0011 | 0.0652 ± 0.0016 | 0.0488 ± 0.0023 | 0.0579 ± 0.0034 | **0.0840 ± 0.0023** | 0 |
-| gini | 0.4894 ± 0.016 | 0.4799 ± 0.026 | 0.4785 ± 0.021 | 0.4771 ± 0.022 | **0.5351 ± 0.021** | 0 |
-| balance | **1.0000 ± 0.0033** | 0.9997 ± 0.0039 | 1.0000 ± 0.0028 | 1.0001 ± 0.0045 | 0.9991 ± 0.0037 | 1 |
+| metric | glm_smooth | glm_interaction | cann | additive | localglm | lightgbm | naive |
+|---|---|---|---|---|---|---|---|
+| deviance | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | 0.58414 ± 0.0027 | 0.59438 ± 0.0017 | 0.58869 ± 0.0023 | **0.5724 ± 0.0026** | 0.62488 |
+| d2 | 0.0527 ± 0.0011 | 0.0538 ± 0.0014 | 0.0652 ± 0.0016 | 0.0488 ± 0.0023 | 0.0579 ± 0.0034 | **0.0840 ± 0.0023** | 0 |
+| gini | 0.4894 ± 0.016 | 0.4910 ± 0.016 | 0.4799 ± 0.026 | 0.4785 ± 0.021 | 0.4771 ± 0.022 | **0.5351 ± 0.021** | 0 |
+| balance | **1.0000 ± 0.0033** | 0.9999 ± 0.0038 | 0.9997 ± 0.0039 | 1.0000 ± 0.0028 | 1.0001 ± 0.0045 | 0.9991 ± 0.0037 | 1 |
 
-Fit time over all folds: glm_smooth 199 s, cann 293 s, additive 357 s, localglm 246 s,
-lightgbm 49 s (each net contains the GLM).
+Fit time over all folds: glm_smooth 163 s, glm_interaction 208 s, cann 279 s, additive
+346 s, localglm 235 s, lightgbm 53 s (each net contains the GLM).
 
 **Verdicts, all three no-go, and each one says something.**
 
@@ -140,10 +140,19 @@ lightgbm 49 s (each net contains the GLM).
   lower. It stays in the fence too, but its `attention` output is the most readable account
   of *which* interactions matter, which is what the next model should be built from.
 
-What the three rows together say is that on this data the honest route from a smooth GLM
-to LightGBM's deviance runs through interaction terms, not through more flexible marginals.
-The two-feature A/E grids on the Residuals tab already name the first of them, DrivAge by
-BonusMalus.
+What the three net rows together say is that on this data the route from a smooth GLM
+towards LightGBM's deviance runs through interactions, not through more flexible marginals.
+
+**The glass-box reply, `glm_interaction`.** The two-feature A/E grid on the Residuals tab
+names DrivAge by BonusMalus as the biggest interaction the smooth GLM misses, so the GLM
+got exactly that one, as a 4 x 4 tensor-product spline (`Interaction(df=4)`). It helps, and
+it is honest about how much: deviance down 0.12 % and the Gini up a little, with the balance
+kept. That is about a tenth of the CANN's gain. So the CANN's 1.3 % is not one big
+interaction a rating table could add; it is many small ones, which is what a network is
+for and a rating table is not. The trade is now stated in numbers: a table of relativities
+plus one interaction reaches 0.5913; a network on top of that table reaches 0.5841; a
+boosted tree reaches 0.5724 and cannot be read. Which of those to deploy is a business
+decision the report makes plainly, not a modelling one it hides.
 
 ## Save and load
 

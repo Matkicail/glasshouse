@@ -480,10 +480,7 @@ class GLM:
             self.encoders_ = {}
             self._slices = {}
             return (matrix if rows is None else matrix[rows]), plain_names
-        unknown = sorted(set(terms) - {str(n) for n, _ in cols})
-        if unknown:
-            msg = f"terms name columns that are not in X: {unknown}"
-            raise ValueError(msg)
+        _check_terms(terms, {str(n) for n, _ in cols})
         self.input_columns_ = [str(n) for n, _ in cols]
         self.encoders_ = {}
         y_train = y if rows is None else y[rows]
@@ -503,7 +500,29 @@ class GLM:
             self._slices[str(col_name)] = (len(names), len(names) + len(block_names))
             blocks.append(block)
             names.extend(block_names)
+        by_name = {str(n): c for n, c in cols}
+        for key in (k for k in terms if "*" in k):  # interactions, after the main effects
+            block, block_names = self._fit_interaction(key, terms[key], by_name, rows)
+            self._slices[key] = (len(names), len(names) + len(block_names))
+            blocks.append(block)
+            names.extend(block_names)
         return np.ascontiguousarray(np.column_stack(blocks)), names
+
+    def _fit_interaction(
+        self,
+        key: str,
+        spec: str | encoders.Encoder,
+        by_name: dict[str, Any],
+        rows: npt.NDArray[np.int64] | None,
+    ) -> tuple[F64, list[str]]:
+        """One ``a*b`` term: the tensor product of the two columns' bases, fitted on train rows."""
+        a, b = key.split("*", 1)
+        enc = encoders.make("interaction", key) if isinstance(spec, str) else spec
+        enc.name = key
+        pair = (subset_column(by_name[a], rows), subset_column(by_name[b], rows))
+        block, block_names = enc.fit_transform(pair)
+        self.encoders_[key] = enc
+        return block, block_names
 
     def _fit_term(
         self,
@@ -650,6 +669,11 @@ class GLM:
             blocks.append(
                 to_vector(col, str(col_name))[:, None] if enc is None else enc.transform(col)[0]
             )
+        by_name = {str(n): c for n, c in cols}
+        for key, enc in self.encoders_.items():
+            if "*" in key:
+                a, b = key.split("*", 1)
+                blocks.append(enc.transform((by_name[a], by_name[b]))[0])
         return self._with_intercept(np.column_stack(blocks))
 
     def _with_intercept(self, matrix: F64) -> F64:
@@ -866,6 +890,7 @@ class GLM:
                 k: (v if isinstance(v, str) else v.to_dict()) for k, v in (self.terms or {}).items()
             },
             "encoders": {k: v.to_dict() for k, v in self.encoders_.items()},
+            "slices": {k: list(v) for k, v in self._slices.items()},
             "coef": list(map(float, r["coef"])),
             "cov": list(map(float, r["cov"])),
             "cov_robust": list(map(float, r["cov_robust"])),
@@ -899,6 +924,7 @@ class GLM:
             for k, v in payload["terms"].items()
         } or None
         model.encoders_ = {k: encoders.from_dict(v) for k, v in payload["encoders"].items()}
+        model._slices = {k: (int(lo), int(hi)) for k, (lo, hi) in payload.get("slices", {}).items()}
         model._fit = {
             key: payload[key]
             for key in (
@@ -930,6 +956,14 @@ class GLM:
         model.l1_ratio = float(payload.get("l1_ratio", 0.5))
         model.group_lasso = bool(payload.get("group_lasso", False))
         return model
+
+
+def _check_terms(terms: dict[str, Any], have: set[str]) -> None:
+    """Refuse a term that names a column X does not have (an ``a*b`` key names two)."""
+    unknown = sorted(c for key in terms for c in key.split("*") if c not in have)
+    if unknown:
+        msg = f"terms name columns that are not in X: {unknown}"
+        raise ValueError(msg)
 
 
 def _pick(v: F64 | None, rows: npt.NDArray[np.int64]) -> F64 | None:

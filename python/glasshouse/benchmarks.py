@@ -13,7 +13,7 @@ from typing import Any
 
 from glasshouse import data, splits
 from glasshouse.bench import BenchResult, ModelSpec, TaskSpec, run
-from glasshouse.encoders import BSpline, OneHot, Smooth
+from glasshouse.encoders import BSpline, Interaction, OneHot, Smooth
 from glasshouse.foss import GlumPoisson, SklearnPoisson
 from glasshouse.gbdt import LightGBM
 from glasshouse.glm import GLM
@@ -97,6 +97,14 @@ def _smooth_glm() -> GLM:
             "LogDensity": "smooth",
         },
     )
+
+
+def _interaction_glm() -> GLM:
+    """Build the smooth GLM plus the one interaction the two-feature A/E grid pointed at."""
+    glm = _smooth_glm()
+    assert glm.terms is not None
+    glm.terms = {**glm.terms, "DrivAge*BonusMalus": Interaction(df=4)}
+    return glm
 
 
 def _research(network: str) -> Callable[[], Any]:
@@ -220,6 +228,7 @@ BENCHMARKS: dict[str, Benchmark] = {
                 ],
             ),
             ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
+            ModelSpec("glm_interaction", _interaction_glm, list(_FOSS_COLUMNS)),
             ModelSpec(
                 "lightgbm",
                 lambda: LightGBM(
@@ -367,6 +376,7 @@ BENCHMARKS: dict[str, Benchmark] = {
         task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
         models=[
             ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
+            ModelSpec("glm_interaction", _interaction_glm, list(_FOSS_COLUMNS)),
             ModelSpec("cann", _research("mlp"), list(_FOSS_COLUMNS)),
             ModelSpec("additive", _research("additive"), list(_FOSS_COLUMNS)),
             ModelSpec("localglm", _research("localglm"), list(_FOSS_COLUMNS)),
