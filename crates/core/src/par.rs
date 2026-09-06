@@ -29,17 +29,32 @@ pub fn per_row(n_rows: usize, f: impl Fn(usize) -> f64 + Sync) -> Vec<f64> {
     out
 }
 
+/// Below this many rows a pass runs on the calling thread: rayon's scheduling costs more
+/// than the work, and a coordinate descent makes thousands of such passes. The chunks and
+/// the order of their partial sums are the same either way, so the result is identical.
+pub const SEQUENTIAL_BELOW: usize = 4 * CHUNK;
+
 /// `sum_i f(i)`: sequential within each chunk, chunk partials added in chunk order.
 pub fn chunk_sum(n_rows: usize, f: impl Fn(usize) -> f64 + Sync) -> f64 {
-    let partials: Vec<f64> = chunks(n_rows)
-        .map(|(lo, hi)| (lo..hi).map(&f).sum::<f64>())
-        .collect();
+    let partial = |(lo, hi): (usize, usize)| (lo..hi).map(&f).sum::<f64>();
+    if n_rows <= SEQUENTIAL_BELOW {
+        return (0..n_rows.div_ceil(CHUNK))
+            .map(|c| partial((c * CHUNK, ((c + 1) * CHUNK).min(n_rows))))
+            .sum();
+    }
+    let partials: Vec<f64> = chunks(n_rows).map(partial).collect();
     partials.iter().sum()
 }
 
 /// `target[i] -= factor * col[i]` for every row, in parallel; element-wise, so the thread
 /// count cannot change a bit.
 pub fn axpy(target: &mut [f64], col: &[f64], factor: f64) {
+    if target.len() <= SEQUENTIAL_BELOW {
+        for (ti, ci) in target.iter_mut().zip(col) {
+            *ti += factor * ci;
+        }
+        return;
+    }
     target
         .par_chunks_mut(CHUNK)
         .zip(col.par_chunks(CHUNK))

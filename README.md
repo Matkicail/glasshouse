@@ -85,10 +85,11 @@ If you already have predictions from any library, skip the fitting: `report.buil
 `docs/comparing-models.md` walks through it with one worked example per task type; every code
 block there runs as a test.
 
-## Two real benchmarks
+## Five real benchmarks
 
-Both are one command, reproducible from a seeded recipe, and their summary numbers are pinned
-by a drift test.
+Each is one command, reproducible from a seeded recipe, with a committed summary and a drift
+test that pins its numbers. Five shapes, so the scorecard is proven where models usually go
+wrong: heavy-tailed claims, a rare event, a time-ordered series, and a churn book.
 
 **French motor claim frequency** (freMTPL2, 678,013 policies, Poisson with exposure offset,
 stratified 5-fold): `uv run glasshouse bench fremtpl2_challengers`.
@@ -104,6 +105,48 @@ The splined GLM closes most of the gap to LightGBM on ranking while staying a ta
 relativities; the tournament and the two-feature A/E grids in the report say where the rest
 of the gap lives (for this data, an age by bonus-malus interaction the main-effects GLM
 lacks).
+
+**French motor claim severity** (freMTPL2sev, 24,944 policies with claims, gamma, weight =
+claim count): `uv run glasshouse bench fremtpl2_sev`.
+
+| metric | glm_gamma | lightgbm | naive |
+|---|---|---|---|
+| deviance | **1.5641 ± 0.14** | 1.5785 ± 0.21 | 1.5635 |
+| d2 | **-0.0047 ± 0.045** | -0.0083 ± 0.011 | 0 |
+| gini | **0.057 ± 0.075** | 0.042 ± 0.058 | 0 |
+| balance | **1.011 ± 0.12** | 1.081 ± 0.13 | 1 |
+
+Neither model beats the mean claim on held-out deviance, and the panel says so. That is the
+known result on this data: severity is close to unpredictable from the policy features, and
+a report that hides the naive row would have you deploy a model that adds nothing.
+
+**Hourly bike rentals** (17,379 hours over two years, Poisson, time-ordered folds that train
+strictly before they test): `uv run glasshouse bench bike_sharing`.
+
+| metric | glm_poisson | lightgbm | naive |
+|---|---|---|---|
+| deviance | 66.51 ± 19 | **43.02 ± 14** | 161.63 |
+| d2 | 0.586 ± 0.096 | **0.733 ± 0.077** | 0 |
+| balance | **1.401 ± 0.17** | 1.405 ± 0.15 | 1 |
+| mae | 85.4 ± 22 | **72.2 ± 23** | 146.7 |
+
+Both models rank the hours well and both are 40% under on the level: demand grew from 2011
+to 2012 and a model trained on the past cannot see the growth. A random split would have
+hidden that; the time split and the residuals-over-time view show it.
+
+**Telco customer churn** (7,043 customers, 26.5% churn, logistic vs lasso logistic on
+fifteen one-hot factors, stratified 5-fold): `uv run glasshouse bench telco_churn`.
+
+| metric | logistic | lasso_logistic | naive |
+|---|---|---|---|
+| log_loss | 0.4186 ± 0.0097 | **0.4183 ± 0.01** | 0.5786 |
+| roc_auc | 0.8433 ± 0.0088 | **0.8434 ± 0.0093** | 0.5 |
+| average_precision | 0.6539 ± 0.016 | **0.6543 ± 0.018** | 0.2654 |
+| mcc | **0.4663 ± 0.024** | 0.4642 ± 0.022 | 0 |
+
+The lasso path chosen by cross-validation lands on the same model as the plain logistic,
+which is the honest answer on a book this size with fifteen well-chosen factors: the
+penalty buys nothing here, and the report says so rather than flattering it.
 
 **Credit-card fraud** (284,807 transactions, 0.17% positives, logistic, stratified 5-fold):
 `uv run glasshouse bench creditcard_glm`.

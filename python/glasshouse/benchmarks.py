@@ -13,7 +13,7 @@ from typing import Any
 
 from glasshouse import data, splits
 from glasshouse.bench import BenchResult, ModelSpec, TaskSpec, run
-from glasshouse.encoders import BSpline, Smooth
+from glasshouse.encoders import BSpline, OneHot, Smooth
 from glasshouse.foss import GlumPoisson, SklearnPoisson
 from glasshouse.gbdt import LightGBM
 from glasshouse.glm import GLM
@@ -29,6 +29,7 @@ class Benchmark:
     models: list[ModelSpec]
     make_splits: Callable[[Any], splits.Splits]
     features: list[str] = ()  # type: ignore[assignment]
+    time: str | None = None  # residuals over this column; set it whenever the split is time-ordered
 
 
 def _fremtpl2_models() -> list[ModelSpec]:
@@ -93,6 +94,55 @@ def _foss_models() -> list[ModelSpec]:
         ),
     ]
 
+
+_SEV_COLUMNS = [
+    "Area",
+    "VehGas",
+    "VehBrand",
+    "Region",
+    "DrivAge",
+    "VehAge",
+    "VehPower",
+    "BonusMalus",
+]
+_BIKE_COLUMNS = [
+    "season",
+    "weather",
+    "hour",
+    "workingday",
+    "holiday",
+    "temp",
+    "humidity",
+    "windspeed",
+]
+_TELCO_CATEGORICAL = [
+    "gender",
+    "Partner",
+    "Dependents",
+    "PhoneService",
+    "MultipleLines",
+    "InternetService",
+    "OnlineSecurity",
+    "OnlineBackup",
+    "DeviceProtection",
+    "TechSupport",
+    "StreamingTV",
+    "StreamingMovies",
+    "Contract",
+    "PaperlessBilling",
+    "PaymentMethod",
+]
+# TotalCharges is left out: it is tenure times MonthlyCharges to within rounding, so it says
+# nothing the other two do not, and its near-collinearity with them is what a coordinate
+# descent crawls on. The penalty is on the raw scale (glmnet's convention with standardisation
+# off), so the numerics are standardised: otherwise a column in the tens sets alpha_max and
+# the 0/1 columns are crushed at every alpha on the path. The plain logistic gets the same
+# design, so the only difference between the two rows is the penalty.
+_TELCO_COLUMNS = [*_TELCO_CATEGORICAL, "SeniorCitizen", "tenure", "MonthlyCharges"]
+_TELCO_TERMS = {
+    **dict.fromkeys(_TELCO_CATEGORICAL, "onehot"),
+    **dict.fromkeys(["tenure", "MonthlyCharges"], "standardize"),
+}
 
 BENCHMARKS: dict[str, Benchmark] = {
     "fremtpl2_glm": Benchmark(
@@ -202,6 +252,96 @@ BENCHMARKS: dict[str, Benchmark] = {
         make_splits=lambda df: splits.stratified(df.Class.astype(int), k=5, seed=0),
         features=["Amount"],
     ),
+    "fremtpl2_sev": Benchmark(
+        name="fremtpl2_sev",
+        dataset="fremtpl2_sev",
+        task=TaskSpec(family="gamma", target="Severity", exposure="ClaimCount"),
+        models=[
+            ModelSpec(
+                "glm_gamma",
+                lambda: GLM(
+                    family="gamma",
+                    terms={
+                        "Area": "onehot",
+                        "VehGas": "onehot",
+                        "VehBrand": "onehot",
+                        "Region": "target",
+                        "DrivAge": BSpline(df=5),
+                        "VehAge": BSpline(df=4),
+                        "BonusMalus": BSpline(df=4),
+                    },
+                ),
+                list(_SEV_COLUMNS),
+            ),
+            ModelSpec(
+                "lightgbm",
+                lambda: LightGBM(
+                    family="gamma", categorical=["Area", "VehGas", "VehBrand", "Region"]
+                ),
+                list(_SEV_COLUMNS),
+            ),
+        ],
+        make_splits=lambda df: splits.kfold(len(df), k=5, seed=0),
+        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+    ),
+    "bike_sharing": Benchmark(
+        name="bike_sharing",
+        dataset="bike_sharing",
+        task=TaskSpec(family="poisson", target="count"),
+        models=[
+            ModelSpec(
+                "glm_poisson",
+                lambda: GLM(
+                    family="poisson",
+                    # train strictly before test means a season the model has never seen
+                    # (winter is not in the first 30 % of 2011): encode it as the reference
+                    # rather than refuse, and let the report show what that costs
+                    terms={
+                        "season": OneHot(unknown="zero"),
+                        "weather": OneHot(unknown="zero"),
+                        "hour": BSpline(df=12),
+                        "temp": BSpline(df=4),
+                        "humidity": BSpline(df=4),
+                    },
+                ),
+                list(_BIKE_COLUMNS),
+            ),
+            ModelSpec(
+                "lightgbm",
+                lambda: LightGBM(family="poisson", categorical=["season", "weather"]),
+                list(_BIKE_COLUMNS),
+            ),
+        ],
+        # train strictly before test: the first 30 % of hours, then five consecutive blocks
+        make_splits=lambda df: splits.time_ordered(df.hour_index, n_folds=5),
+        features=["hour", "temp", "weather", "workingday"],
+        time="hour_index",
+    ),
+    "telco_churn": Benchmark(
+        name="telco_churn",
+        dataset="telco_churn",
+        task=TaskSpec(family="binomial", target="Churn"),
+        models=[
+            ModelSpec(
+                "logistic",
+                lambda: GLM(family="binomial", terms=dict(_TELCO_TERMS)),
+                list(_TELCO_COLUMNS),
+            ),
+            ModelSpec(
+                "lasso_logistic",
+                lambda: GLM(
+                    family="binomial",
+                    terms=dict(_TELCO_TERMS),
+                    alpha="cv",
+                    l1_ratio=1.0,
+                    alpha_rule="min",  # the prediction rule; "1se" is for a sparser story
+                ),
+                list(_TELCO_COLUMNS),
+            ),
+        ],
+        make_splits=lambda df: splits.stratified(df.Churn.astype(int), k=5, seed=0),
+        features=["Contract", "tenure", "InternetService", "MonthlyCharges"],
+    ),
     "fremtpl2_vs_foss": Benchmark(
         name="fremtpl2_vs_foss",
         dataset="fremtpl2_freq",
@@ -236,6 +376,7 @@ def run_named(name: str, *, progress: bool = False) -> BenchResult:
         dataset=b.dataset,
         describe=data.describe(b.dataset),
         features=list(b.features),
+        time=b.time,
         progress=progress,
     )
 

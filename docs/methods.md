@@ -303,6 +303,15 @@ gaussian, poisson (with offset) and binomial, and the ridge case against the qua
 penalty solver with `S = Σw·a·I`; the coordinate-descent step against its own KKT
 conditions and the closed-form ridge.
 
+Solver notes. The inner problem at each IRLS step is solved by cyclic coordinate descent
+with soft-thresholding, warm-started from the previous step, active set first. The intercept
+is never swept: it is held at its closed form, the weighted mean of the working residual,
+after every coordinate update, which is equivalent to descending on centred columns and
+keeps a frequent 0/1 column from fighting the intercept. A sweep stops when no coefficient
+moved by more than `1e-8 · (1 + max|b|)`. The penalty is on the raw scale, so standardise
+numeric columns before a lasso (`terms={"x": "standardize"}`), or a column in the thousands
+sets `alpha_max` and the 0/1 columns are crushed at every alpha on the path.
+
 ## Partial dependence and permutation importance
 
 Every model on a bench report gets the same two explanations, computed on a sample of each
