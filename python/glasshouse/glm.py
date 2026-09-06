@@ -747,6 +747,32 @@ class GLM:
         coef = np.asarray(self._require_fit()["coef"], dtype=np.float64)
         return self._design_predict(X) * coef, list(self.feature_names_in_)
 
+    def term_contributions(self, X: ArrayLike) -> tuple[F64, list[str]]:  # noqa: N803
+        """Per-row contributions summed per input column, on the link scale, intercept first.
+
+        A spline or one-hot term spreads over several design columns; this adds them back
+        up, so each row reads as "intercept plus one number per feature", and the numbers
+        add up to ``predict_linear``. For a log link, ``exp`` of a contribution is that
+        feature's multiplicative relativity for the row: the "why this price" a reviewer
+        wants.
+
+        Examples
+        --------
+        >>> import numpy as np, pandas as pd
+        >>> from glasshouse import GLM
+        >>> df = pd.DataFrame({"region": ["n", "s", "n", "s"], "age": [20.0, 30.0, 40.0, 50.0]})
+        >>> m = GLM(family="gaussian", terms={"region": "onehot"}).fit(df, [1.0, 3.0, 2.0, 4.0])
+        >>> parts, names = m.term_contributions(df)
+        >>> names, np.allclose(parts.sum(axis=1), m.predict_linear(df))
+        (['intercept', 'region', 'age'], True)
+        """
+        parts, _ = self.contributions(X)
+        slices = self._slices or {c: (i, i + 1) for i, c in enumerate(self.input_columns_)}
+        out = [parts[:, 0]]  # the intercept is column 0; every slice is offset by it
+        for lo, hi in slices.values():
+            out.append(parts[:, 1 + lo : 1 + hi].sum(axis=1))
+        return np.column_stack(out), ["intercept", *slices]
+
     # ------------------------------------------------------------------ reporting
 
     def summary(self) -> str:

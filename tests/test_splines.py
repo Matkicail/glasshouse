@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,7 @@ import pytest
 from scipy.interpolate import BSpline as ScipyBSpline
 
 from glasshouse import GLM, _core, encoders, splits
-from glasshouse.encoders import BSpline
+from glasshouse.encoders import BSpline, make, piecewise_linear
 from glasshouse.metrics import deviance
 
 rng = np.random.default_rng(15)
@@ -102,3 +103,38 @@ def test_tied_quantiles_collapse_instead_of_breaking_the_design() -> None:
     # and a GLM with intercept + this term is full rank
     y = rng.poisson(np.exp(-2.0 + 0.01 * (v - 50.0))).astype(float)
     GLM(family="poisson", terms={"bm": BSpline(df=6)}).fit(pd.DataFrame({"bm": v}), y)
+
+
+def test_piecewise_linear_is_the_bin_fill_encoding_of_gorishniy_et_al() -> None:
+    """The degree-1 B-spline term and the PLE bin-fill encoding span the same functions.
+
+    Gorishniy, Rubachev & Babenko (2022) encode x as, per bin [b_{t-1}, b_t), the clipped
+    fill (x - b_{t-1}) / (b_t - b_{t-1}) in [0, 1]. On the same knots a GLM on either design
+    fits the same piecewise linear curve, so the fitted values agree to rounding.
+    """
+    rng = np.random.default_rng(4)
+    n = 2000
+    x = rng.uniform(0.0, 10.0, size=n)
+    y = np.abs(x - 4.0) + 0.5 * np.sin(x) + rng.normal(scale=0.3, size=n)
+    frame = pd.DataFrame({"x": x})
+    ours = GLM(family="gaussian", terms={"x": "piecewise"}).fit(frame, y)
+    enc = ours.encoders_["x"]
+    assert isinstance(enc, BSpline) and isinstance(make("piecewise", "x"), BSpline)
+    assert enc.degree == 1
+    # the same knots, as the bin-fill design; the design matrix is passed straight in
+    edges = np.array(sorted(set(enc.knots_)))
+    fills = np.column_stack([np.clip((x - lo) / (hi - lo), 0.0, 1.0) for lo, hi in pairwise(edges)])
+    ple = GLM(family="gaussian").fit(
+        pd.DataFrame(fills, columns=[f"f{i}" for i in range(fills.shape[1])]), y
+    )
+    np.testing.assert_allclose(
+        ours.predict(frame),
+        ple.predict(pd.DataFrame(fills, columns=[f"f{i}" for i in range(fills.shape[1])])),
+        rtol=1e-9,
+        atol=1e-9,
+    )
+    assert fills.shape[1] == len(enc.transform(x)[1])  # one column per piece either way
+    mono = GLM(family="gaussian", terms={"x": piecewise_linear(df=5, monotone="increasing")}).fit(
+        frame, y
+    )
+    assert np.all(np.diff(mono.predict(pd.DataFrame({"x": np.linspace(0.0, 10.0, 50)}))) >= -1e-9)

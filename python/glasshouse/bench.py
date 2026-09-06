@@ -445,7 +445,47 @@ def _explain_fold(  # noqa: PLR0913, PLR0917 — the fold's own pieces, threaded
         "importance": {"loss": importance.loss.tolist(), "base": importance.base_deviance},
         "coefficients": explain_mod.coefficients(model),
         "link": link() if callable(link) else None,
+        "attributions": _attributions(model, sub, te[pick], y_s[pick], fold_number),
     }
+
+
+ATTRIBUTION_ROWS = 10  # per kind: the highest predicted, the lowest, and a random handful
+
+
+def _attributions(
+    model: Model, sub: Any, rows: np.ndarray, actual: F64, fold_number: int
+) -> list[dict[str, Any]] | None:
+    """Rows worth explaining from this fold: highest, lowest and random predictions.
+
+    Only a model that can add itself up per feature (``term_contributions``, the GLM) gets
+    this block; a tree has importances and partial dependence instead.
+    """
+    if not hasattr(model, "term_contributions"):
+        return None
+    parts, terms = model.term_contributions(sub)
+    prediction = model.predict(sub)
+    order = np.argsort(prediction, kind="stable")
+    rng = np.random.default_rng(fold_number)
+    picks = {
+        "highest": order[::-1][:ATTRIBUTION_ROWS],
+        "lowest": order[:ATTRIBUTION_ROWS],
+        "random": rng.choice(
+            len(prediction), size=min(ATTRIBUTION_ROWS, len(prediction)), replace=False
+        ),
+    }
+    return [
+        {
+            "kind": kind,
+            "row": int(rows[i]),
+            "fold": fold_number,
+            "prediction": float(prediction[i]),
+            "actual": float(actual[i]),
+            "terms": terms,
+            "contributions": parts[i].tolist(),
+        }
+        for kind, chosen in picks.items()
+        for i in chosen
+    ]
 
 
 def _aggregate_explain(
@@ -482,6 +522,7 @@ def _aggregate_explain(
             },
             "coefficients": None,
         }
+        entry["attributions"] = _merge_attributions(folds)
         coefs = [fold["coefficients"] for fold in folds if fold["coefficients"] is not None]
         if len(coefs) == len(folds):
             terms = list(coefs[0])
@@ -495,6 +536,26 @@ def _aggregate_explain(
             }
         block[label] = entry
     return block
+
+
+def _merge_attributions(folds: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Return the rows to explain: the highest and lowest across folds, and a random few."""
+    candidates = [r for fold in folds for r in (fold.get("attributions") or [])]
+    if not candidates:
+        return None
+    by_kind = {
+        k: [r for r in candidates if r["kind"] == k] for k in ("highest", "lowest", "random")
+    }
+    rows = [
+        *sorted(by_kind["highest"], key=lambda r: -r["prediction"])[:ATTRIBUTION_ROWS],
+        *sorted(by_kind["lowest"], key=lambda r: r["prediction"])[:ATTRIBUTION_ROWS],
+        *by_kind["random"][:ATTRIBUTION_ROWS],
+    ]
+    terms = rows[0]["terms"]
+    return {
+        "terms": terms,
+        "rows": [{k: v for k, v in r.items() if k != "terms"} for r in rows],
+    }
 
 
 def _check_columns(

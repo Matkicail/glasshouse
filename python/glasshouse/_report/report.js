@@ -364,6 +364,28 @@ function heatmapSpec(g) {
         table: { columns: [g.feature_a, g.feature_b, "weight", "rows", "A/E"], rows },
     };
 }
+function attributionSpec(a, row, logLink, colour) {
+    // one bar per term on the link scale, biggest first; the intercept and the total anchor it
+    const order = a.terms.map((_, i) => i).filter((i) => a.terms[i] !== "intercept").sort((i, j) => Math.abs(row.contributions[j] ?? 0) - Math.abs(row.contributions[i] ?? 0));
+    const intercept = row.contributions[a.terms.indexOf("intercept")] ?? 0;
+    const total = row.contributions.reduce((s, v) => s + v, 0);
+    const names = order.map((i) => a.terms[i] ?? "");
+    const values = order.map((i) => row.contributions[i] ?? 0);
+    const rows = [["intercept", fmt(intercept), logLink ? fmt(Math.exp(intercept)) : "—"], ...order.map((i) => [a.terms[i] ?? "", fmt(row.contributions[i] ?? 0), logLink ? fmt(Math.exp(row.contributions[i] ?? 0)) : "—"]), ["total (link scale)", fmt(total), logLink ? fmt(Math.exp(total)) : "—"]];
+    return {
+        title: `${row.kind} #${row.row}: predicted ${fmt(row.prediction)}, actual ${fmt(row.actual)}`,
+        caption: logLink
+            ? `Each bar is a feature's contribution on the link scale for this row; the bars plus the intercept (${fmt(intercept)}) add up to log of the prediction. Hover for the relativity, exp of the bar: the factor this feature multiplies the price by for this row.`
+            : `Each bar is a feature's contribution on the link scale for this row; the bars plus the intercept (${fmt(intercept)}) add up to the linear predictor.`,
+        data: [{
+                type: "bar", orientation: "h", x: values, y: names, marker: { color: values.map((v) => (v >= 0 ? colour : "#D55E00")) },
+                text: values.map((v) => (logLink ? `relativity ${fmt(Math.exp(v), 3)}` : `${fmt(v, 3)}`)), textposition: "none",
+                hovertemplate: "%{y}<br>%{x:.4f} on the link scale<br>%{text}<extra></extra>",
+            }],
+        layout: { ...LAYOUT_BASE, xaxis: { ...LAYOUT_BASE.xaxis, title: "contribution (link scale)", zeroline: true, zerolinecolor: "#1a1a1a" }, yaxis: { ...LAYOUT_BASE.yaxis, type: "category", autorange: "reversed", automargin: true }, margin: { l: 120, r: 16, t: 36, b: 48 }, showlegend: false },
+        table: { columns: ["term", "contribution", logLink ? "relativity" : ""], rows },
+    };
+}
 function histogramSpec(r, label, models) {
     const edges = r.histogram.edges;
     const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
@@ -703,6 +725,28 @@ function modelScreen(doc, root) {
         };
         sel.addEventListener("change", draw);
         draw();
+    }
+    for (const m of labels) {
+        const a = explain[m].attributions;
+        if (!a || a.rows.length === 0)
+            continue;
+        root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: explain a row`]));
+        const logLink = a.rows.length > 0 && explain[m].coefficients?.relativity !== null && explain[m].coefficients !== null;
+        const rowSel = select(a.rows.map((_, i) => `${i}`), "0");
+        a.rows.forEach((r, i) => { const opt = rowSel.options[i]; if (opt)
+            opt.textContent = `${r.kind} · row ${r.row} · predicted ${fmt(r.prediction)} · actual ${fmt(r.actual)}`; });
+        const chart = el("div", { class: "chart attribution" });
+        root.append(el("div", { class: "controls" }, ["Row ", rowSel]), chart);
+        const drawRow = () => {
+            const r = a.rows[Number(rowSel.value)];
+            if (r)
+                renderChart(chart, attributionSpec(a, r, logLink, colourOf(doc.models, m)));
+        };
+        rowSel.addEventListener("change", drawRow);
+        drawRow();
+        root.append(el("p", { class: "caption" }, [
+            "Held-out rows, so the model had not seen them: the ten it prices highest, the ten it prices lowest, and ten at random. Each is the model adding itself up for one row, which only a glass-box model can do; a tree has the importances and partial dependence above instead.",
+        ]));
     }
     for (const m of labels) {
         const c = explain[m].coefficients;

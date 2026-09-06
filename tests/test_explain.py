@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from itertools import pairwise
+from typing import Any
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -71,6 +74,19 @@ def test_permutation_importance_ranks_signal_above_noise() -> None:
     assert explain.coefficients(object()) is None
 
 
+def _check_attributions(attr: dict[str, Any]) -> None:
+    assert attr["terms"] == ["intercept", *COLS] and len(attr["rows"]) == 30
+    kinds = [r["kind"] for r in attr["rows"]]
+    assert kinds == ["highest"] * 10 + ["lowest"] * 10 + ["random"] * 10
+    highest, lowest = attr["rows"][:10], attr["rows"][10:20]
+    assert all(a["prediction"] >= b["prediction"] for a, b in pairwise(highest))
+    assert highest[0]["prediction"] > lowest[0]["prediction"]
+    # the contributions add up to the log of the prediction (log link)
+    for r in attr["rows"]:
+        assert sum(r["contributions"]) == pytest.approx(np.log(r["prediction"]), rel=1e-9)
+        assert 0 <= r["row"] < N and r["actual"] >= 0
+
+
 def test_bench_carries_the_explain_block_and_it_validates() -> None:
     task = TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True)
     models = [
@@ -98,6 +114,7 @@ def test_bench_carries_the_explain_block_and_it_validates() -> None:
     assert imp["mean"][0] > imp["mean"][2]
     coef = ex["glm"]["coefficients"]
     assert coef["terms"][0] == "intercept" and coef["relativity"] is not None
+    _check_attributions(ex["glm"]["attributions"])
     assert coef["relativity"][0] == pytest.approx(np.exp(coef["mean"][0]))
     # no features: no block, and the report still validates
     bare = bench.run(DF, task, models[:1], splits.kfold(N, k=2, seed=0)).to_dict()

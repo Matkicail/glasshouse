@@ -563,6 +563,27 @@ class Smooth:
 
 Encoder = OneHot | TargetEncode | Standardize | BSpline | Smooth
 
+
+def piecewise_linear(name: str = "x", df: int = 6, monotone: Monotone | None = None) -> BSpline:
+    """Build a piecewise linear term: ``df`` straight pieces joined at the column's quantiles.
+
+    This is the piecewise linear encoding of Gorishniy, Rubachev & Babenko ("On embeddings
+    for numerical features in tabular deep learning", NeurIPS 2022) as a GLM term, and it
+    is exactly a degree-1 B-spline on the same knots: the hat functions span the same
+    piecewise linear functions as the bin-fill encoding, so the fitted curve is identical
+    (a test checks it). One alias, no second implementation. Use it when a spline's
+    smoothness is not wanted and a curve that bends only at the knots reads better.
+
+    Examples
+    --------
+    >>> from glasshouse.encoders import piecewise_linear
+    >>> m, names = piecewise_linear("age", df=3).fit_transform([0.0, 1.0, 2.0, 3.0, 4.0])
+    >>> names, m.round(2).tolist()[2]  # the middle row is halfway between the two knots
+    (['age_bs1', 'age_bs2', 'age_bs3'], [0.5, 0.5, 0.0])
+    """
+    return BSpline(df=df, degree=1, monotone=monotone, name=name)
+
+
 _KINDS: dict[str, type[Encoder]] = {
     "onehot": OneHot,
     "target": TargetEncode,
@@ -581,8 +602,11 @@ def make(kind: str, name: str, **options: Any) -> Encoder:
     >>> make("onehot", "Region").name
     'Region'
     """
+    if kind == "piecewise":  # an alias for a degree-1 spline, not a kind of its own
+        return piecewise_linear(name, **options)
     if kind not in _KINDS:
-        msg = f"unknown term {kind!r} for {name}: one of {sorted(_KINDS)}, or 'linear'"
+        kinds = sorted([*_KINDS, "piecewise"])
+        msg = f"unknown term {kind!r} for {name}: one of {kinds}, or 'linear'"
         raise ValueError(msg)
     return _KINDS[kind](name=name, **options)
 
@@ -601,4 +625,5 @@ __all__ = [
     "TargetEncode",
     "from_dict",
     "make",
+    "piecewise_linear",
 ]

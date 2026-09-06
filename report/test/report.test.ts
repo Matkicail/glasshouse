@@ -72,13 +72,31 @@ describe("glasshouse report viewer", () => {
     tab(root, "Model").click();
     const pane = root.querySelector("#pane-model") as HTMLElement;
     expect(pane.hidden).toBe(false);
-    expect(pane.querySelectorAll("[data-plotly]").length).toBe(2);
-    const options = Array.from(pane.querySelectorAll("select option")).map((o) => (o as HTMLOptionElement).value);
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(4); // importance, partial dependence, one attribution chart per GLM
+    const options = Array.from(pane.querySelectorAll("select")[0]!.options).map((o) => o.value);
     expect(options).toEqual(["region", "age"]);
     const tables = pane.querySelectorAll("table.coefficients");
     expect(tables.length).toBe(2);
     expect(tables[0]!.querySelector("tbody th")?.textContent).toBe("intercept");
     expect(Array.from(tables[0]!.querySelectorAll("thead th")).map((n) => n.textContent)).toContain("relativity");
+  });
+
+  it("model screen explains a row for the glass-box models: bars that add up to the prediction", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    tab(root, "Model").click();
+    const pane = root.querySelector("#pane-model") as HTMLElement;
+    expect(pane.textContent).toContain("glm: explain a row");
+    const doc = api.parse(text) as any;
+    const a = doc.explain.glm.attributions;
+    expect(a.rows.length).toBe(30);
+    const rowSel = Array.from(pane.querySelectorAll("select")).find((s) => (s.options[0]?.textContent ?? "").startsWith("highest")) as HTMLSelectElement;
+    expect(rowSel.options.length).toBe(30);
+    const calls = (root.ownerDocument.defaultView as any).Plotly.__calls as unknown[][];
+    const bars = calls.flat().filter((t: any) => t.type === "bar" && t.orientation === "h") as any[];
+    expect(bars.length).toBeGreaterThanOrEqual(1);
+    const sum = (bars[0].x as number[]).reduce((s, v) => s + v, 0) + a.rows[0].contributions[a.terms.indexOf("intercept")];
+    expect(sum).toBeCloseTo(Math.log(a.rows[0].prediction), 6);
   });
 
   it("data screen summarises the outcome and the weight and profiles every feature", () => {

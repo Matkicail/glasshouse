@@ -322,6 +322,29 @@ function heatmapSpec(g: AEGridDoc): ChartSpec {
   };
 }
 
+function attributionSpec(a: AttributionsDoc, row: AttributionRow, logLink: boolean, colour: string): ChartSpec {
+  // one bar per term on the link scale, biggest first; the intercept and the total anchor it
+  const order = a.terms.map((_, i) => i).filter((i) => a.terms[i] !== "intercept").sort((i, j) => Math.abs(row.contributions[j] ?? 0) - Math.abs(row.contributions[i] ?? 0));
+  const intercept = row.contributions[a.terms.indexOf("intercept")] ?? 0;
+  const total = row.contributions.reduce((s, v) => s + v, 0);
+  const names = order.map((i) => a.terms[i] ?? "");
+  const values = order.map((i) => row.contributions[i] ?? 0);
+  const rows: (string | number)[][] = [["intercept", fmt(intercept), logLink ? fmt(Math.exp(intercept)) : "—"], ...order.map((i) => [a.terms[i] ?? "", fmt(row.contributions[i] ?? 0), logLink ? fmt(Math.exp(row.contributions[i] ?? 0)) : "—"]), ["total (link scale)", fmt(total), logLink ? fmt(Math.exp(total)) : "—"]];
+  return {
+    title: `${row.kind} #${row.row}: predicted ${fmt(row.prediction)}, actual ${fmt(row.actual)}`,
+    caption: logLink
+      ? `Each bar is a feature's contribution on the link scale for this row; the bars plus the intercept (${fmt(intercept)}) add up to log of the prediction. Hover for the relativity, exp of the bar: the factor this feature multiplies the price by for this row.`
+      : `Each bar is a feature's contribution on the link scale for this row; the bars plus the intercept (${fmt(intercept)}) add up to the linear predictor.`,
+    data: [{
+      type: "bar", orientation: "h", x: values, y: names, marker: { color: values.map((v) => (v >= 0 ? colour : "#D55E00")) },
+      text: values.map((v) => (logLink ? `relativity ${fmt(Math.exp(v), 3)}` : `${fmt(v, 3)}`)), textposition: "none",
+      hovertemplate: "%{y}<br>%{x:.4f} on the link scale<br>%{text}<extra></extra>",
+    }],
+    layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: "contribution (link scale)", zeroline: true, zerolinecolor: "#1a1a1a" }, yaxis: { ...(LAYOUT_BASE.yaxis as object), type: "category", autorange: "reversed", automargin: true }, margin: { l: 120, r: 16, t: 36, b: 48 }, showlegend: false },
+    table: { columns: ["term", "contribution", logLink ? "relativity" : ""], rows },
+  };
+}
+
 function histogramSpec(r: ResidualDoc, label: string, models: string[]): ChartSpec {
   const edges = r.histogram.edges;
   const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
