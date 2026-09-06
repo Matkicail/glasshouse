@@ -269,6 +269,26 @@ function modelScreen(doc: ReportDoc, root: HTMLElement): void {
   }
 
   for (const m of labels) {
+    const a = explain[m]!.attributions;
+    if (!a || a.rows.length === 0) continue;
+    root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: explain a row`]));
+    const logLink = a.rows.length > 0 && explain[m]!.coefficients?.relativity !== null && explain[m]!.coefficients !== null;
+    const rowSel = select(a.rows.map((_, i) => `${i}`), "0");
+    a.rows.forEach((r, i) => { const opt = rowSel.options[i]; if (opt) opt.textContent = `${r.kind} · row ${r.row} · predicted ${fmt(r.prediction)} · actual ${fmt(r.actual)}`; });
+    const chart = el("div", { class: "chart attribution" });
+    root.append(el("div", { class: "controls" }, ["Row ", rowSel]), chart);
+    const drawRow = () => {
+      const r = a.rows[Number(rowSel.value)];
+      if (r) renderChart(chart, attributionSpec(a, r, logLink, colourOf(doc.models, m)));
+    };
+    rowSel.addEventListener("change", drawRow);
+    drawRow();
+    root.append(el("p", { class: "caption" }, [
+      "Held-out rows, so the model had not seen them: the ten it prices highest, the ten it prices lowest, and ten at random. Each is the model adding itself up for one row, which only a glass-box model can do; a tree has the importances and partial dependence above instead.",
+    ]));
+  }
+
+  for (const m of labels) {
     const c = explain[m]!.coefficients;
     if (!c) continue;
     root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: coefficients`]));

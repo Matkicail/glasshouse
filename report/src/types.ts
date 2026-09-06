@@ -160,10 +160,25 @@ interface CoefficientsDoc {
   relativity: number[] | null;
 }
 
+interface AttributionRow {
+  kind: "highest" | "lowest" | "random";
+  row: number;
+  fold: number;
+  prediction: number;
+  actual: number;
+  contributions: number[]; // one per term, intercept first, on the link scale
+}
+
+interface AttributionsDoc {
+  terms: string[];
+  rows: AttributionRow[];
+}
+
 interface ExplainDoc {
   partial_dependence: PartialDependenceDoc[];
   importance: ImportanceDoc;
   coefficients: CoefficientsDoc | null;
+  attributions: AttributionsDoc | null;
 }
 
 interface HistogramDoc {

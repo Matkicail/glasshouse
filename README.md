@@ -78,7 +78,7 @@ If you already have predictions from any library, skip the fitting: `report.buil
 | Data | the outcome and the weight before any model: distributions, and each feature's weight and outcome rate |
 | Compare | two models: which wins each metric, their win sets, the double lift, both calibrations |
 | Curves | Lorenz, lift, calibration, one-way actual vs predicted by feature; ROC and precision-recall for binary tasks |
-| Model | permutation importance and partial dependence for every model, coefficients and relativities for the glass-box ones |
+| Model | permutation importance and partial dependence for every model; coefficients, relativities and "explain a row" (one bar per feature, adding up to the price) for the glass-box ones |
 | Residuals | deviance and Pearson residuals, A/E by feature, and A/E on the grid of every pair of features with thin cells greyed: the interaction view |
 | Threshold | binary only: the cost of a cut in alerts per catch |
 
@@ -168,8 +168,9 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
   precision, KS, MCC, F1, and the plain regression errors. Golden-tested against
   statsmodels, scikit-learn and glum; property-tested with hypothesis.
 - **GLM** by IRLS in Rust: five families, identity/log/logit links, offsets, weights, robust
-  standard errors, one-hot and target encoders that never let a row see its own y, B-spline
-  and penalised smooth terms with the penalty chosen by GCV, monotone constraints, and lasso,
+  standard errors, one-hot and target encoders that never let a row see its own y, B-spline,
+  piecewise linear and penalised smooth terms with the penalty chosen by GCV, monotone
+  constraints, per-row attributions, and lasso,
   ridge and elastic-net with a cross-validated path. Parallel row passes that give the same
   bits whatever the thread count.
 - **Splits** that declare what the data is (random, stratified, grouped, time-ordered), so

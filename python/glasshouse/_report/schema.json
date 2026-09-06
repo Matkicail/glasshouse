@@ -568,7 +568,8 @@
         "required": [
           "partial_dependence",
           "importance",
-          "coefficients"
+          "coefficients",
+          "attributions"
         ],
         "properties": {
           "partial_dependence": {
@@ -695,6 +696,67 @@
                 }
               }
             }
+          },
+          "attributions": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "terms",
+                  "rows"
+                ],
+                "properties": {
+                  "terms": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "rows": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "kind",
+                        "row",
+                        "fold",
+                        "prediction",
+                        "actual",
+                        "contributions"
+                      ],
+                      "properties": {
+                        "kind": {
+                          "enum": [
+                            "highest",
+                            "lowest",
+                            "random"
+                          ]
+                        },
+                        "row": {
+                          "type": "integer"
+                        },
+                        "fold": {
+                          "type": "integer"
+                        },
+                        "prediction": {
+                          "type": "number"
+                        },
+                        "actual": {
+                          "type": "number"
+                        },
+                        "contributions": {
+                          "$ref": "#/$defs/numbers"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "description": "Glass-box models only: held-out rows worth explaining (the highest and lowest predictions across folds, and a random few) with each feature's contribution on the link scale, intercept first; they add up to the linear predictor."
           }
         }
       }

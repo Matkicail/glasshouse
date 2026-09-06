@@ -225,6 +225,18 @@ quietly. The basis is evaluated in Rust by the Cox–de Boor recursion.
 Reference: de Boor, *A Practical Guide to Splines* (2001). Golden reference:
 ``scipy.interpolate.BSpline.design_matrix`` on identical knot vectors.
 
+**Piecewise linear terms.** `terms={"x": "piecewise"}` is a degree-1 B-spline on the same
+quantile knots: hat functions, so the fitted curve is straight between knots and bends only
+at them. It spans exactly the piecewise linear encoding of Gorishniy, Rubachev & Babenko
+(NeurIPS 2022), whose bin-fill columns are a different basis for the same functions, so the
+two fit the same curve; it is the term to reach for when a spline's smoothness is not wanted.
+
+**Per-row attributions.** With `β` on the link scale, row `i`'s linear predictor is
+`β₀ + Σ_j β_j x_ij`; `GLM.term_contributions` sums the `β_j x_ij` of the design columns that
+belong to each input column (a one-hot factor, a spline's basis), so a row reads as the
+intercept plus one number per feature, adding up to the linear predictor. For a log link
+`exp` of a contribution is that feature's multiplicative relativity for that row.
+
 ## Penalised smooths (P-splines) and GCV
 
 A `"smooth"` term is a P-spline: a cubic B-spline basis on *evenly spaced* interior knots

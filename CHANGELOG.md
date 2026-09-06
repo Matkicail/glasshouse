@@ -16,6 +16,16 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   over it; set it whenever the split is time-ordered.
 - `Dataset.requires`: a loader can join to another dataset's cleaned frame.
 
+- `terms={"age": "piecewise"}` and `encoders.piecewise_linear`: a piecewise linear term,
+  the piecewise linear encoding of Gorishniy et al. (2022) as a GLM term. It is a degree-1
+  B-spline on quantile knots, one alias and no second implementation; a test checks the
+  fitted curve equals the bin-fill encoding's. Takes `monotone=` like any spline.
+- `GLM.term_contributions`: per-row contributions summed per input column, intercept first,
+  adding up to the linear predictor. The bench keeps, for every glass-box model, thirty
+  held-out rows worth explaining (the ten priced highest across folds, the ten lowest, ten at
+  random) and the Model tab draws each as a bar per feature on the link scale, with the
+  relativity on hover for a log link: "why this price", for one policy.
+
 ### Changed
 - The design build is vectorised: the missing-value check on a categorical column, the
   one-hot construction and the out-of-fold target encoding looped over rows in Python. A
