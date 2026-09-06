@@ -1,0 +1,45 @@
+site_name: glasshouse
+site_description: Interpretable, well-rounded ML. Glass-box models, metrics that tell the truth, and a report that always shows whether you beat the naive baseline.
+site_url: https://matkicail.github.io/glasshouse/
+repo_url: https://github.com/Matkicail/glasshouse
+repo_name: Matkicail/glasshouse
+edit_uri: edit/main/docs/
+copyright: MIT OR Apache-2.0
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: blue grey
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: dark mode
+    - scheme: slate
+      primary: blue grey
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: light mode
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - toc.follow
+
+nav:
+  - Start here: index.md
+  - Comparing models: comparing-models.md
+  - Methods and formulas: methods.md
+  - The report suite: report-suite.md
+
+markdown_extensions:
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.arithmatex:
+      generic: true
+
+strict: true

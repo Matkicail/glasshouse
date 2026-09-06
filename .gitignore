@@ -43,6 +43,7 @@ data/
 *.csv
 *.tsv
 *.json
+!python/glasshouse/_report/schema.json
 *.jsonl
 *.xlsx
 *.xls
@@ -85,3 +86,6 @@ scratch/
 !report/**
 report/node_modules/
 benchmarks/**/report.html
+
+# mkdocs build output
+site/

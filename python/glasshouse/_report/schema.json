@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/Matkicail/glasshouse/report/schema.json",
+  "$id": "https://github.com/Matkicail/glasshouse/python/glasshouse/_report/schema.json",
   "title": "glasshouse report",
   "description": "Everything the report suite shows about several models on one dataset. Produced by glasshouse.report.build; read by report/src (TypeScript). Nothing is recomputed in the browser.",
   "type": "object",

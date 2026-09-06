@@ -2,9 +2,15 @@
 
 All notable changes, newest first. Pre-1.0: minor versions may break the API; the entry says so.
 
-## Unreleased
+## 0.1.0 — 2026-09-06
+
+The first release on PyPI. Everything below the second heading was unreleased until now.
 
 ### Added
+- The wheel carries the report viewer (`glasshouse/_report/`: the schema, the HTML template
+  and the compiled viewer), so `report.to_html` works from an installed package, not only
+  from a checkout. Releases build wheels for Linux, macOS and Windows on a `vX.Y.Z` tag and
+  publish through PyPI Trusted Publishing; `rc` tags go to TestPyPI. Docs site (mkdocs).
 - `residuals.ae_by_two`: actual over expected on the grid of two features, each cut exactly
   as the one-way table cuts it, with a weight floor marking cells too thin to read. The
   report carries one grid per pair of `features` and the Residuals tab draws it as a

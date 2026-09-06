@@ -2,22 +2,139 @@
 
 Interpretable, well-rounded ML with a Rust core and a Python API.
 
-Glass-box models (GLMs first) and metrics that tell the truth: weighted, exposure-aware, reported
-as a panel rather than a single number, and always measured against a naive baseline — so you
-know whether your model is actually helping.
+Glass-box models (GLMs first) and metrics that tell the truth: weighted, exposure-aware,
+reported as a panel rather than one number, and always measured against a naive baseline, so
+you know whether a model is actually helping. One self-contained HTML report compares any
+models on one dataset: scorecard, tournament, curves, partial dependence, residuals by
+segment.
 
-Actuarial families (Poisson, gamma, Tweedie, offsets) are first-class, but they're rows in the
-table, not the identity: rare-event classification, churn, forecasting and general regression/classification go
+Actuarial families (Poisson, gamma, Tweedie, offsets) are first-class, but they are rows in
+the table, not the identity: rare-event classification, churn and general regression go
 through the same machinery.
 
-**Status:** pre-alpha. The first milestone (metrics → GLM → scorecard → benchmark report) is in
-progress. Not on PyPI yet.
+```bash
+pip install "glasshouse[data]"     # numpy core; [data] adds pandas, pyarrow, scikit-learn
+```
+
+## Ten lines, versus naive
+
+Fit a Poisson GLM with a one-hot region and a penalised smooth on age, score it held-out on
+five folds against the mean-rate baseline, and get the scorecard.
 
 ```python
-from glasshouse.metrics import poisson_deviance
+import numpy as np
+import pandas as pd
 
-poisson_deviance(y, mu, sample_weight=exposure)
+from glasshouse import GLM, bench, splits
+from glasshouse.bench import ModelSpec, TaskSpec
+
+rng = np.random.default_rng(0)
+n = 6000
+df = pd.DataFrame({"region": rng.choice(["north", "south", "east"], n), "age": rng.uniform(18, 80, n)})
+df["Exposure"] = rng.uniform(0.2, 1.0, n)
+rate = np.exp(-2.5 + 0.0015 * (df.age - 45) ** 2 + df.region.map({"north": 0.0, "south": 0.3, "east": -0.2}))
+df["ClaimNb"] = rng.poisson(rate * df.Exposure).astype(float)
+
+task = TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True)
+glm = ModelSpec("glm", lambda: GLM(family="poisson", terms={"region": "onehot", "age": "smooth"}), ["region", "age"])
+folds = splits.stratified(df.ClaimNb, k=5, seed=0)
+result = bench.run(df, task, [glm], folds, features=["region", "age"], dataset="synthetic")
+print(result.to_markdown())
+result.write("reports/readme")   # report.json, report.md and report.html
 ```
+
+```text
+# synthetic — poisson (ClaimNb)
+
+Split: {'kind': 'random', 'method': 'stratified', 'k': 5, 'seed': 0}. Rows: 6,000. Models: glm.
+Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is the weighted mean of y (class prior for binomial), same folds.
+
+| metric | glm | naive |
+|---|---|---|
+| deviance | **0.71273 ± 0.017** | 0.77801 |
+| d2 | **0.083585 ± 0.019** | 8.8818e-17 |
+| gini | **0.34697 ± 0.033** | 0 |
+| normalized_gini | **0.36973 ± 0.035** | 0 |
+| balance | **0.99895 ± 0.026** | 1 |
+| rmse | **0.53306 ± 0.02** | 0.54543 |
+| mae | **0.28067 ± 0.0051** | 0.29619 |
+| r2 | **0.044613 ± 0.013** | 0 |
+
+Fit time (all folds): glm 0.9s.
+```
+
+Every number is held-out, every score takes the exposure as its weight, and the naive column
+is the same folds scored with the weighted mean. `report.html` is the full suite; double-click
+it.
+
+If you already have predictions from any library, skip the fitting: `report.build(task, y,
+{"glm": mu_glm, "gbm": mu_gbm}, weight=exposure, features=...)` and `to_html`.
+
+## What the report shows
+
+| tab | what it answers |
+|---|---|
+| Overview | every model on the task's panel with a tick against naive, the tournament (every risk to the cheapest model: who wins what, at what actual over expected), provenance |
+| Data | the outcome and the weight before any model: distributions, and each feature's weight and outcome rate |
+| Compare | two models: which wins each metric, their win sets, the double lift, both calibrations |
+| Curves | Lorenz, lift, calibration, one-way actual vs predicted by feature; ROC and precision-recall for binary tasks |
+| Model | permutation importance and partial dependence for every model, coefficients and relativities for the glass-box ones |
+| Residuals | deviance and Pearson residuals, A/E by feature, and A/E on the grid of every pair of features with thin cells greyed: the interaction view |
+| Threshold | binary only: the cost of a cut in alerts per catch |
+
+`docs/comparing-models.md` walks through it with one worked example per task type; every code
+block there runs as a test.
+
+## Two real benchmarks
+
+Both are one command, reproducible from a seeded recipe, and their summary numbers are pinned
+by a drift test.
+
+**French motor claim frequency** (freMTPL2, 678,013 policies, Poisson with exposure offset,
+stratified 5-fold): `uv run glasshouse bench fremtpl2_challengers`.
+
+| metric | glm_full | glm_splines | glm_smooth | lightgbm | naive |
+|---|---|---|---|---|---|
+| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59198 ± 0.0021 | **0.5724 ± 0.0026** | 0.62488 |
+| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052654 ± 0.0011 | **0.08399 ± 0.0023** | 0 |
+| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48938 ± 0.016 | **0.53505 ± 0.021** | 0 |
+| balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0033 | 0.99912 ± 0.0037 | 1 |
+
+The splined GLM closes most of the gap to LightGBM on ranking while staying a table of
+relativities; the tournament and the two-feature A/E grids in the report say where the rest
+of the gap lives (for this data, an age by bonus-malus interaction the main-effects GLM
+lacks).
+
+**Credit-card fraud** (284,807 transactions, 0.17% positives, logistic, stratified 5-fold):
+`uv run glasshouse bench creditcard_glm`.
+
+| metric | logistic | naive |
+|---|---|---|
+| log_loss | **0.0041 ± 0.00058** | 0.012715 |
+| average_precision | **0.7598 ± 0.045** | 0.0017275 |
+| roc_auc | **0.97429 ± 0.0077** | 0.5 |
+| mcc | **0.73176 ± 0.035** | 0 |
+
+Under that imbalance the ROC-AUC flatters; average precision against the prior, and the
+Threshold tab's alerts per catch, are the numbers a fraud team can act on.
+
+## What is in the box
+
+- **Metrics** that all take `sample_weight`: deviance for five families, D², Gini and
+  normalised Gini, calibration table and balance, log-loss, Brier, ROC-AUC, average
+  precision, KS, MCC, F1, and the plain regression errors. Golden-tested against
+  statsmodels, scikit-learn and glum; property-tested with hypothesis.
+- **GLM** by IRLS in Rust: five families, identity/log/logit links, offsets, weights, robust
+  standard errors, one-hot and target encoders that never let a row see its own y, B-spline
+  and penalised smooth terms with the penalty chosen by GCV, monotone constraints, and lasso,
+  ridge and elastic-net with a cross-validated path. Parallel row passes that give the same
+  bits whatever the thread count.
+- **Splits** that declare what the data is (random, stratified, grouped, time-ordered), so
+  leakage is a property of the split, not of the transform.
+- **The bench and the report**: fit anything with `fit` and `predict` on folds, score it,
+  write one HTML file. Adapters for glum, scikit-learn and LightGBM are included.
+
+Not trying to be scikit-learn. It does a few things and does them well.
 
 ## Develop
 
@@ -26,10 +143,9 @@ uv sync        # builds the Rust extension into .venv
 ./check.sh     # the gate: fmt, clippy, cargo test, ruff, mypy, pytest
 ```
 
-See `docs/comparing-models.md` for the comparison report end to end (GLM vs GBM vs GCV
-smooth, binary and regression tasks, reading the tabs), `COMMANDS.md` for what every
-command does and why, `CLAUDE.md` for the rules, and `docs/methods.md` for the formulas,
-references and the weights convention.
+`COMMANDS.md` explains every command, `CLAUDE.md` the rules, `docs/methods.md` the formulas
+and the weights convention. The report viewer is TypeScript under `report/` and compiles into
+the package, so Python users never need Node.
 
 ## Licence
 

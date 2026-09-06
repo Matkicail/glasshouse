@@ -1,5 +1,5 @@
 "use strict";
-// The shape of a glasshouse-report/1 document. Hand-written to mirror report/schema.json;
+// The shape of a glasshouse-report/1 document. Hand-written to mirror python/glasshouse/_report/schema.json;
 // the vitest suite renders the Python-produced fixture, so a drift between the two fails a test.
 // Nothing here is computed: the browser only draws what Python wrote.
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.
@@ -917,5 +917,5 @@ function renderReport(doc, root) {
     });
     root.append(el("footer", {}, [dl]));
 }
-const GlasshouseReport = { render: renderReport, parse: parseReport, version: "0.0.1" };
+const GlasshouseReport = { render: renderReport, parse: parseReport, version: "0.1.0" };
 globalThis.GlasshouseReport = GlasshouseReport;

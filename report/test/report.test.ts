@@ -1,4 +1,4 @@
-// Render the Python-produced fixture through the built dist/report.js in a DOM. If Python
+// Render the Python-produced fixture through the built viewer (python/glasshouse/_report/report.js) in a DOM. If Python
 // changes the document's shape, this fails here before any user sees a broken report.
 
 import { readFileSync } from "node:fs";
@@ -9,7 +9,7 @@ import { describe, expect, it } from "vitest";
 const ROOT = resolve(__dirname, "..");
 const FIXTURE = resolve(ROOT, "..", "tests", "fixtures", "report_small.json");
 const BINARY_FIXTURE = resolve(ROOT, "..", "tests", "fixtures", "report_binary_small.json");
-const DIST = resolve(ROOT, "dist", "report.js");
+const DIST = resolve(ROOT, "..", "python", "glasshouse", "_report", "report.js");
 
 interface Api {
   render(doc: unknown, root: HTMLElement): void;

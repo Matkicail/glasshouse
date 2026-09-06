@@ -1,8 +1,8 @@
 # The report suite — plan
 
-Status: **design, not built.** This is the plan for Tier 4.5 and what it grows into. It exists
-so the goal is understood before code is written, and so the TypeScript side is designed for
-reliability from the start rather than bolted on.
+Status: **built and shipping** (0.1.0). This page is the design the report was built to, kept
+as the reference for what it shows to whom and why; the "adopted" list at the end records what
+landed after the first cut. `comparing-models.md` is the user's guide.
 
 ## The goal, in one paragraph
 
@@ -116,7 +116,7 @@ the Python report builder. Nothing is computed in TypeScript.
 ## The TypeScript side — lightweight, local, reliable
 
 - **One folder, no framework, no bundler.** `report/src/*.ts` compiled by `tsc` (strict) to
-  `report/dist/report.js`, which is **checked in** so Python users never need Node. Build
+  `python/glasshouse/_report/report.js`, which is **checked in** so Python users never need Node. Build
   is a one-line `npm run build` for contributors; CI verifies the checked-in output matches
   a fresh build (no drift).
 - **One HTML file out.** Python templates `report.html` = the JS + the JSON (inline, in a
@@ -124,7 +124,7 @@ the Python report builder. Nothing is computed in TypeScript.
   a pinned CDN URL with a **local fallback**: if Plotly is unreachable, every table and the
   provenance still render and each chart shows its data as a table. Optional `--inline-plotly`
   embeds the library (~3.5 MB) for air-gapped use.
-- **One schema.** `report/schema.json` (JSON Schema) describes the document. Python validates
+- **One schema.** `python/glasshouse/_report/schema.json` (JSON Schema) describes the document. Python validates
   what it writes (a test); TypeScript types are generated from the schema (`json-schema-to-
   typescript`) so a change to the contract fails both builds, not one.
 - **Tested like code.** vitest renders the report from `tests/fixtures/report_small.json`
