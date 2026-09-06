@@ -56,6 +56,7 @@ class FitTrace:
         return "\n".join(lines)
 
 
+ElasticNetSpec = tuple[float, float, list[bool], list[int] | None]
 AlphaRule = Literal["min", "1se"]
 
 
@@ -223,6 +224,7 @@ class GLM:
     tol: float = 1e-10
     alpha: float | Literal["cv"] | None = None
     l1_ratio: float = 0.5
+    group_lasso: bool = False
     cv: int = 5
     alpha_rule: AlphaRule = "1se"
     n_alphas: int = 50
@@ -309,8 +311,13 @@ class GLM:
         o: F64 | None,
         fold: Fold | None,
         penalty: F64 | None,
-    ) -> tuple[float, float, list[bool]] | None:
-        """Resolve ``alpha`` (searching the path if asked) into the solver's penalty tuple."""
+    ) -> ElasticNetSpec | None:
+        """Resolve ``alpha`` (searching the path if asked) into the solver's penalty tuple.
+
+        With ``group_lasso`` every input column's design columns form one group (a one-hot
+        factor, a spline's basis), so a term leaves the model whole or stays whole; a plain
+        column is a group of one and gets the ordinary lasso update.
+        """
         if self.alpha is None:
             self.alpha_, self.path_ = None, None
             return None
@@ -318,13 +325,24 @@ class GLM:
             msg = "alpha (elastic-net) cannot be combined with smooth or monotone terms"
             raise ValueError(msg)
         penalised = [not self.fit_intercept] + [True] * (matrix.shape[1] - 1)
+        groups = self._groups(matrix.shape[1]) if self.group_lasso else None
         if self.alpha == "cv":
-            self.alpha_, self.path_ = self._cv_alpha(matrix, y, w, o, fold, penalised)
+            self.alpha_, self.path_ = self._cv_alpha(matrix, y, w, o, fold, penalised, groups)
         else:
             self.alpha_, self.path_ = float(self.alpha), None
-        return (self.alpha_, self.l1_ratio, penalised)
+        return (self.alpha_, self.l1_ratio, penalised, groups)
 
-    def _cv_alpha(
+    def _groups(self, n_columns: int) -> list[int]:
+        """One group id per design column: the input column it came from (intercept: 0)."""
+        offset = 1 if self.fit_intercept else 0
+        groups = [0] * n_columns
+        slices = self._slices or {str(i): (i, i + 1) for i in range(n_columns - offset)}
+        for g, (lo, hi) in enumerate(slices.values(), start=1):
+            for j in range(lo, hi):
+                groups[offset + j] = g
+        return groups
+
+    def _cv_alpha(  # noqa: PLR0913, PLR0917 — the design, its outcome, the fold, the penalty shape
         self,
         matrix: F64,
         y: F64,
@@ -332,6 +350,7 @@ class GLM:
         o: F64 | None,
         fold: Fold | None,
         penalised: list[bool],
+        groups: list[int] | None,
     ) -> tuple[float, AlphaPath]:
         """Walk the path on inner folds, warm-started, and pick alpha by the rule."""
         if fold is not None and fold.kind == "time":
@@ -341,7 +360,16 @@ class GLM:
             )
             raise ValueError(msg)
         alpha_max = _core.glm_alpha_max(
-            self.family, self._link_name(), matrix, y, w, o, self.power, self.l1_ratio, penalised
+            self.family,
+            self._link_name(),
+            matrix,
+            y,
+            w,
+            o,
+            self.power,
+            self.l1_ratio,
+            penalised,
+            groups,
         )
         alphas = np.geomspace(alpha_max, alpha_max * self.alpha_ratio, self.n_alphas)
         inner = splits.kfold(matrix.shape[0], k=self.cv, seed=0)
@@ -351,7 +379,7 @@ class GLM:
             coef: F64 | None = None
             for a, alpha in enumerate(alphas):
                 coef = self._lean_fit(
-                    matrix[tr], y[tr], _pick(w, tr), _pick(o, tr), alpha, penalised, coef
+                    matrix[tr], y[tr], _pick(w, tr), _pick(o, tr), (alpha, penalised, groups), coef
                 )
                 eta = matrix[te] @ coef + (0.0 if o is None else o[te])
                 held_out[f, a] = deviance(
@@ -372,21 +400,21 @@ class GLM:
         n_nonzero = np.empty(len(alphas), dtype=np.int64)
         coef = None
         for a, alpha in enumerate(alphas):
-            coef = self._lean_fit(matrix, y, w, o, alpha, penalised, coef)
+            coef = self._lean_fit(matrix, y, w, o, (alpha, penalised, groups), coef)
             n_nonzero[a] = int(np.count_nonzero(coef[1:] if self.fit_intercept else coef))
         path = AlphaPath(alphas, cv_mean, cv_se, n_nonzero, chosen, self.alpha_rule)
         return float(alphas[chosen]), path
 
-    def _lean_fit(  # noqa: PLR0913, PLR0917
+    def _lean_fit(
         self,
         matrix: F64,
         y: F64,
         w: F64 | None,
         o: F64 | None,
-        alpha: float,
-        penalised: list[bool],
+        at: tuple[float, list[bool], list[int] | None],
         start: F64 | None,
     ) -> F64:
+        alpha, penalised, groups = at
         r = _core.glm_fit(
             self.family,
             self._link_name(),
@@ -399,7 +427,7 @@ class GLM:
             self.tol,
             warm_start=start,
             inference=False,
-            elastic_net=(alpha, self.l1_ratio, penalised),
+            elastic_net=(alpha, self.l1_ratio, penalised, groups),
         )
         return np.asarray(r["coef"], dtype=np.float64)
 
@@ -835,6 +863,7 @@ class GLM:
             "lambda": {k: float(v) for k, v in self.lambda_.items()},
             "alpha": self.alpha_,
             "l1_ratio": self.l1_ratio,
+            "group_lasso": self.group_lasso,
             "iterations": int(r["iterations"]),
             "stop": str(r["stop"]),
         }
@@ -884,6 +913,7 @@ class GLM:
         model.alpha_ = payload.get("alpha")
         model.alpha = model.alpha_
         model.l1_ratio = float(payload.get("l1_ratio", 0.5))
+        model.group_lasso = bool(payload.get("group_lasso", False))
         return model
 
 

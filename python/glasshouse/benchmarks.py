@@ -338,6 +338,19 @@ BENCHMARKS: dict[str, Benchmark] = {
                 ),
                 list(_TELCO_COLUMNS),
             ),
+            ModelSpec(
+                # a factor leaves whole or stays whole: the review's own notion of dropping one
+                "group_lasso_logistic",
+                lambda: GLM(
+                    family="binomial",
+                    terms=dict(_TELCO_TERMS),
+                    alpha="cv",
+                    l1_ratio=1.0,
+                    alpha_rule="1se",
+                    group_lasso=True,
+                ),
+                list(_TELCO_COLUMNS),
+            ),
         ],
         make_splits=lambda df: splits.stratified(df.Churn.astype(int), k=5, seed=0),
         features=["Contract", "tenure", "InternetService", "MonthlyCharges"],

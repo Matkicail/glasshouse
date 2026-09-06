@@ -8,6 +8,7 @@ the same ``alpha`` and ``l1_ratio`` must give the same coefficients.
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -156,3 +157,74 @@ def test_round_trip_refusals_and_summary() -> None:
     time_fold = splits.time_ordered(np.arange(N), n_folds=2)[0]
     with pytest.raises(ValueError, match="time-ordered"):
         GLM(family="poisson", alpha="cv").fit(FRAME, y, offset=offset, fold=time_fold)
+
+
+def test_group_lasso_switches_a_factor_off_whole_and_is_the_lasso_on_plain_columns() -> None:
+    """A one-hot factor with no signal leaves the model as a block; the singleton case is
+    the ordinary lasso (glum golden above), so it must reproduce it exactly."""
+    n = 3000
+    region = rng.choice(["n", "s", "e", "w"], size=n)  # the signal factor
+    noise = rng.choice(["p", "q", "r", "t", "u"], size=n)  # a factor with no signal
+    x = rng.normal(size=n)
+    eta = (
+        0.1 + x * 0.5 + pd.Series(region).map({"n": 0.0, "s": 0.6, "e": -0.5, "w": 0.3}).to_numpy()
+    )
+    y = rng.poisson(np.exp(eta)).astype(float)
+    frame = pd.DataFrame({"region": region, "noise": noise, "x": x})
+    terms: dict[str, Any] = {"region": "onehot", "noise": "onehot"}
+    m = GLM(family="poisson", terms=terms, alpha=0.01, l1_ratio=1.0, group_lasso=True).fit(frame, y)
+    by_term = {name: m.coef_[lo:hi] for name, (lo, hi) in m._slices.items()}
+    assert np.all(by_term["noise"] == 0.0), by_term["noise"]  # the whole factor, not a level
+    assert np.all(by_term["region"] != 0.0), by_term["region"]  # the whole factor stays
+    assert by_term["x"][0] != 0.0
+    assert m.to_dict()["group_lasso"] is True
+    back = GLM.from_dict(json.loads(json.dumps(m.to_dict())))
+    assert back.group_lasso and np.allclose(back.predict(frame), m.predict(frame))
+    # plain columns only: groups of one, so the group lasso is the lasso to rounding
+    y_plain, w_plain, offset = _targets("poisson")
+    plain = GLM(family="poisson", alpha=0.02, l1_ratio=1.0).fit(
+        FRAME, y_plain, sample_weight=w_plain, offset=offset
+    )
+    grouped = GLM(family="poisson", alpha=0.02, l1_ratio=1.0, group_lasso=True).fit(
+        FRAME, y_plain, sample_weight=w_plain, offset=offset
+    )
+    np.testing.assert_allclose(grouped.coef_, plain.coef_, rtol=1e-8, atol=1e-10)
+    # the path: at alpha_max every group is off, just below it the signal factor comes in
+    path = GLM(family="poisson", terms=terms, alpha="cv", l1_ratio=1.0, group_lasso=True, cv=3).fit(
+        frame, y
+    )
+    assert path.path_ is not None and path.path_.n_nonzero[0] == 0
+    assert path.path_.n_nonzero[-1] > 0 and np.all(
+        path.coef_[m._slices["region"][0] : m._slices["region"][1]] != 0.0
+    )
+
+
+def test_group_lasso_meets_the_kkt_conditions_of_the_grouped_penalty() -> None:
+    """At the optimum, for a canonical link, the score X'(y - mu) / n (the gradient of minus
+    half the mean deviance) equals alpha * sqrt(p_g) * b_g / ||b_g|| on an active group and
+    is no larger in norm on an inactive one; the intercept's score is zero."""
+    n = 2500
+    region = rng.choice(["n", "s", "e", "w"], size=n)
+    noise = rng.choice(["p", "q", "r"], size=n)
+    x = rng.normal(size=n)
+    eta = (
+        0.2 + 0.4 * x + pd.Series(region).map({"n": 0.0, "s": 0.5, "e": -0.4, "w": 0.2}).to_numpy()
+    )
+    y = rng.poisson(np.exp(eta)).astype(float)
+    frame = pd.DataFrame({"region": region, "noise": noise, "x": x})
+    alpha = 0.01
+    terms: dict[str, Any] = {"region": "onehot", "noise": "onehot"}
+    m = GLM(family="poisson", terms=terms, alpha=alpha, l1_ratio=1.0, group_lasso=True).fit(
+        frame, y
+    )
+    design = m._design_predict(frame)
+    score = design.T @ (y - m.predict(frame)) / n
+    assert abs(score[0]) < 1e-7, "intercept"
+    for name, (lo, hi) in m._slices.items():
+        b = m.coef_[lo:hi]
+        g = score[1 + lo : 1 + hi]
+        radius = alpha * np.sqrt(hi - lo)
+        if np.all(b == 0.0):
+            assert np.linalg.norm(g) <= radius + 1e-7, name
+        else:
+            np.testing.assert_allclose(g, radius * b / np.linalg.norm(b), atol=1e-6, err_msg=name)

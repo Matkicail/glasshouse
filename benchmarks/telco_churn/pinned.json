@@ -36,12 +36,12 @@
   },
   "lasso_logistic": {
    "log_loss": {
-    "mean": 0.4182805003686836,
-    "std": 0.010068998075869065
+    "mean": 0.41828050036868475,
+    "std": 0.010068998075870203
    },
    "brier": {
-    "mean": 0.13589532218777944,
-    "std": 0.003482306923604673
+    "mean": 0.13589532218777986,
+    "std": 0.003482306923605061
    },
    "roc_auc": {
     "mean": 0.8434347931212651,
@@ -64,8 +64,42 @@
     "std": 0.01970157806397176
    },
    "balance": {
-    "mean": 1.0006201191268356,
-    "std": 0.02541176179496162
+    "mean": 1.0006201191268351,
+    "std": 0.025411761794961824
+   }
+  },
+  "group_lasso_logistic": {
+   "log_loss": {
+    "mean": 0.4266081893708907,
+    "std": 0.011683379902129958
+   },
+   "brier": {
+    "mean": 0.13843738769681493,
+    "std": 0.004016550562454023
+   },
+   "roc_auc": {
+    "mean": 0.837313297219185,
+    "std": 0.012462802910310695
+   },
+   "average_precision": {
+    "mean": 0.6484063424564435,
+    "std": 0.013882979356579417
+   },
+   "ks": {
+    "mean": 0.528112528067201,
+    "std": 0.03077113953064775
+   },
+   "mcc": {
+    "mean": 0.4400197984858661,
+    "std": 0.02048582625634603
+   },
+   "f1": {
+    "mean": 0.5546568874359864,
+    "std": 0.019532038301731277
+   },
+   "balance": {
+    "mean": 1.0006963403203017,
+    "std": 0.02361612889010249
    }
   }
  },
@@ -107,52 +141,77 @@
   {
    "label": "logistic",
    "fold": 0,
-   "seconds": 0.358
+   "seconds": 0.312
   },
   {
    "label": "logistic",
    "fold": 1,
-   "seconds": 0.306
+   "seconds": 0.269
   },
   {
    "label": "logistic",
    "fold": 2,
-   "seconds": 0.315
+   "seconds": 0.269
   },
   {
    "label": "logistic",
    "fold": 3,
-   "seconds": 0.326
+   "seconds": 0.251
   },
   {
    "label": "logistic",
    "fold": 4,
-   "seconds": 0.316
+   "seconds": 0.253
   },
   {
    "label": "lasso_logistic",
    "fold": 0,
-   "seconds": 15.645
+   "seconds": 16.373
   },
   {
    "label": "lasso_logistic",
    "fold": 1,
-   "seconds": 20.628
+   "seconds": 21.47
   },
   {
    "label": "lasso_logistic",
    "fold": 2,
-   "seconds": 25.346
+   "seconds": 26.556
   },
   {
    "label": "lasso_logistic",
    "fold": 3,
-   "seconds": 21.507
+   "seconds": 21.485
   },
   {
    "label": "lasso_logistic",
    "fold": 4,
-   "seconds": 13.463
+   "seconds": 13.519
+  },
+  {
+   "label": "group_lasso_logistic",
+   "fold": 0,
+   "seconds": 17.969
+  },
+  {
+   "label": "group_lasso_logistic",
+   "fold": 1,
+   "seconds": 22.184
+  },
+  {
+   "label": "group_lasso_logistic",
+   "fold": 2,
+   "seconds": 29.044
+  },
+  {
+   "label": "group_lasso_logistic",
+   "fold": 3,
+   "seconds": 23.565
+  },
+  {
+   "label": "group_lasso_logistic",
+   "fold": 4,
+   "seconds": 16.922
   }
  ]
 }

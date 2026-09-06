@@ -657,6 +657,7 @@ fn weighted_least_squares(
             scale: problem.weight_sum * en.alpha,
             l1_ratio: en.l1_ratio,
             penalised: en.penalised,
+            groups: en.groups,
         };
         return elastic::coordinate_descent(&cd, start, settings.cd);
     }
@@ -683,6 +684,7 @@ pub fn alpha_max(
     data: Data<'_>,
     l1_ratio: f64,
     penalised: &[bool],
+    groups: Option<&[usize]>,
     settings: Settings,
 ) -> Result<f64, GlassError> {
     let free: Vec<usize> = (0..data.n_features).filter(|&j| !penalised[j]).collect();
@@ -708,15 +710,20 @@ pub fn alpha_max(
     let weight_sum = data
         .weights
         .map_or(data.n_rows as f64, |w| chunk_sum(w.len(), |i| w[i]));
-    let largest = (0..data.n_features)
-        .filter(|&j| penalised[j])
-        .map(|j| {
-            chunk_sum(data.n_rows, |i| {
-                data.weight(i) * (data.y[i] - mu[i]) * link.mu_eta(eta[i]) / family.variance(mu[i])
-                    * data.row(i)[j]
-            })
-            .abs()
-                / weight_sum
+    let gradient = |j: usize| {
+        chunk_sum(data.n_rows, |i| {
+            data.weight(i) * (data.y[i] - mu[i]) * link.mu_eta(eta[i]) / family.variance(mu[i])
+                * data.row(i)[j]
+        }) / weight_sum
+    };
+    // a group's gradient is its Euclidean norm over sqrt(p_g): the group-lasso boundary
+    let largest = elastic::units_of(penalised, groups)
+        .iter()
+        .filter(|u| penalised[u[0]])
+        .map(|u| {
+            #[allow(clippy::cast_precision_loss)]
+            let size = u.len() as f64;
+            (u.iter().map(|&j| gradient(j).powi(2)).sum::<f64>() / size).sqrt()
         })
         .fold(0.0_f64, f64::max);
     // one part in 1e10 above the exact boundary, so a fit at alpha_max is all-zero despite
@@ -853,6 +860,16 @@ fn validate_elastic_net(
             right: "X columns",
             right_len: n_features,
         });
+    }
+    if let Some(g) = en.groups {
+        if g.len() != n_features {
+            return Err(GlassError::LengthMismatch {
+                left: "groups",
+                left_len: g.len(),
+                right: "X columns",
+                right_len: n_features,
+            });
+        }
     }
     if !chains.is_empty() {
         return Err(GlassError::BadArgument {

@@ -316,6 +316,17 @@ gaussian, poisson (with offset) and binomial, and the ridge case against the qua
 penalty solver with `S = Σw·a·I`; the coordinate-descent step against its own KKT
 conditions and the closed-form ridge.
 
+**Group lasso.** With `group_lasso=True` the L1 part becomes `Σ_g √p_g ‖β_g‖₂` over the
+groups (Yuan & Lin 2006), where a group is the design columns of one input column: the
+levels of a one-hot factor, the basis of a spline; a plain column is a group of one and gets
+the ordinary lasso update, exactly. A factor then leaves the model whole or stays whole,
+which is what a rating-factor review means by "drop the factor". A group is updated as a
+block by one majorisation step (Breheny & Huang 2015): a gradient step bounded by the
+group's largest centred Gram eigenvalue, then the group soft-threshold; `alpha_max` is the
+largest `‖∇_g‖₂ / √p_g`. At the optimum the score of half the mean deviance satisfies
+`∇_g = −α √p_g β_g / ‖β_g‖` on an active group and `‖∇_g‖ ≤ α √p_g` on an inactive one
+(a test checks it).
+
 Solver notes. The inner problem at each IRLS step is solved by cyclic coordinate descent
 with soft-thresholding, warm-started from the previous step, active set first. The intercept
 is never swept: it is held at its closed form, the weighted mean of the working residual,
