@@ -54,7 +54,7 @@ pub struct CdSettings {
 impl Default for CdSettings {
     fn default() -> Self {
         Self {
-            tol: 1e-10,
+            tol: 1e-8,
             max_sweeps: 10_000,
         }
     }
@@ -84,7 +84,11 @@ impl CdProblem<'_> {
 /// over the penalised `j`, the rest free, starting from `start`.
 ///
 /// Cyclic sweeps over every coefficient, then over the active set until it settles, then a
-/// full sweep to confirm.
+/// full sweep to confirm. The intercept (an unpenalised constant column) is never swept:
+/// it is kept at its closed form, the weighted mean of the residual, after every update,
+/// which is the same as running the descent on centred columns (glmnet does this too).
+/// Without it a frequent 0/1 column and the intercept are nearly collinear and the descent
+/// crawls.
 ///
 /// # Errors
 /// The sweep cap is hit without settling.
@@ -94,8 +98,21 @@ pub fn coordinate_descent(
     settings: CdSettings,
 ) -> Result<Vec<f64>, GlassError> {
     let (n_rows, ww, p) = (cd.n_rows, cd.ww, start.len());
+    let weight_sum: f64 = chunk_sum(n_rows, |i| ww[i]);
+    let intercept = (0..p).find(|&j| !cd.penalised[j] && is_constant(cd.col(j)));
+    // weighted column means; zero when there is no intercept to absorb them
+    let means: Vec<f64> = (0..p)
+        .map(|j| match intercept {
+            Some(_) => chunk_sum(n_rows, |i| ww[i] * cd.col(j)[i]) / weight_sum,
+            None => 0.0,
+        })
+        .collect();
+    // centred norms: sum ww (x - mean)^2
     let norms: Vec<f64> = (0..p)
-        .map(|j| chunk_sum(n_rows, |i| ww[i] * cd.col(j)[i] * cd.col(j)[i]))
+        .map(|j| {
+            chunk_sum(n_rows, |i| ww[i] * cd.col(j)[i] * cd.col(j)[i])
+                - weight_sum * means[j] * means[j]
+        })
         .collect();
     let mut coef = start.to_vec();
     // residual z - X b, kept current as coefficients move
@@ -105,15 +122,29 @@ pub fn coordinate_descent(
             axpy(&mut resid, cd.col(j), -b);
         }
     }
+    if let Some(k) = intercept {
+        // put the intercept at its optimum for the starting coefficients
+        let shift = chunk_sum(n_rows, |i| ww[i] * resid[i]) / weight_sum;
+        let c = cd.col(k)[0];
+        coef[k] += shift / c;
+        for r in &mut resid {
+            *r -= shift;
+        }
+    }
     let threshold = cd.scale * cd.l1_ratio;
     let ridge = cd.scale * (1.0 - cd.l1_ratio);
     let mut sweeps = 0;
     let sweep = |coef: &mut Vec<f64>, resid: &mut Vec<f64>, only_active: bool| -> f64 {
         let mut max_step: f64 = 0.0;
         for j in 0..p {
-            if norms[j] == 0.0 || (only_active && cd.penalised[j] && coef[j] == 0.0) {
+            if Some(j) == intercept
+                || norms[j] == 0.0
+                || (only_active && cd.penalised[j] && coef[j] == 0.0)
+            {
                 continue;
             }
+            // with the intercept optimal the residual has zero weighted mean, so the
+            // gradient on the raw column equals the gradient on the centred one
             let rho = chunk_sum(n_rows, |i| ww[i] * cd.col(j)[i] * resid[i]) + norms[j] * coef[j];
             let new = if cd.penalised[j] {
                 soft_threshold(rho, threshold) / (norms[j] + ridge)
@@ -122,7 +153,14 @@ pub fn coordinate_descent(
             };
             let step = new - coef[j];
             if step != 0.0 {
-                axpy(resid, cd.col(j), -step);
+                // resid -= step * (x_j - mean_j): the intercept absorbs step * mean_j
+                let (col, mean) = (cd.col(j), means[j]);
+                for (r, &x) in resid.iter_mut().zip(col) {
+                    *r -= step * (x - mean);
+                }
+                if let Some(k) = intercept {
+                    coef[k] -= step * mean / cd.col(k)[0];
+                }
                 coef[j] = new;
                 max_step = max_step.max(step.abs());
             }
@@ -147,6 +185,12 @@ pub fn coordinate_descent(
             return Err(sweep_cap());
         }
     }
+}
+
+#[allow(clippy::float_cmp)] // an intercept column is exactly constant, or it is not one
+fn is_constant(col: &[f64]) -> bool {
+    col.first()
+        .is_some_and(|&c| c != 0.0 && col.iter().all(|&x| x == c))
 }
 
 fn sweep_cap() -> GlassError {
@@ -295,6 +339,56 @@ mod tests {
         h[2][2] += scale;
         for a in 0..3 {
             let lhs: f64 = (0..3).map(|b| h[a][b] * coef[b]).sum();
+            assert!((lhs - rhs[a]).abs() < 1e-8, "{coef:?}");
+        }
+    }
+
+    #[test]
+    #[allow(clippy::cast_precision_loss)]
+    fn a_frequent_level_next_to_the_intercept_settles_quickly() {
+        // 95 % ones in the penalised column: nearly collinear with the intercept, the case
+        // that made the plain descent crawl. Ridge only, so the closed form is exact.
+        let n = 400;
+        let ones: Vec<f64> = (0..n)
+            .map(|i| if i % 20 == 0 { 0.0 } else { 1.0 })
+            .collect();
+        let mut xt = vec![1.0; n];
+        xt.extend_from_slice(&ones);
+        let z: Vec<f64> = (0..n)
+            .map(|i| 0.5 + 0.3 * ones[i] + ((i * 7 % 11) as f64 - 5.0) * 0.01)
+            .collect();
+        let ww = vec![1.0; n];
+        let scale = 3.0;
+        let coef = coordinate_descent(
+            &CdProblem {
+                xt: &xt,
+                n_rows: n,
+                ww: &ww,
+                z: &z,
+                scale,
+                l1_ratio: 0.0,
+                penalised: &[false, true],
+            },
+            &[0.0; 2],
+            CdSettings {
+                tol: 1e-12,
+                max_sweeps: 50,
+            },
+        )
+        .unwrap();
+        let mut h = [[0.0; 2]; 2];
+        let mut rhs = [0.0; 2];
+        for i in 0..n {
+            for a in 0..2 {
+                rhs[a] += xt[a * n + i] * z[i];
+                for b in 0..2 {
+                    h[a][b] += xt[a * n + i] * xt[b * n + i];
+                }
+            }
+        }
+        h[1][1] += scale;
+        for a in 0..2 {
+            let lhs: f64 = (0..2).map(|b| h[a][b] * coef[b]).sum();
             assert!((lhs - rhs[a]).abs() < 1e-8, "{coef:?}");
         }
     }

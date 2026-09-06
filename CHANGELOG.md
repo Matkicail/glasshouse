@@ -2,6 +2,32 @@
 
 All notable changes, newest first. Pre-1.0: minor versions may break the API; the entry says so.
 
+## Unreleased
+
+### Added
+- Three datasets and benchmarks, so the scorecard is proven on five shapes: `fremtpl2_sev`
+  (gamma severity, claims summed per policy and joined to the frequency frame, weight =
+  claim count; GLM with splines vs LightGBM), `bike_sharing` (Poisson hourly counts on a
+  time-ordered split, residuals over time; GLM vs LightGBM) and `telco_churn` (logistic vs
+  lasso logistic with the cross-validated path). Each has a documented cleaner tested on a
+  raw-shaped sample, a committed `report.md` and `pinned.json`, and the drift test now
+  covers every committed benchmark.
+- `bench.run(time=...)` and `Benchmark.time`: name a column and the report shows residuals
+  over it; set it whenever the split is time-ordered.
+- `Dataset.requires`: a loader can join to another dataset's cleaned frame.
+
+### Fixed
+- The elastic-net coordinate descent crawled, or hit its sweep cap, on designs with an
+  intercept next to frequent 0/1 columns (any one-hot factor): the intercept was swept like
+  every other coordinate and is nearly collinear with such a column. It is now kept at its
+  closed form after every update, which is the same as descending on centred columns and is
+  what glmnet does. Its tolerance is 1e-8 on the coefficient step rather than 1e-10, still
+  well inside the glum goldens. And a row pass on fewer than 16 384 rows runs on the calling
+  thread, summing the same chunks in the same order, because rayon's scheduling cost more
+  than the work on small data. A lasso fit on the 7 043-row Telco churn set went from 6.3 s
+  to 0.5 s and its cross-validated path from over ten minutes to 23 s; results on the large
+  benchmarks are bit-for-bit unchanged.
+
 ## 0.1.0 — 2026-09-06
 
 The first release on PyPI. Everything below the second heading was unreleased until now.

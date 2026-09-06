@@ -111,10 +111,13 @@ def test_cli_lists_benchmarks(capsys: pytest.CaptureFixture[str]) -> None:
 @pytest.mark.skipif(
     not os.environ.get("GLASSHOUSE_NETWORK_TESTS"), reason="needs the cached dataset"
 )
-def test_fremtpl2_glm_report_is_pinned() -> None:
-    """The committed report must be reproducible: same recipe, same numbers (to 1e-6)."""
-    pinned = json.loads(Path("benchmarks/fremtpl2_glm/pinned.json").read_text())
-    res = run_named("fremtpl2_glm").to_dict()
+@pytest.mark.parametrize(
+    "name", sorted(p.parent.name for p in Path("benchmarks").glob("*/pinned.json"))
+)
+def test_committed_benchmark_is_pinned(name: str) -> None:
+    """Every committed report must be reproducible: same recipe, same numbers (to 1e-6)."""
+    pinned = json.loads(Path(f"benchmarks/{name}/pinned.json").read_text())
+    res = run_named(name).to_dict()
     for label, metrics in pinned["summary"].items():
         for m, v in metrics.items():
             assert res["bench"]["summary"][label][m]["mean"] == pytest.approx(
