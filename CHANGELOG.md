@@ -26,6 +26,13 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   majorisation step per group inside the same coordinate descent; the cross-validated path
   and `alpha_max` understand groups. Checked against the grouped KKT conditions.
   `telco_churn` gains a `group_lasso_logistic` row and is re-pinned.
+- `glasshouse.research` and the `[research]` extra (torch, CPU build): the fenced neural
+  track. First model: `CANN`, the GLM frozen as a skip connection and a small tanh net on
+  its residual, trained on the family deviance (`deviance_torch`, checked against the Rust
+  deviance), early-stopped on a seeded slice of the training rows, re-balanced after
+  training, saved without pickle. It enters the bench like any model, and its correction is
+  one more column in "explain a row". `fremtpl2_cann` is the go/no-go benchmark against the
+  smooth GLM and LightGBM; `docs/research.md` states the rule and the result.
 - The Model tab draws the solver's choices: for a model fitted with `alpha="cv"`, the
   cross-validated deviance along the path with its standard error band, the one-standard-
   error line and the chosen alpha, next to every coefficient's path as the penalty relaxes

@@ -179,6 +179,11 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
 - **The bench and the report**: fit anything with `fit` and `predict` on folds, score it,
   write one HTML file. Adapters for glum, scikit-learn and LightGBM are included.
 
+- **A research fence** (`pip install "glasshouse[research]"`, torch): neural models that
+  must beat the spline plus monotone GLM on held-out deviance and calibration before they
+  leave it. First through the gate: the CANN, the GLM frozen and a small net learning its
+  residual, whose correction shows up on "explain a row" as one more column.
+
 Not trying to be scikit-learn. It does a few things and does them well.
 
 ## Develop
