@@ -27,8 +27,9 @@ dependencies = ["numpy>=1.26"]
 data = ["pandas>=2.2", "pyarrow>=15", "scikit-learn>=1.5"]
 # plots: Plotly renderers over the curve data. Optional so the core stays numpy-only.
 plots = ["plotly>=5.20"]
-# research models (torch) come later, behind this extra, so the core install stays light.
-research = []
+# research models (the fenced neural track: CANN first) need torch; behind this extra so the
+# core install stays numpy-only. The CPU build is enough and is what the dev group installs.
+research = ["torch>=2.4"]
 
 [project.scripts]
 glasshouse = "glasshouse.cli:main"
@@ -61,6 +62,7 @@ dev = [
   "glum>=3.4.1",
   "lightgbm>=4.7.0",
   "scipy>=1.18.1",
+  "torch>=2.4",
 ]
 docs = [
     "mkdocs-material>=9.5",
@@ -69,6 +71,16 @@ docs = [
 [tool.uv]
 # rebuild the Rust extension whenever the crates change
 cache-keys = [{ file = "pyproject.toml" }, { file = "Cargo.toml" }, { file = "crates/**/*" }]
+
+# torch from the CPU-only index: a fifth of the size of the default wheel and all the
+# research track needs. A GPU user installs their own torch first; pip respects it.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.ruff]
 line-length = 100

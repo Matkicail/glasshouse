@@ -79,6 +79,33 @@ _FOSS_COLUMNS = [
 ]
 
 
+def _smooth_glm() -> GLM:
+    """Build the bar the research track has to beat: GCV smooths, one held monotone."""
+    return GLM(
+        family="poisson",
+        terms={
+            "Area": "onehot",
+            "VehGas": "onehot",
+            "VehBrand": "onehot",
+            "Region": "target",
+            "DrivAge": "smooth",
+            "VehAge": "smooth",
+            # the business rule: a premium must not fall as the bonus-malus rises. Free, the
+            # smooth wiggles where the high-BM data is thin (19 dips over 50..150 on fold 0);
+            # held, it does not, on fewer edf and the same held-out deviance
+            "BonusMalus": Smooth(monotone="increasing"),
+            "LogDensity": "smooth",
+        },
+    )
+
+
+def _cann() -> Any:
+    """Build the first model past the fence: the smooth GLM frozen, a small net on its residual."""
+    from glasshouse.research import CANN  # noqa: PLC0415 — the research extra (torch)
+
+    return CANN(family="poisson", glm=_smooth_glm, hidden=(20, 15, 10), epochs=100, patience=10)
+
+
 def _foss_models() -> list[ModelSpec]:
     """Ours vs glum vs scikit-learn on the identical one-hot design: a solver comparison."""
     terms = dict.fromkeys(_FOSS_ONEHOT, "onehot")
@@ -186,37 +213,7 @@ BENCHMARKS: dict[str, Benchmark] = {
                     "LogDensity",
                 ],
             ),
-            ModelSpec(
-                "glm_smooth",
-                lambda: GLM(
-                    family="poisson",
-                    terms={
-                        "Area": "onehot",
-                        "VehGas": "onehot",
-                        "VehBrand": "onehot",
-                        "Region": "target",
-                        "DrivAge": "smooth",
-                        "VehAge": "smooth",
-                        # the business rule: a premium must not fall as the bonus-malus rises.
-                        # Free, the smooth wiggles where the high-BM data is thin (19 dips over
-                        # 50..150 on fold 0); held, it does not, on fewer edf and the same
-                        # held-out deviance
-                        "BonusMalus": Smooth(monotone="increasing"),
-                        "LogDensity": "smooth",
-                    },
-                ),
-                [
-                    "Area",
-                    "VehGas",
-                    "VehBrand",
-                    "Region",
-                    "DrivAge",
-                    "VehAge",
-                    "VehPower",
-                    "BonusMalus",
-                    "LogDensity",
-                ],
-            ),
+            ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
             ModelSpec(
                 "lightgbm",
                 lambda: LightGBM(
@@ -354,6 +351,26 @@ BENCHMARKS: dict[str, Benchmark] = {
         ],
         make_splits=lambda df: splits.stratified(df.Churn.astype(int), k=5, seed=0),
         features=["Contract", "tenure", "InternetService", "MonthlyCharges"],
+    ),
+    "fremtpl2_cann": Benchmark(
+        # the research fence's go/no-go: the CANN must beat the smooth GLM on held-out
+        # deviance AND calibration on these splits, or it stays a notebook
+        name="fremtpl2_cann",
+        dataset="fremtpl2_freq",
+        task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
+        models=[
+            ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
+            ModelSpec("cann", _cann, list(_FOSS_COLUMNS)),
+            ModelSpec(
+                "lightgbm",
+                lambda: LightGBM(
+                    family="poisson", categorical=["Area", "VehGas", "VehBrand", "Region"]
+                ),
+                list(_FOSS_COLUMNS),
+            ),
+        ],
+        make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
+        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
     ),
     "fremtpl2_vs_foss": Benchmark(
         name="fremtpl2_vs_foss",

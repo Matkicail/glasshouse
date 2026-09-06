@@ -32,6 +32,7 @@ nav:
   - Comparing models: comparing-models.md
   - Methods and formulas: methods.md
   - The report suite: report-suite.md
+  - The research track: research.md
 
 markdown_extensions:
   - tables
