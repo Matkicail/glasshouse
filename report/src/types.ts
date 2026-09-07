@@ -198,6 +198,11 @@ interface GcvDoc {
   smooths: Record<string, GcvTrace>;
 }
 
+interface EdgeCurves {
+  x: number[];
+  curves: number[][]; // one per hidden unit
+}
+
 interface ExplainDoc {
   partial_dependence: PartialDependenceDoc[];
   importance: ImportanceDoc;
@@ -205,6 +210,7 @@ interface ExplainDoc {
   attributions: AttributionsDoc | null;
   path: PathDoc | null;
   gcv: GcvDoc | null;
+  edges: Record<string, EdgeCurves> | null;
 }
 
 interface HistogramDoc {

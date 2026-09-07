@@ -448,7 +448,16 @@ def _explain_fold(  # noqa: PLR0913, PLR0917 — the fold's own pieces, threaded
         "attributions": _attributions(model, sub, te[pick], y_s[pick], fold_number),
         "path": _path(model),
         "gcv": _gcv(model),
+        "edges": _edges(model),
     }
+
+
+def _edges(model: Model) -> dict[str, Any] | None:
+    """Return a KAN's first-layer edge functions, the curves the model is made of."""
+    curves = getattr(model, "edge_curves", None)
+    if getattr(model, "network", None) != "kan" or curves is None:
+        return None
+    return dict(curves())
 
 
 def _path(model: Model) -> dict[str, Any] | None:
@@ -560,6 +569,8 @@ def _aggregate_explain(
             if paths
             else None
         )
+        edges = [fold["edges"] for fold in folds if fold.get("edges")]
+        entry["edges"] = edges[0] if edges else None  # the first fold's curves
         traces = [fold["gcv"] for fold in folds if fold.get("gcv")]
         entry["gcv"] = (
             {

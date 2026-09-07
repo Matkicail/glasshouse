@@ -107,14 +107,20 @@ def _interaction_glm() -> GLM:
     return glm
 
 
-def _research(network: str) -> Callable[[], Any]:
+def _research(network: str, encoding: str = "design") -> Callable[[], Any]:
     """Build a research model: the smooth GLM frozen, this kind of net on its residual."""
 
     def make() -> Any:
         from glasshouse.research import CANN  # noqa: PLC0415 — the research extra (torch)
 
+        hidden = (8,) if network == "kan" else (20, 15, 10)
         return CANN(
-            family="poisson", glm=_smooth_glm, hidden=(20, 15, 10), epochs=100, network=network
+            family="poisson",
+            glm=_smooth_glm,
+            hidden=hidden,
+            epochs=100,
+            network=network,
+            encoding=encoding,
         )
 
     return make
@@ -380,6 +386,32 @@ BENCHMARKS: dict[str, Benchmark] = {
             ModelSpec("cann", _research("mlp"), list(_FOSS_COLUMNS)),
             ModelSpec("additive", _research("additive"), list(_FOSS_COLUMNS)),
             ModelSpec("localglm", _research("localglm"), list(_FOSS_COLUMNS)),
+            ModelSpec(
+                "lightgbm",
+                lambda: LightGBM(
+                    family="poisson", categorical=["Area", "VehGas", "VehBrand", "Region"]
+                ),
+                list(_FOSS_COLUMNS),
+            ),
+        ],
+        make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
+        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+    ),
+    "fremtpl2_kan": Benchmark(
+        # the fence's last stage, and the feature-encoding trade-off as a picture: the same
+        # smooth GLM under an MLP and under a two-layer KAN, each fed the numeric features
+        # raw, as piecewise linear bins, and as periodic (sin/cos) embeddings
+        name="fremtpl2_kan",
+        dataset="fremtpl2_freq",
+        task=TaskSpec(family="poisson", target="ClaimNb", exposure="Exposure", rate=True),
+        models=[
+            ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
+            ModelSpec("cann", _research("mlp"), list(_FOSS_COLUMNS)),
+            ModelSpec("cann_piecewise", _research("mlp", "piecewise"), list(_FOSS_COLUMNS)),
+            ModelSpec("cann_periodic", _research("mlp", "periodic"), list(_FOSS_COLUMNS)),
+            ModelSpec("kan_raw", _research("kan", "raw"), list(_FOSS_COLUMNS)),
+            ModelSpec("kan_piecewise", _research("kan", "piecewise"), list(_FOSS_COLUMNS)),
+            ModelSpec("kan_periodic", _research("kan", "periodic"), list(_FOSS_COLUMNS)),
             ModelSpec(
                 "lightgbm",
                 lambda: LightGBM(

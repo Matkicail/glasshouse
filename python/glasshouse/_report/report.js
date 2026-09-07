@@ -441,6 +441,16 @@ function gcvSpec(name, t, colour) {
         table: { columns: ["lambda", "GCV", "edf"], rows: order.map((i) => [fmt(t.lambda[i]), fmt(t.gcv[i], 6), fmt(t.edf[i], 3)]) },
     };
 }
+function edgeSpec(input, e) {
+    const rows = e.x.map((x, i) => [fmt(x), ...e.curves.map((c) => fmt(c[i], 4))]);
+    return {
+        title: `KAN edge functions on ${input}`,
+        caption: "One curve per hidden unit: the learnable one-dimensional function each edge applies to this input before the network adds them up. A flat curve is an edge the network does not use; a bent one is what the input contributes to that unit. Nothing else in a KAN carries information, which is its claim to being readable.",
+        data: e.curves.map((c, q) => ({ type: "scatter", mode: "lines", x: e.x, y: c, name: `unit ${q + 1}`, line: { color: PALETTE[q % PALETTE.length] ?? "#000000", width: 1.5 }, hovertemplate: `unit ${q + 1}<br>${input} %{x:.4g}<br>%{y:.4f}<extra></extra>` })),
+        layout: { ...LAYOUT_BASE, xaxis: { ...LAYOUT_BASE.xaxis, title: input }, yaxis: { ...LAYOUT_BASE.yaxis, title: "edge function" }, legend: { orientation: "v", x: 1.02, y: 1 }, margin: { l: 56, r: 100, t: 36, b: 48 } },
+        table: { columns: [input, ...e.curves.map((_, q) => `unit ${q + 1}`)], rows },
+    };
+}
 function histogramSpec(r, label, models) {
     const edges = r.histogram.edges;
     const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
@@ -811,6 +821,25 @@ function modelScreen(doc, root) {
         };
         sel.addEventListener("change", drawGcv);
         drawGcv();
+    }
+    for (const m of labels) {
+        const e = explain[m].edges;
+        if (!e)
+            continue;
+        const inputs = Object.keys(e);
+        if (inputs.length === 0)
+            continue;
+        root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: KAN edge functions`]));
+        const sel = select(inputs, inputs[0]);
+        const chart = el("div", { class: "chart edges" });
+        root.append(el("div", { class: "controls" }, ["Input ", sel]), chart);
+        const drawEdges = () => {
+            const curves = e[sel.value];
+            if (curves)
+                renderChart(chart, edgeSpec(sel.value, curves));
+        };
+        sel.addEventListener("change", drawEdges);
+        drawEdges();
     }
     for (const m of labels) {
         const a = explain[m].attributions;

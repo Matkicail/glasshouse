@@ -19,14 +19,14 @@ smallest step first:
    draw and which cannot learn an interaction. Built, as `AdditiveNet`.
 3. **LocalGLMnet**, where the GLM's coefficients become functions of the row. Built, as
    `LocalGLMnet`.
-4. A KAN-style additive model, run with three numeric encodings side by side (raw,
-   piecewise linear, periodic), so the feature-encoding trade-off is a picture, not an
-   argument.
+4. **A two-layer KAN**, run with three numeric encodings side by side (raw, piecewise
+   linear, periodic), so the feature-encoding trade-off is a picture, not an argument.
+   Built, as `CANN(network="kan", encoding=...)`.
 
-The first three are one class and one training loop: `CANN(network=...)`, with
-`AdditiveNet` and `LocalGLMnet` as the named versions. Only the shape of the correction
-differs, so a difference between their rows on the leaderboard is a difference in what the
-correction is allowed to be, nothing else.
+All four are one class and one training loop: `CANN(network=...)`, with `AdditiveNet` and
+`LocalGLMnet` as named versions. Only the shape of the correction differs, so a difference
+between their rows on the leaderboard is a difference in what the correction is allowed to
+be, nothing else.
 
 The go/no-go sits at each step. A model that fails it stays a notebook, and the report
 shows why.
@@ -105,6 +105,60 @@ local = LocalGLMnet(family="poisson", glm=lambda: GLM(family="poisson", terms={.
 beta, names = local.fit(df, y, offset=offset).attention(df)
 ```
 
+## Three ways to hand a network a number
+
+The papers behind this are Gorishniy, Rubachev & Babenko, "On embeddings for numerical
+features in tabular deep learning" (NeurIPS 2022) for the encodings and Liu et al., "KAN:
+Kolmogorov-Arnold networks" (2024) for the network; the definitions below are theirs,
+checked against the papers, with the one place ours differs stated.
+
+`CANN(encoding=...)` decides what the network sees for each numeric input column;
+categorical and interaction terms always keep the GLM's design columns.
+
+- **`"design"`** (the default): the GLM's own encoded columns, so a smooth term's spline
+  basis is what the net gets. Everything before this page was run this way.
+- **`"raw"`**: the standardised value, one column.
+- **`"piecewise"`** (their PLE, quantile variant): cut the column into `bins` quantile
+  bins on the training rows; the value becomes, per bin, 1 if the bin is entirely below it,
+  0 if entirely above, and the fill `(x − b_{t−1}) / (b_t − b_{t−1})` for the bin it sits
+  in. A linear layer on that is a piecewise linear function bending at the bin edges. We
+  build it as the degree-1 B-spline `piecewise_linear` term, which spans the same functions
+  in a different basis (hat functions instead of fills); the network's first layer is
+  linear, so the model class is identical. One difference: inside the training range the
+  two agree, beyond it the paper's fills extrapolate linearly and our basis holds the
+  boundary value. (Their target-aware "T" bins are not offered: they let `y` into the
+  design.)
+- **`"periodic"`**: `concat[sin(v), cos(v)]`, `v = [2πc₁x, …, 2πc_kx]`, with `frequencies`
+  coefficients `c` trained and initialised from `N(0, sigma)`, as a front layer of the
+  network. The paper says `sigma` is the hyperparameter that matters, and it is: on
+  standardised inputs 0.3 trains well where 1.0 overfits, so 0.3 is the default and it is a
+  knob.
+
+Purpose, in the papers' terms: a plain MLP on a raw scalar is bad at sharp or local
+effects; the encodings give it the position of the value in a bin, or its phase at several
+frequencies, and with them a plain MLP matched attention models and competed with boosted
+trees on their benchmarks. Whether that carries to a frequency model on top of a smooth
+GLM is what the run below is for.
+
+## The KAN
+
+The Kolmogorov-Arnold theorem says any continuous function of `n` variables is
+`f(x) = Σ_{q=1}^{2n+1} Φ_q(Σ_p φ_{q,p}(x_p))`: sums of one-dimensional functions of sums of
+one-dimensional functions. A KAN is a network built that way: every edge carries a learnable
+one-dimensional function instead of a weight, and nodes only add. Each edge is
+`φ(x) = w_b·silu(x) + w_s·Σ_i c_i B_i(x)`, a cubic B-spline on a grid of `grid` intervals
+plus a smooth residual basis. The paper's stated advantages are accuracy on functions with
+compositional structure and a route to interpretability by pruning edges and reading the
+surviving curves; its stated cost is training roughly ten times slower than an MLP.
+
+Ours is two layers, `inputs → hidden[0] → 1`, on a fixed grid over the standardised range
+(the paper's grid refinement is not implemented), with the output layer starting at zero so
+the model starts as the GLM. A one-layer KAN would be a sum of curves per feature, which is
+the additive net and which the smooth GLM already is; the second layer is what lets it
+express an interaction while every piece stays a one-dimensional curve. `edge_curves`
+returns the first layer's `φ_{q,p}` on a grid per input, and the Model tab draws them: the
+KAN's whole claim to being readable, as a picture per input.
+
 ## The go/no-go run
 
 `uv run glasshouse bench fremtpl2_cann` fits the smooth GLM (the bar), the three nets built
@@ -153,6 +207,49 @@ for and a rating table is not. The trade is now stated in numbers: a table of re
 plus one interaction reaches 0.5913; a network on top of that table reaches 0.5841; a
 boosted tree reaches 0.5724 and cannot be read. Which of those to deploy is a business
 decision the report makes plainly, not a modelling one it hides.
+
+## The encodings and the KAN, side by side
+
+`uv run glasshouse bench fremtpl2_kan` fits the smooth GLM, the CANN under the design, the
+piecewise and the periodic encodings, the two-layer KAN under raw, piecewise and periodic,
+and LightGBM, on the same splits. The committed `benchmarks/fremtpl2_kan/report.md` is its
+summary and `pinned.json` its drift test.
+
+Run on 2026-09-07 (held-out, mean ± std over five folds; best per metric in bold):
+
+| metric | glm_smooth | cann | cann_piecewise | cann_periodic | kan_raw | kan_piecewise | kan_periodic | lightgbm |
+|---|---|---|---|---|---|---|---|---|
+| deviance | 0.59198 ± 0.0021 | 0.58414 ± 0.0027 | 0.58360 ± 0.0032 | 0.58251 ± 0.0019 | 0.58299 ± 0.0020 | 0.58196 ± 0.0019 | 0.59197 ± 0.0021 | **0.5724 ± 0.0026** |
+| d2 | 0.0527 | 0.0652 | 0.0661 | 0.0678 | 0.0670 | 0.0687 | 0.0527 | **0.0840** |
+| gini | 0.4894 ± 0.016 | 0.4799 ± 0.026 | 0.5009 ± 0.024 | 0.4881 ± 0.012 | 0.4863 ± 0.021 | 0.4903 ± 0.020 | 0.4894 ± 0.016 | **0.5351 ± 0.021** |
+| balance | 1.0000 ± 0.0033 | 0.9997 ± 0.0039 | 0.9991 ± 0.0026 | 0.9995 ± 0.0033 | 1.0003 ± 0.0041 | 0.9997 ± 0.0037 | **1.0000 ± 0.0033** | 0.9991 ± 0.0037 |
+| fit, all folds | 168 s | 316 s | 249 s | 388 s | 1 437 s | 2 372 s | 4 319 s | 53 s |
+
+**Verdicts.**
+
+- **The encoding matters more than the architecture.** Under the MLP, the piecewise and
+  periodic encodings both beat the design columns on deviance, and piecewise lifts the
+  Gini above the GLM's (0.501 against 0.489) where the design-column CANN had lowered it.
+  Under the KAN, piecewise is the best net of the whole track on deviance, 1.7 % below the
+  GLM, with the Gini held. The paper's claim carries: how a number reaches the network is
+  a first-order choice.
+- **KAN against MLP, same encoding:** a little better on deviance (0.5820 against 0.5836
+  piecewise; 0.5830 against 0.5841 raw against design), at five to ten times the fit time,
+  which is the cost the paper states. The KAN under the periodic encoding did not train at
+  all: it sits on the GLM's numbers to the fourth decimal after seventy minutes, an
+  honest failure rather than a result.
+- **The fence rule, applied.** No row beats the GLM on both deviance and calibration:
+  every balance is a tie within a tenth of a percent, none is better. So every model stays
+  in the fence. The two nearest the gate are `kan_piecewise` (deviance, Gini held, balance
+  a tie) and `cann_piecewise` (deviance, Gini up, balance a shade worse), and the honest
+  reading of the balance row is that a re-balanced net ties the GLM on calibration by
+  construction and will not beat it; if that rule is to decide anything, it should ask for
+  calibration *by segment*, the A/E grids, which is where the difference would show.
+- **What to look at.** On the Model tab, the KAN's edge functions per input (the curves the
+  model is made of) and "explain a row" with the network column; on the Compare tab, the
+  double lift between `kan_piecewise` and `glm_smooth`; on Residuals, the DrivAge by
+  BonusMalus grid for each.
+
 
 ## Save and load
 

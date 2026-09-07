@@ -159,7 +159,11 @@ def test_fixture_for_the_typescript_side(tmp_path: Path) -> None:
     fixture = Path("tests/fixtures/report_small.json")
     if fixture.exists():
         pinned = json.loads(fixture.read_text())
-        assert pinned["schema"] == doc["schema"] and pinned["models"] == doc["models"]
+        # the committed fixture carries the same models plus, for the viewer, a small KAN
+        assert (
+            pinned["schema"] == doc["schema"]
+            and pinned["models"][: len(doc["models"])] == doc["models"]
+        )
 
 
 def test_to_html_is_self_contained(tmp_path: Path) -> None:
