@@ -245,7 +245,10 @@ The tabs, in the order a reader meets them:
   their spread and, on a log link, the relativities. And "explain a row": thirty held-out
   rows per glass-box model (the ten priced highest, the ten lowest, ten at random), each
   drawn as one bar per feature on the link scale that add up to the prediction, with the
-  relativity on hover. For a model fitted with `alpha="cv"`, the regularisation path: the
+  relativity on hover. For a net built on a GLM (the research track), "what the network
+  adds": its correction's partial dependence along each feature, a factor on the GLM's
+  price under a log link, and for a KAN its edge functions, both layers. For a model fitted
+  with `alpha="cv"`, the regularisation path: the
   held-out deviance along the path with its standard error band and the chosen alpha, and
   every coefficient's path as the penalty relaxes. For a model with smooth terms, the GCV
   trace per smooth with the chosen lambda. Every choice the solver made is a picture, not

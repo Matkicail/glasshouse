@@ -131,6 +131,16 @@ def test_the_bench_treats_a_cann_like_any_model_and_the_report_validates() -> No
     assert doc["explain"]["cann"]["coefficients"] is None  # not a glass box
     attr = doc["explain"]["cann"]["attributions"]
     assert attr["terms"][-1] == "network" and len(attr["rows"]) == 30
+    # what the net adds, along each explained feature, on the same grid as its dependence
+    ex = doc["explain"]["cann"]
+    assert ex["link"] == "log" and doc["explain"]["glm"]["correction"] is None
+    assert [c["feature"] for c in ex["correction"]] == ["age", "region"]
+    assert ex["correction"][0]["grid"] == ex["partial_dependence"][0]["grid"]
+    assert all(
+        lo <= m <= hi
+        for c in ex["correction"]
+        for lo, m, hi in zip(c["low"], c["mean"], c["high"], strict=True)
+    )
     assert (
         doc["bench"]["summary"]["cann"]["deviance"]["mean"]
         < doc["bench"]["summary"]["glm"]["deviance"]["mean"]
@@ -285,9 +295,13 @@ def test_the_kan_starts_as_the_glm_learns_the_interaction_and_draws_its_edges() 
     )
     assert _held_out_deviance(kan, te) < _held_out_deviance(glm, te) * 0.985
     edges = kan.edge_curves(n_points=11)
-    assert list(edges) == ["region[0]", "region[1]", "age", "power"]
+    inputs = ["region[0]", "region[1]", "age", "power"]
+    assert list(edges) == [*inputs, *(f"unit {q} -> output" for q in range(1, 7))]
     assert len(edges["age"]["x"]) == 11 and len(edges["age"]["curves"]) == 6
-    assert edges["age"]["x"][0] < edges["age"]["x"][-1]
+    assert len(edges["unit 1 -> output"]["curves"]) == 1  # the second layer has one output
+    age = DF.age.to_numpy()[fold.train_idx]
+    assert edges["age"]["x"][0] >= age.min() - 1e-9 and edges["age"]["x"][-1] <= age.max() + 1e-9
+    assert edges["age"]["x"][0] < edges["age"]["x"][-1]  # drawn over the training range only
     parts, names = kan.term_contributions(DF[COLS].iloc[:10])
     assert names[-1] == "network"
     np.testing.assert_allclose(

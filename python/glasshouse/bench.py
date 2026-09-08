@@ -15,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
+from types import SimpleNamespace
 from typing import Any, Protocol
 
 import numpy as np
@@ -442,6 +443,7 @@ def _explain_fold(  # noqa: PLR0913, PLR0917 — the fold's own pieces, threaded
     link = getattr(model, "_link_name", None)
     return {
         "partial_dependence": curves,
+        "correction": _correction_curves(model, sub, used, grids),
         "importance": {"loss": importance.loss.tolist(), "base": importance.base_deviance},
         "coefficients": explain_mod.coefficients(model),
         "link": link() if callable(link) else None,
@@ -449,6 +451,24 @@ def _explain_fold(  # noqa: PLR0913, PLR0917 — the fold's own pieces, threaded
         "path": _path(model),
         "gcv": _gcv(model),
         "edges": _edges(model),
+    }
+
+
+def _correction_curves(
+    model: Model, sub: Any, used: list[str], grids: dict[str, dict[str, Any]]
+) -> dict[str, list[float]] | None:
+    """Partial dependence of what a net adds to its GLM, on the link scale, per feature.
+
+    The same grids as the model's own partial dependence, so the two pictures line up: the
+    GLM's shape is the base model's curve, and this is the curve the network draws on top.
+    """
+    correction = getattr(model, "correction", None)
+    if not callable(correction):
+        return None
+    net = SimpleNamespace(predict=correction)  # the explain helpers ask for ``predict``
+    return {
+        f: explain_mod.partial_dependence(net, sub, f, grid=grids[f]["grid"]).effect.tolist()
+        for f in used
     }
 
 
@@ -526,6 +546,26 @@ def _attributions(
     ]
 
 
+def _bands(
+    per_fold: list[dict[str, list[float]]], grids: dict[str, dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Curves per fold to one band per feature: the mean line and the fold extremes."""
+    out = []
+    for f in per_fold[0]:
+        stack = np.array([fold[f] for fold in per_fold])
+        out.append(
+            {
+                "feature": f,
+                "kind": grids[f]["kind"],
+                "grid": grids[f]["grid"],
+                "mean": stack.mean(axis=0).tolist(),
+                "low": stack.min(axis=0).tolist(),
+                "high": stack.max(axis=0).tolist(),
+            }
+        )
+    return out
+
+
 def _aggregate_explain(
     results: list[FoldResult], labels: list[str], grids: dict[str, dict[str, Any]]
 ) -> dict[str, Any]:
@@ -536,19 +576,7 @@ def _aggregate_explain(
         if not folds:
             continue
         used = list(folds[0]["partial_dependence"])
-        curves = []
-        for f in used:
-            stack = np.array([fold["partial_dependence"][f] for fold in folds])
-            curves.append(
-                {
-                    "feature": f,
-                    "kind": grids[f]["kind"],
-                    "grid": grids[f]["grid"],
-                    "mean": stack.mean(axis=0).tolist(),
-                    "low": stack.min(axis=0).tolist(),
-                    "high": stack.max(axis=0).tolist(),
-                }
-            )
+        curves = _bands([fold["partial_dependence"] for fold in folds], grids)
         losses = np.array([fold["importance"]["loss"] for fold in folds])
         entry: dict[str, Any] = {
             "partial_dependence": curves,
@@ -561,6 +589,9 @@ def _aggregate_explain(
             "coefficients": None,
         }
         entry["attributions"] = _merge_attributions(folds)
+        nets = [fold["correction"] for fold in folds if fold.get("correction")]
+        entry["correction"] = _bands(nets, grids) if len(nets) == len(folds) else None
+        entry["link"] = folds[0]["link"]
         # the path and the GCV trace are per fold: the first fold's is drawn, and the
         # value every fold chose is listed so the spread is on the record
         paths = [fold["path"] for fold in folds if fold.get("path")]

@@ -251,6 +251,100 @@ Run on 2026-09-07 (held-out, mean ± std over five folds; best per metric in bol
   BonusMalus grid for each.
 
 
+## Reading a net on the Model tab
+
+Every model gets the same partial dependence, one line per model on one axis, so the
+first picture of any net is how far its curve sits from the GLM's. A net built on a GLM
+gets one more: **what the network adds**, the partial dependence of its correction alone
+along each explained feature, on the same grid, shown as a factor on the GLM's price under
+a log link (a dotted line at 1 is "the net leaves this to the GLM") and as an addition on
+the link scale otherwise. The GLM's own shape is the base model's curve; the two together
+are the net's account of itself along one axis. Interactions do not show on a marginal, by
+construction, so a feature whose curve sits flat at 1 while the deviance moved is one the
+net uses jointly with another; the two-feature A/E grids on the Residuals tab are where to
+look next.
+
+A KAN gets the whole network on the page: the first layer's edge functions per input (one
+curve per hidden unit, drawn over the input's training range) and then the second layer's,
+one curve per hidden unit into the output. Bend, sum, bend, sum: there is nothing else in
+it. Under the piecewise encoding each numeric feature is several inputs (one per bin), so
+the readable per-feature curves come from `encoding="raw"`; the piecewise run is the one
+that scores better.
+
+## The fence on the other three datasets
+
+Frequency is one shape. The same four rows (the recipe's GLM, the MLP on the design and on
+piecewise inputs, the KAN on piecewise inputs) run on a gamma severity, a Poisson count on a
+time-ordered split, and a churn classification, as `fremtpl2_sev_cann`, `bike_sharing_cann`
+and `telco_churn_cann`. Each has a committed `report.md` and `pinned.json`. Run on
+2026-09-08, held-out, mean ± std over five folds, best per metric in bold.
+
+**Bike sharing** (Poisson hourly counts, train strictly before test):
+
+| metric | glm_poisson | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 66.51 ± 19 | 42.23 ± 14 | 43.04 ± 15 | **40.78 ± 14** | 43.02 ± 14 | 161.6 |
+| d2 | 0.586 | 0.737 | 0.733 | **0.748** | 0.733 | 0 |
+| gini | 0.3995 ± 0.021 | 0.4458 ± 0.015 | 0.4449 ± 0.015 | **0.4460 ± 0.015** | 0.4447 ± 0.016 | 0 |
+| balance | 1.401 ± 0.17 | 1.399 ± 0.16 | 1.397 ± 0.16 | **1.382 ± 0.16** | 1.405 ± 0.15 | 1 |
+| fit, all folds | 1 s | 31 s | 8 s | 52 s | 14 s | |
+
+The one dataset where the nets clear the fence by the letter: every net cuts the GLM's
+deviance by more than a third, matches LightGBM, and the KAN on piecewise inputs is best on
+every row including balance. The picture on the Model tab says why: what the net adds along
+`hour` is a factor of 0.6 at seven in the morning and 1.1 at five in the afternoon, the
+commute peaks that a twelve-column spline on `hour` cannot sharpen and, more, cannot make
+depend on `workingday`. That is an interaction a rating table could hold
+(`"hour*workingday"` as an `Interaction` term is the glass-box reply, not run here). The
+balance row is honest about the split: demand grows over the year, every model trained on
+earlier months under-predicts later ones by forty percent, and a better 1.38 against 1.40
+is not calibration, it is less miscalibration. The rule needs calibration over time, the
+residuals-over-time panel, to say anything on a split like this.
+
+**Telco churn** (binomial; log loss and Brier stand in for deviance; no LightGBM row, the
+wrapper speaks the three actuarial objectives only):
+
+| metric | logistic | cann | cann_piecewise | kan_piecewise | naive |
+|---|---|---|---|---|---|
+| log_loss | 0.4186 ± 0.0097 | 0.4186 ± 0.0097 | 0.4143 ± 0.0092 | **0.4116 ± 0.0094** | 0.5786 |
+| brier | 0.1360 ± 0.0033 | 0.1360 ± 0.0033 | 0.1346 ± 0.0032 | **0.1337 ± 0.0030** | 0.1950 |
+| roc_auc | 0.8433 ± 0.0088 | 0.8433 ± 0.0088 | 0.8472 ± 0.0082 | **0.8491 ± 0.0086** | 0.5 |
+| balance | 1.0008 ± 0.025 | **0.9992 ± 0.025** | 1.0048 ± 0.031 | 1.0105 ± 0.031 | 1 |
+| fit, all folds | 1 s | 29 s | 6 s | 18 s | |
+
+The MLP on the design columns adds nothing to the logistic, to the fourth decimal: on
+fifteen one-hot factors and two standardised numerics there is no shape left to find and
+the interactions do not help. The piecewise encoding is what moves it, log loss down 1.7 %
+under the KAN, and what it hands the net is a shape on `tenure` and `MonthlyCharges` the
+logistic never had, since the recipe gives them linear terms. So the gain is shapes, and a
+spline on those two columns in the logistic is the first thing to try before a net. The
+balance drifts to 1.01 because a logit has no one constant that restores the total, and the
+rule's calibration half fails on it: the nets stay in the fence.
+
+**Motor severity** (gamma, weight = claim count):
+
+| metric | glm_gamma | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 1.5641 ± 0.14 | 1.5691 ± 0.14 | 1.5679 ± 0.13 | **1.5633 ± 0.12** | 1.5785 ± 0.21 | 1.5635 |
+| gini | 0.0574 ± 0.075 | **0.0626 ± 0.068** | 0.0528 ± 0.080 | 0.0532 ± 0.075 | 0.0417 ± 0.058 | 0 |
+| balance | 1.0109 ± 0.12 | 1.0053 ± 0.13 | 1.0045 ± 0.12 | **1.0037 ± 0.12** | 1.0807 ± 0.13 | 1 |
+| fit, all folds | 3 s | 36 s | 15 s | 69 s | 9 s | |
+
+Nothing here beats the mean. The naive row's deviance is 1.5635 and the best model's is
+1.5633; every d2 is negative, every Gini within a fold standard deviation of zero. The
+severity of a French motor claim, given these rating factors, is noise around two thousand
+with a heavy tail, and neither a net nor a boosted tree finds what is not there. The fence
+says nothing on this data because the scorecard's baseline row already said everything;
+that the nets neither help nor hurt beyond noise is the correct result.
+
+**What the three runs add to the frequency story.** The gain, where there is one, is
+either an interaction the GLM's terms cannot express (bike: `hour` by `workingday`) or a
+shape the recipe's GLM was not given (telco: linear terms on the numerics), and in both
+cases the glass-box reply is one more term in the GLM. Where the GLM already holds every
+shape the data supports (motor frequency's smooths) the nets find many small interactions;
+where there is no signal (severity) they find nothing. The encoding decision carries on
+every dataset: the MLP on the design columns is the weakest net row in all four reports.
+
 ## Save and load
 
 `to_dict` writes the GLM, the network's weights as plain lists, the scaling and the shift;

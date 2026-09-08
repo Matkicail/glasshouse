@@ -572,59 +572,15 @@
           "attributions",
           "path",
           "gcv",
-          "edges"
+          "edges",
+          "correction",
+          "link"
         ],
         "properties": {
           "partial_dependence": {
             "type": "array",
             "items": {
-              "type": "object",
-              "required": [
-                "feature",
-                "kind",
-                "grid",
-                "mean",
-                "low",
-                "high"
-              ],
-              "properties": {
-                "feature": {
-                  "type": "string"
-                },
-                "kind": {
-                  "enum": [
-                    "numeric",
-                    "categorical"
-                  ]
-                },
-                "grid": {
-                  "type": "array",
-                  "items": {
-                    "type": [
-                      "number",
-                      "string"
-                    ]
-                  }
-                },
-                "mean": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  }
-                },
-                "low": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  }
-                },
-                "high": {
-                  "type": "array",
-                  "items": {
-                    "type": "number"
-                  }
-                }
-              }
+              "$ref": "#/$defs/curve_band"
             }
           },
           "importance": {
@@ -898,6 +854,25 @@
               }
             ],
             "description": "KAN models only: the first layer's edge functions, one curve per hidden unit, per input column, on a grid of that input in its own units (the first fold's)."
+          },
+          "correction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/curve_band"
+                }
+              }
+            ]
+          },
+          "link": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       }
@@ -1243,6 +1218,55 @@
         },
         "weight_floor": {
           "type": "number"
+        }
+      }
+    },
+    "curve_band": {
+      "type": "object",
+      "required": [
+        "feature",
+        "kind",
+        "grid",
+        "mean",
+        "low",
+        "high"
+      ],
+      "properties": {
+        "feature": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "numeric",
+            "categorical"
+          ]
+        },
+        "grid": {
+          "type": "array",
+          "items": {
+            "type": [
+              "number",
+              "string"
+            ]
+          }
+        },
+        "mean": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "low": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
+        },
+        "high": {
+          "type": "array",
+          "items": {
+            "type": "number"
+          }
         }
       }
     }

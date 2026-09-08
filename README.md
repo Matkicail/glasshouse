@@ -78,7 +78,7 @@ If you already have predictions from any library, skip the fitting: `report.buil
 | Data | the outcome and the weight before any model: distributions, and each feature's weight and outcome rate |
 | Compare | two models: which wins each metric, their win sets, the double lift, both calibrations |
 | Curves | Lorenz, lift, calibration, one-way actual vs predicted by feature; ROC and precision-recall for binary tasks |
-| Model | permutation importance and partial dependence for every model; coefficients, relativities and "explain a row" (one bar per feature, adding up to the price) for the glass-box ones |
+| Model | permutation importance and partial dependence for every model; coefficients, relativities and "explain a row" (one bar per feature, adding up to the price) for the glass-box ones; for a net on a GLM, what the network adds along each feature, and a KAN's learned edge functions, both layers |
 | Residuals | deviance and Pearson residuals, A/E by feature, and A/E on the grid of every pair of features with thin cells greyed: the interaction view |
 | Threshold | binary only: the cost of a cut in alerts per catch |
 
@@ -187,7 +187,9 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
   coefficients as functions of the row) and a two-layer KAN whose edge functions the report
   draws, one class and one training loop, each showing up on "explain a row" next to the
   GLM's terms; and three numeric encodings (raw, piecewise linear, periodic) to run any of
-  them under, so the feature-encoding trade-off is a row on the leaderboard.
+  them under, so the feature-encoding trade-off is a row on the leaderboard. The fence runs
+  on all four datasets (frequency, severity, a time-ordered count, churn), and the report
+  draws what each net adds to its GLM along every feature.
 
 Not trying to be scikit-learn. It does a few things and does them well.
 

@@ -269,6 +269,26 @@ function modelScreen(doc: ReportDoc, root: HTMLElement): void {
   }
 
   for (const m of labels) {
+    const c = explain[m]!.correction;
+    if (!c || c.length === 0) continue;
+    root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: what the network adds to the GLM`]));
+    const link = explain[m]!.link;
+    const wording = correctionWording(link);
+    const sel = select(c.map((p) => p.feature), c[0]!.feature);
+    const chart = el("div", { class: "chart correction" });
+    root.append(el("div", { class: "controls" }, ["Along ", sel]), chart);
+    const draw = () => {
+      const pd = c.find((p) => p.feature === sel.value);
+      if (!pd) return;
+      // on a log link the correction is a factor on the GLM's price, which is what a reader prices in
+      const shown = link === "log" ? { ...pd, mean: pd.mean.map(Math.exp), low: pd.low.map(Math.exp), high: pd.high.map(Math.exp) } : pd;
+      renderChart(chart, partialDependenceSpec([{ label: m, pd: shown }], doc.models, wording));
+    };
+    sel.addEventListener("change", draw);
+    draw();
+  }
+
+  for (const m of labels) {
     const p = explain[m]!.path;
     if (!p) continue;
     root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: regularisation path`]));

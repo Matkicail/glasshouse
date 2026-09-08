@@ -211,6 +211,8 @@ interface ExplainDoc {
   path: PathDoc | null;
   gcv: GcvDoc | null;
   edges: Record<string, EdgeCurves> | null;
+  correction: PartialDependenceDoc[] | null; // what a net adds to its GLM, on the link scale
+  link: string | null;
 }
 
 interface HistogramDoc {

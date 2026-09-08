@@ -173,6 +173,7 @@ the residuals tab. Adopted into the backlog, in order of value:
 4. **The solver's choices drawn** — DONE (2026-09-06): regularisation path (cross-validated
    deviance with its band and the chosen alpha; coefficient paths) and the GCV trace per
    smooth, on the Model tab. And "explain a row": per-row attributions for glass-box models.
+   Then (2026-09-08) what a net adds to its GLM along each feature, and a KAN's two layers.
 5. **SHAP for tree models** — waits for GBDT wrappers in the bench. Partial dependence
    and permutation importance landed first (2026-09-05, the Model tab): model-agnostic,
    on held-out rows, with the fold spread; SHAP would add per-row attributions on top.
