@@ -17,6 +17,7 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | metric | glm_full | glm_splines | glm_smooth | glm_interaction | lightgbm | naive |
 |---|---|---|---|---|---|---|
 | deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | **0.5724 ± 0.0026** | 0.62488 |
+| deviance_per_row | 0.31973 ± 0.0013 | 0.31331 ± 0.0011 | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | **0.30253 ± 0.0012** | 0.33028 |
 | d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052654 ± 0.0011 | 0.053769 ± 0.0014 | **0.08399 ± 0.0023** | 2.3381e-14 |
 | gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48938 ± 0.016 | 0.49098 ± 0.016 | **0.53505 ± 0.021** | 0 |
 | normalized_gini | 0.39913 ± 0.016 | 0.49371 ± 0.016 | 0.49431 ± 0.016 | 0.49592 ± 0.016 | **0.54044 ± 0.022** | 0 |
@@ -25,4 +26,4 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | mae | 0.1868 ± 0.00047 | 0.18577 ± 0.00055 | 0.18562 ± 0.0006 | 0.1855 ± 0.00058 | **0.18221 ± 0.00066** | 0.18894 |
 | r2 | 0.0042698 ± 0.00023 | 0.0077833 ± 0.00052 | 0.0079095 ± 0.00054 | 0.0081742 ± 0.00062 | **0.019076 ± 0.00078** | 5.5955e-15 |
 
-Fit time (all folds): glm_full 7.2s, glm_splines 14.2s, glm_smooth 175.6s, glm_interaction 209.8s, lightgbm 48.6s.
+Fit time (all folds): glm_full 6.3s, glm_splines 11.6s, glm_smooth 155.3s, glm_interaction 206.3s, lightgbm 47.5s.

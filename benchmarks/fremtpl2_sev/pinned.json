@@ -5,6 +5,10 @@
     "mean": 1.5640829980101312,
     "std": 0.13725660560126188
    },
+   "deviance_per_row": {
+    "mean": 1.6580953843802189,
+    "std": 0.14505477867015273
+   },
    "d2": {
     "mean": -0.004664410423419673,
     "std": 0.04458079368551146
@@ -38,6 +42,10 @@
    "deviance": {
     "mean": 1.5785261725541537,
     "std": 0.20845021703146774
+   },
+   "deviance_per_row": {
+    "mean": 1.6733568787240247,
+    "std": 0.22016415772917328
    },
    "d2": {
     "mean": -0.008337240649538358,
@@ -74,6 +82,10 @@
    "mean": 1.5635299138514358,
    "std": 0.19022243847311024
   },
+  "deviance_per_row": {
+   "mean": 1.6574606535218155,
+   "std": 0.20080141505911767
+  },
   "d2": {
    "mean": -1.4210854715202005e-15,
    "std": 8.948149634417872e-16
@@ -107,52 +119,52 @@
   {
    "label": "glm_gamma",
    "fold": 0,
-   "seconds": 0.813
+   "seconds": 0.546
   },
   {
    "label": "glm_gamma",
    "fold": 1,
-   "seconds": 0.758
+   "seconds": 0.517
   },
   {
    "label": "glm_gamma",
    "fold": 2,
-   "seconds": 0.747
+   "seconds": 0.519
   },
   {
    "label": "glm_gamma",
    "fold": 3,
-   "seconds": 0.754
+   "seconds": 0.514
   },
   {
    "label": "glm_gamma",
    "fold": 4,
-   "seconds": 0.805
+   "seconds": 0.507
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 1.372
+   "seconds": 5.878
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 0.81
+   "seconds": 0.674
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 0.837
+   "seconds": 0.73
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 0.873
+   "seconds": 0.696
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 0.79
+   "seconds": 0.72
   }
  ]
 }

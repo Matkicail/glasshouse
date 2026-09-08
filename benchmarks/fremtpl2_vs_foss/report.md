@@ -17,6 +17,7 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | metric | glasshouse | glum | sklearn | naive |
 |---|---|---|---|---|
 | deviance | **0.60484 ± 0.0025** | 0.60484 ± 0.0025 | 0.60484 ± 0.0025 | 0.62488 |
+| deviance_per_row | **0.31968 ± 0.0013** | 0.31968 ± 0.0013 | 0.31969 ± 0.0013 | 0.33028 |
 | d2 | **0.032069 ± 0.00051** | 0.032069 ± 0.00051 | 0.032065 ± 0.00052 | 2.3381e-14 |
 | gini | **0.39456 ± 0.019** | 0.39456 ± 0.019 | 0.39444 ± 0.019 | 0 |
 | normalized_gini | **0.39854 ± 0.019** | 0.39854 ± 0.019 | 0.39842 ± 0.019 | 0 |
@@ -25,4 +26,4 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | mae | **0.18678 ± 0.00047** | 0.18678 ± 0.00047 | 0.18678 ± 0.00047 | 0.18894 |
 | r2 | **0.0042855 ± 0.00027** | 0.0042855 ± 0.00027 | 0.0042837 ± 0.00027 | 5.5955e-15 |
 
-Fit time (all folds): glasshouse 10.3s, glum 23.8s, sklearn 690.8s.
+Fit time (all folds): glasshouse 7.1s, glum 20.1s, sklearn 674.7s.

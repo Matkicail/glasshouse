@@ -14,6 +14,7 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | metric | glm_gamma | lightgbm | naive |
 |---|---|---|---|
 | deviance | **1.5641 ± 0.14** | 1.5785 ± 0.21 | 1.5635 |
+| deviance_per_row | **1.6581 ± 0.15** | 1.6734 ± 0.22 | 1.6575 |
 | d2 | **-0.0046644 ± 0.045** | -0.0083372 ± 0.011 | -1.4211e-15 |
 | gini | **0.057426 ± 0.075** | 0.041688 ± 0.058 | 0 |
 | normalized_gini | **0.089989 ± 0.12** | 0.065486 ± 0.089 | 0 |
@@ -22,4 +23,4 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | mae | 2007.5 ± 1.7e+02 | **1894 ± 1.7e+02** | 2002.5 |
 | r2 | -0.0035075 ± 0.0048 | **-0.00014549 ± 0.00065** | -1.7764e-16 |
 
-Fit time (all folds): glm_gamma 3.9s, lightgbm 4.7s.
+Fit time (all folds): glm_gamma 2.6s, lightgbm 8.7s.

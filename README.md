@@ -97,9 +97,15 @@ stratified 5-fold): `uv run glasshouse bench fremtpl2_challengers`.
 | metric | glm_full | glm_splines | glm_smooth | glm_interaction | lightgbm | naive |
 |---|---|---|---|---|---|---|
 | deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | **0.5724 ± 0.0026** | 0.62488 |
+| deviance_per_row | 0.31973 ± 0.0013 | 0.31331 ± 0.0011 | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | **0.30253 ± 0.0012** | 0.33028 |
 | d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052654 ± 0.0011 | 0.053769 ± 0.0014 | **0.08399 ± 0.0023** | 0 |
 | gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48938 ± 0.016 | 0.49098 ± 0.016 | **0.53505 ± 0.021** | 0 |
 | balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0033 | 0.99991 ± 0.0038 | 0.99912 ± 0.0037 | 1 |
+
+`deviance` is scikit-learn's convention, per unit of exposure (its freMTPL2 tutorial gets
+0.625, 0.594 and 0.575 for the same three shapes); `deviance_per_row` is the same total per
+policy, the Wüthrich–Merz convention of the CANN papers, whose tables print it times 100
+(so 31.29 for the smooth GLM). `docs/methods.md` has both formulas.
 
 The splined GLM closes most of the gap to LightGBM on ranking while staying a table of
 relativities. The two-feature A/E grids in the report name the biggest interaction it
@@ -113,6 +119,7 @@ claim count): `uv run glasshouse bench fremtpl2_sev`.
 | metric | glm_gamma | lightgbm | naive |
 |---|---|---|---|
 | deviance | **1.5641 ± 0.14** | 1.5785 ± 0.21 | 1.5635 |
+| deviance_per_row | **1.6581 ± 0.15** | 1.6734 ± 0.22 | 1.6575 |
 | d2 | **-0.0047 ± 0.045** | -0.0083 ± 0.011 | 0 |
 | gini | **0.057 ± 0.075** | 0.042 ± 0.058 | 0 |
 | balance | **1.011 ± 0.12** | 1.081 ± 0.13 | 1 |

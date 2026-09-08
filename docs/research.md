@@ -171,12 +171,19 @@ Run on 2026-09-06 (held-out, mean ± std over five folds; best per metric in bol
 | metric | glm_smooth | glm_interaction | cann | additive | localglm | lightgbm | naive |
 |---|---|---|---|---|---|---|---|
 | deviance | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | 0.58414 ± 0.0027 | 0.59438 ± 0.0017 | 0.58869 ± 0.0023 | **0.5724 ± 0.0026** | 0.62488 |
+| deviance_per_row | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | 0.30874 ± 0.0015 | 0.31415 ± 0.0007 | 0.31115 ± 0.0012 | **0.30253 ± 0.0012** | 0.33028 |
 | d2 | 0.0527 ± 0.0011 | 0.0538 ± 0.0014 | 0.0652 ± 0.0016 | 0.0488 ± 0.0023 | 0.0579 ± 0.0034 | **0.0840 ± 0.0023** | 0 |
 | gini | 0.4894 ± 0.016 | 0.4910 ± 0.016 | 0.4799 ± 0.026 | 0.4785 ± 0.021 | 0.4771 ± 0.022 | **0.5351 ± 0.021** | 0 |
 | balance | **1.0000 ± 0.0033** | 0.9999 ± 0.0038 | 0.9997 ± 0.0039 | 1.0000 ± 0.0028 | 1.0001 ± 0.0045 | 0.9991 ± 0.0037 | 1 |
 
 Fit time over all folds: glm_smooth 163 s, glm_interaction 208 s, cann 279 s, additive
 346 s, localglm 235 s, lightgbm 53 s (each net contains the GLM).
+
+`deviance` is per unit of exposure, scikit-learn's convention; `deviance_per_row` is the
+same total per policy, the convention of Schelldorfer & Wüthrich's CANN paper and the
+Wüthrich–Merz book (formula 5.28), whose tables print it times 100: the smooth GLM's 31.29
+and the CANN's 30.87 are the numbers to put next to theirs. Both formulas and the factor
+between them (the mean exposure, about 0.53) are in `docs/methods.md`.
 
 **Verdicts, all three no-go, and each one says something.**
 
@@ -215,15 +222,17 @@ piecewise and the periodic encodings, the two-layer KAN under raw, piecewise and
 and LightGBM, on the same splits. The committed `benchmarks/fremtpl2_kan/report.md` is its
 summary and `pinned.json` its drift test.
 
-Run on 2026-09-07 (held-out, mean ± std over five folds; best per metric in bold):
+Run on 2026-09-07, re-run 2026-09-08 to the same numbers (held-out, mean ± std over five
+folds; best per metric in bold):
 
 | metric | glm_smooth | cann | cann_piecewise | cann_periodic | kan_raw | kan_piecewise | kan_periodic | lightgbm |
 |---|---|---|---|---|---|---|---|---|
 | deviance | 0.59198 ± 0.0021 | 0.58414 ± 0.0027 | 0.58360 ± 0.0032 | 0.58251 ± 0.0019 | 0.58299 ± 0.0020 | 0.58196 ± 0.0019 | 0.59197 ± 0.0021 | **0.5724 ± 0.0026** |
+| deviance_per_row | 0.31289 ± 0.0011 | 0.30874 ± 0.0015 | 0.30846 ± 0.0017 | 0.30788 ± 0.0011 | 0.30814 ± 0.0012 | 0.30759 ± 0.0008 | 0.31288 ± 0.0011 | **0.30253 ± 0.0012** |
 | d2 | 0.0527 | 0.0652 | 0.0661 | 0.0678 | 0.0670 | 0.0687 | 0.0527 | **0.0840** |
 | gini | 0.4894 ± 0.016 | 0.4799 ± 0.026 | 0.5009 ± 0.024 | 0.4881 ± 0.012 | 0.4863 ± 0.021 | 0.4903 ± 0.020 | 0.4894 ± 0.016 | **0.5351 ± 0.021** |
 | balance | 1.0000 ± 0.0033 | 0.9997 ± 0.0039 | 0.9991 ± 0.0026 | 0.9995 ± 0.0033 | 1.0003 ± 0.0041 | 0.9997 ± 0.0037 | **1.0000 ± 0.0033** | 0.9991 ± 0.0037 |
-| fit, all folds | 168 s | 316 s | 249 s | 388 s | 1 437 s | 2 372 s | 4 319 s | 53 s |
+| fit, all folds | 153 s | 255 s | 240 s | 346 s | 1 180 s | 2 018 s | 3 670 s | 50 s |
 
 **Verdicts.**
 
@@ -238,6 +247,12 @@ Run on 2026-09-07 (held-out, mean ± std over five folds; best per metric in bol
   which is the cost the paper states. The KAN under the periodic encoding did not train at
   all: it sits on the GLM's numbers to the fourth decimal after seventy minutes, an
   honest failure rather than a result.
+- **A caution on the KAN rows.** There is no published KAN benchmark on freMTPL2 to check
+  them against, where the GLM, CANN and boosted-tree rows have one (scikit-learn's tutorial
+  and the Wüthrich-school papers; see the deviance conventions in `docs/methods.md`). Each
+  net here is one seeded run, not the averaged "nagging predictor" those papers report, so
+  the ordering among the net rows carries run-to-run noise of about a fold standard
+  deviation; the gap to the GLM is several of them. Treat the KAN result as exploratory.
 - **The fence rule, applied.** No row beats the GLM on both deviance and calibration:
   every balance is a tie within a tenth of a percent, none is better. So every model stays
   in the fence. The two nearest the gate are `kan_piecewise` (deviance, Gini held, balance
@@ -326,6 +341,7 @@ rule's calibration half fails on it: the nets stay in the fence.
 | metric | glm_gamma | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
 |---|---|---|---|---|---|---|
 | deviance | 1.5641 ± 0.14 | 1.5691 ± 0.14 | 1.5679 ± 0.13 | **1.5633 ± 0.12** | 1.5785 ± 0.21 | 1.5635 |
+| deviance_per_row | 1.6581 ± 0.15 | 1.6634 ± 0.15 | 1.6622 ± 0.14 | **1.6573 ± 0.13** | 1.6734 ± 0.22 | 1.6575 |
 | gini | 0.0574 ± 0.075 | **0.0626 ± 0.068** | 0.0528 ± 0.080 | 0.0532 ± 0.075 | 0.0417 ± 0.058 | 0 |
 | balance | 1.0109 ± 0.12 | 1.0053 ± 0.13 | 1.0045 ± 0.12 | **1.0037 ± 0.12** | 1.0807 ± 0.13 | 1 |
 | fit, all folds | 3 s | 36 s | 15 s | 69 s | 9 s | |
