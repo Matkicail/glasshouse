@@ -4,7 +4,7 @@
 // Nothing here is computed: the browser only draws what Python wrote.
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.
 const HIGHER_IS_BETTER = {
-    deviance: false, d2: true, gini: true, normalized_gini: true, rmse: false, mae: false, r2: true,
+    deviance: false, deviance_per_row: false, d2: true, gini: true, normalized_gini: true, rmse: false, mae: false, r2: true,
     mcc: true, f1: true, roc_auc: true, average_precision: true, ks: true, log_loss: false, brier: false,
 };
 // Formatting and small DOM helpers. Numbers are formatted by what they are, not by magnitude
@@ -46,8 +46,9 @@ function clear(node) {
 function verdict(metric, a, b) {
     const close = (x, y) => Math.abs(x - y) <= 1e-9 * Math.max(1, Math.abs(x), Math.abs(y));
     if (metric === "balance") {
+        // a tenth of a percent of the total is fold noise, not a verdict (see docs/methods.md)
         const da = Math.abs(a - 1), db = Math.abs(b - 1);
-        return close(da, db) ? "tie" : da < db ? "yes" : "no";
+        return Math.abs(da - db) <= 1e-3 ? "tie" : da < db ? "yes" : "no";
     }
     const dir = HIGHER_IS_BETTER[metric];
     if (dir === undefined)
@@ -521,6 +522,7 @@ function table(columns, rows) {
 // which curve) lives in the selectors on the page, nothing else.
 const METRIC_HELP = {
     deviance: "Family deviance: did the model fit the distribution it claims? Lower is better; the naive row is the intercept-only model.",
+    deviance_per_row: "The same weighted deviance divided by the row count instead of the total weight: per policy rather than per unit of exposure, the convention of the Wüthrich–Merz actuarial papers (their tables print it times 100). Lower is better.",
     d2: "Deviance explained: 1 is perfect, 0 is no better than the mean. The honest 'vs naive' number for a GLM.",
     gini: "Does the model sort risk low to high? Blind to calibration — read next to balance and A/E.",
     normalized_gini: "Gini divided by the best achievable Gini; comparable across datasets.",

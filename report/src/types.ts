@@ -260,6 +260,6 @@ interface ReportDoc {
 
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.
 const HIGHER_IS_BETTER: Record<string, boolean> = {
-  deviance: false, d2: true, gini: true, normalized_gini: true, rmse: false, mae: false, r2: true,
+  deviance: false, deviance_per_row: false, d2: true, gini: true, normalized_gini: true, rmse: false, mae: false, r2: true,
   mcc: true, f1: true, roc_auc: true, average_precision: true, ks: true, log_loss: false, brier: false,
 };

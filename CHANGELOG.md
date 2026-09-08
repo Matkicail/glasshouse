@@ -5,6 +5,20 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `metrics.deviance_per_row`, and a `deviance_per_row` row on every weighted scorecard: the
+  weighted total deviance divided by the row count rather than the total weight, which for
+  a frequency model is the deviance per policy of Wüthrich & Merz (formula 5.28) and the
+  CANN paper, where `deviance` is scikit-learn's per unit of exposure. The two differ by
+  the mean exposure (about 0.53 on freMTPL2) and the papers' tables print theirs times
+  100; `docs/methods.md` has both formulas and the citations. The frequency benchmarks are
+  re-pinned with the row.
+
+### Changed
+- The scorecard's verdict on balance has a tie band of a tenth of a percent, in the report
+  and in `compare`: the naive row is exactly balanced, so without it a model at 1.0000
+  read as a cross at the tenth decimal.
+
+### Added
 - The Model tab draws **what a network adds to its GLM**: the partial dependence of the
   net's correction alone along every explained feature, on the same grid as the model's
   own, as a factor on the GLM's price under a log link (dotted line at 1) or an addition on

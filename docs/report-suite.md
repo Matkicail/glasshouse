@@ -76,7 +76,8 @@ Python side computes everything; the TS side only draws.
 ## The screens (v1)
 
 1. **Overview** — one row per model: the task's panel with a "better than naive?" tick per
-   metric, and the winner per metric highlighted across models. Sorted by the task's
+   metric (balance ties within a tenth of a percent), and the winner per metric highlighted
+   across models. Sorted by the task's
    primary metric (deviance for the actuarial trio, average precision for binary, MAE for
    regression, normalised Gini for ranking) — with a visible note that the primary is a
    convention, not a verdict. The provenance block (data, cleaning, split, sample) sits

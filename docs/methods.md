@@ -44,7 +44,22 @@ Tweedie at `p = 0, 1, 2` delegates to gaussian, poisson, gamma bit-for-bit; `0 <
 not a Tweedie distribution and is refused. Logs are taken as `ln y − ln mu`, never `ln(y/mu)`,
 so subnormal values cannot underflow to `ln 0`.
 
-- **Mean deviance** `= sum(w_i d(y_i, mu_i)) / W` (`metrics.deviance`).
+- **Mean deviance** `= sum(w_i d(y_i, mu_i)) / W` (`metrics.deviance`): scikit-learn's
+  `mean_tweedie_deviance(sample_weight=w)`. For a frequency model scored as a rate with
+  exposure as the weight this is the deviance *per unit of exposure*, the number in
+  scikit-learn's freMTPL2 tutorial (0.625 naive, 0.594 GLM, 0.575 boosted trees; the
+  committed `fremtpl2_challengers` gets 0.6249, 0.5920, 0.5724).
+- **Deviance per row** `= sum(w_i d(y_i, mu_i)) / n` (`metrics.deviance_per_row`; on the
+  scorecard whenever there are weights). The same total divided by the row count: for that
+  frequency model the deviance *per policy*, `(2/n) sum_i [v_i mu_i − Y_i − Y_i ln(v_i mu_i /
+  Y_i)]` with `Y_i` the count and `v_i` the exposure, since `d(Y, v mu) = v d(Y/v, mu)` for
+  Poisson. That is formula 5.28 of Wüthrich & Merz, *Statistical Foundations of Actuarial
+  Learning and its Applications* (Springer, 2023), the loss reported in Schelldorfer &
+  Wüthrich, "Nesting classical actuarial models into neural networks" (SSRN 3320525, 2019)
+  and the papers that cite it, whose tables print it times 100. The two conventions differ
+  by `W / n`, the mean exposure, about 0.53 on freMTPL2; a 0.59 per unit of exposure is a
+  0.31 per policy, printed as 31. Numbers from the two strands are not comparable until
+  one is converted.
 - **D²** `= 1 − D(y, mu) / D(y, ȳ)` where `ȳ` is the weighted mean of `y` — the intercept-only
   (null) model (`metrics.d2`). Undefined, and refused, when `y` is constant.
 
@@ -92,7 +107,10 @@ groups never split; a group goes to the bin its weight-midpoint falls in), and p
 
 `metrics.balance` `= sum(w y) / sum(w mu)`; 1 means the model reproduces the total. A GLM with
 the canonical link satisfies this on its training data by construction (the score equations
-sum to zero); models trained by gradient descent generally do not.
+sum to zero); models trained by gradient descent generally do not. The scorecard's verdict on
+balance (the tick against the naive row, the winner in `compare`) is by distance from 1 with
+a tie band of `1e-3`: the naive row is exactly balanced, and a model a tenth of a percent
+off on a held-out total is fold noise, not a loss, so it reads as a tie rather than a cross.
 
 References: Denuit, Charpentier & Trufin, "Autocalibration and Tweedie dominance for insurance
 pricing with machine learning", *IME* 101 (2021), arXiv:2103.03635; Wüthrich & Ziegel,
