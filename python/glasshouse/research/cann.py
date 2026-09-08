@@ -214,9 +214,8 @@ class CANN:
         best, best_state, since_best = float("inf"), None, 0
         for epoch in range(self.epochs):
             self._epoch(torch, net, optimiser, tensors, train, epoch)
-            with torch.no_grad():
-                train_dev = float(self._loss(torch, net, tensors, train))
-                valid_dev = float(self._loss(torch, net, tensors, valid))
+            train_dev = float(self._monitor(torch, net, tensors, train))
+            valid_dev = float(self._monitor(torch, net, tensors, valid))
             self.history_.append((train_dev, valid_dev))
             if valid_dev < best - 1e-12:
                 best, since_best = valid_dev, 0
@@ -246,8 +245,14 @@ class CANN:
 
     def _loss(self, torch: Any, net: Any, t: dict[str, Any], idx: Any) -> Any:
         """Return the weighted mean deviance of the batch, on the response scale."""
-        eta = t["eta"][idx] + net(t["x"][idx]).squeeze(-1)
-        mu = _inverse_link(torch, self.glm_._link_name(), eta)
+        return self._deviance(torch, t, idx, net(t["x"][idx]).squeeze(-1))
+
+    def _monitor(self, torch: Any, net: Any, t: dict[str, Any], idx: Any) -> Any:
+        """Return the same deviance over a whole slice, forwarded a slab at a time, no gradients."""
+        return self._deviance(torch, t, idx, _forward_in_slabs(torch, net, t["x"][idx]))
+
+    def _deviance(self, torch: Any, t: dict[str, Any], idx: Any, correction: Any) -> Any:
+        mu = _inverse_link(torch, self.glm_._link_name(), t["eta"][idx] + correction)
         return deviance_torch(torch, self.family, t["y"][idx], mu, t["w"][idx], self.power)
 
     def _balance_shift(self, x: F64, y: F64, w: F64, eta_glm: F64) -> float:
@@ -389,8 +394,7 @@ class CANN:
 
     def _net(self, x: F64) -> F64:
         torch = _torch()
-        with torch.no_grad():
-            out = self.net_.double()(torch.tensor(x, dtype=torch.float64)).squeeze(-1)
+        out = _forward_in_slabs(torch, self.net_.double(), torch.tensor(x, dtype=torch.float64))
         return np.asarray(out.numpy(), dtype=np.float64)
 
     def _inputs_all(self, X: ArrayLike) -> F64:  # noqa: N803
@@ -784,6 +788,25 @@ def _inverse_link(torch: Any, link: str, eta: Any) -> Any:
     if link == "log":
         return torch.exp(eta)
     return torch.sigmoid(eta)
+
+
+_SLAB_ROWS = 32_768
+"""Rows per forward pass when only predicting.
+
+A KAN layer's spline basis is a (rows, inputs, knots) tensor, built through several
+temporaries of that size; a whole fold of freMTPL2 through it wants tens of gigabytes. Each
+row's output does not depend on the others, so slabs give the same numbers.
+"""
+
+
+def _forward_in_slabs(torch: Any, net: Any, x: Any) -> Any:
+    """Return ``net(x)`` squeezed to one column, without gradients, ``_SLAB_ROWS`` at a time."""
+    with torch.no_grad():
+        if len(x) <= _SLAB_ROWS:
+            return net(x).squeeze(-1)
+        return torch.cat(
+            [net(x[s : s + _SLAB_ROWS]).squeeze(-1) for s in range(0, len(x), _SLAB_ROWS)]
+        )
 
 
 def deviance_torch(

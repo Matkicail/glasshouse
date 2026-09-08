@@ -16,6 +16,7 @@ from glasshouse.metrics import FamilyName, deviance
 
 torch = pytest.importorskip("torch", reason="the research track needs torch: uv sync installs it")
 from glasshouse.research import CANN, AdditiveNet, LocalGLMnet  # noqa: E402
+from glasshouse.research import cann as cann_mod  # noqa: E402
 from glasshouse.research.cann import deviance_torch  # noqa: E402
 
 rng = np.random.default_rng(21)
@@ -311,3 +312,24 @@ def test_the_kan_starts_as_the_glm_learns_the_interaction_and_draws_its_edges() 
     np.testing.assert_allclose(back.predict(DF[COLS]), kan.predict(DF[COLS]), rtol=1e-12)
     with pytest.raises(ValueError, match="edge_curves"):
         CANN(glm=_glm, epochs=0).fit(DF[COLS], DF.ClaimNb).edge_curves()
+
+
+def test_a_fold_is_forwarded_in_slabs_and_the_numbers_do_not_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prediction and the per-epoch monitor go through the net a slab of rows at a time, so a
+    KAN's (rows, inputs, knots) spline basis never covers a whole fold; slab size is
+    invisible in the numbers."""
+    fold = splits.kfold(N, k=4, seed=0)[0]
+
+    def fit() -> CANN:
+        return CANN(glm=_glm, epochs=3, network="kan", hidden=(6,), encoding="raw").fit(
+            DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold
+        )
+
+    whole = fit()
+    monkeypatch.setattr(cann_mod, "_SLAB_ROWS", 1000)  # 6000 training rows -> six slabs
+    slabbed = fit()
+    np.testing.assert_allclose(slabbed.predict(DF[COLS]), whole.predict(DF[COLS]), rtol=1e-12)
+    assert slabbed.history_ == pytest.approx(whole.history_, rel=1e-12)
+    assert slabbed.shift_ == pytest.approx(whole.shift_, rel=1e-12)

@@ -14,6 +14,10 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   re-pinned with the row.
 
 ### Changed
+- `CANN` (every network) predicts and scores its per-epoch monitor a slab of 32 768 rows at
+  a time. A KAN layer's spline basis is a (rows, inputs, knots) tensor built through several
+  temporaries of that size, and one freMTPL2 fold of it wanted tens of gigabytes: the
+  `fremtpl2_kan` benchmark froze a 32 GB machine. The numbers are unchanged, the pins hold.
 - The scorecard's verdict on balance has a tie band of a tenth of a percent, in the report
   and in `compare`: the naive row is exactly balanced, so without it a model at 1.0000
   read as a cross at the tenth decimal.
