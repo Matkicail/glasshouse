@@ -26,6 +26,19 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
   majorisation step per group inside the same coordinate descent; the cross-validated path
   and `alpha_max` understand groups. Checked against the grouped KKT conditions.
   `telco_churn` gains a `group_lasso_logistic` row and is re-pinned.
+- `CANN(network="kan")`: a two-layer Kolmogorov-Arnold network as the fourth correction,
+  learnable cubic-spline functions on every edge and sums on every node, starting at the
+  GLM; `edge_curves` returns the first layer's functions and the Model tab draws them, one
+  curve per hidden unit per input. And `CANN(encoding=...)` for every network: the numeric
+  features reach it as the GLM's design columns (the default), raw, the piecewise linear
+  encoding of Gorishniy et al. (quantile bins), or their periodic embedding (trainable
+  sin/cos frequencies, `sigma` the knob that matters). `fremtpl2_kan` runs the encodings
+  side by side under the MLP and the KAN against the smooth GLM and LightGBM.
+- `encoders.Interaction` and `terms={"a*b": Interaction(df=4)}`: a tensor-product spline of
+  two numeric columns, the interaction and only that, unpenalised, one group under the group
+  lasso, one bar on "explain a row". The research run said the CANN's gain on freMTPL2 was
+  interactions, so the smooth GLM gets one, DrivAge by BonusMalus, as `glm_interaction` in
+  both `fremtpl2_challengers` and `fremtpl2_cann`; both are re-pinned.
 - `AdditiveNet` and `LocalGLMnet` in `glasshouse.research`: the second and third models of
   the fenced track, sharing the CANN's class and training loop and differing only in what
   the correction may be. The additive net gives each input column its own small net

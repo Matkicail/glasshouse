@@ -94,17 +94,18 @@ wrong: heavy-tailed claims, a rare event, a time-ordered series, and a churn boo
 **French motor claim frequency** (freMTPL2, 678,013 policies, Poisson with exposure offset,
 stratified 5-fold): `uv run glasshouse bench fremtpl2_challengers`.
 
-| metric | glm_full | glm_splines | glm_smooth | lightgbm | naive |
-|---|---|---|---|---|---|
-| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59198 ± 0.0021 | **0.5724 ± 0.0026** | 0.62488 |
-| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052654 ± 0.0011 | **0.08399 ± 0.0023** | 0 |
-| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48938 ± 0.016 | **0.53505 ± 0.021** | 0 |
-| balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0033 | 0.99912 ± 0.0037 | 1 |
+| metric | glm_full | glm_splines | glm_smooth | glm_interaction | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | **0.5724 ± 0.0026** | 0.62488 |
+| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052654 ± 0.0011 | 0.053769 ± 0.0014 | **0.08399 ± 0.0023** | 0 |
+| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48938 ± 0.016 | 0.49098 ± 0.016 | **0.53505 ± 0.021** | 0 |
+| balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0033 | 0.99991 ± 0.0038 | 0.99912 ± 0.0037 | 1 |
 
 The splined GLM closes most of the gap to LightGBM on ranking while staying a table of
-relativities; the tournament and the two-feature A/E grids in the report say where the rest
-of the gap lives (for this data, an age by bonus-malus interaction the main-effects GLM
-lacks).
+relativities. The two-feature A/E grids in the report name the biggest interaction it
+misses, age by bonus-malus, and adding that one term as a tensor-product spline buys a
+little more; the research track's nets on top of the same GLM (`docs/research.md`) say the
+rest of the gap is many small interactions, not one.
 
 **French motor claim severity** (freMTPL2sev, 24,944 policies with claims, gamma, weight =
 claim count): `uv run glasshouse bench fremtpl2_sev`.
@@ -170,8 +171,8 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
   statsmodels, scikit-learn and glum; property-tested with hypothesis.
 - **GLM** by IRLS in Rust: five families, identity/log/logit links, offsets, weights, robust
   standard errors, one-hot and target encoders that never let a row see its own y, B-spline,
-  piecewise linear and penalised smooth terms with the penalty chosen by GCV, monotone
-  constraints, per-row attributions, and lasso,
+  piecewise linear and penalised smooth terms with the penalty chosen by GCV, tensor-product
+  interaction terms, monotone constraints, per-row attributions, and lasso,
   ridge, elastic-net and group lasso with a cross-validated path. Parallel row passes that give the same
   bits whatever the thread count.
 - **Splits** that declare what the data is (random, stratified, grouped, time-ordered), so
@@ -182,9 +183,11 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
 - **A research fence** (`pip install "glasshouse[research]"`, torch): neural models that
   must beat the spline plus monotone GLM on held-out deviance and calibration before they
   leave it. So far: the CANN (the GLM frozen, a small net learning its residual), an
-  additive net (one net per feature, corrections you can draw) and LocalGLMnet (the GLM's
-  coefficients as functions of the row), one class and one training loop, each showing up on
-  "explain a row" as extra columns next to the GLM's terms.
+  additive net (one net per feature, corrections you can draw), LocalGLMnet (the GLM's
+  coefficients as functions of the row) and a two-layer KAN whose edge functions the report
+  draws, one class and one training loop, each showing up on "explain a row" next to the
+  GLM's terms; and three numeric encodings (raw, piecewise linear, periodic) to run any of
+  them under, so the feature-encoding trade-off is a row on the leaderboard.
 
 Not trying to be scikit-learn. It does a few things and does them well.
 

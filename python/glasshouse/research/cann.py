@@ -15,6 +15,28 @@ Three networks fit that slot, and they are the first three models of the researc
   per design column *for each row*, ``sum_j beta_j(x) x_j``, so the GLM's coefficients
   become functions of the row; ``attention`` returns them, the paper's regression
   attentions.
+- ``"kan"`` (Kolmogorov-Arnold network, Liu et al. 2024): two layers whose edges carry
+  learnable one-dimensional functions, ``phi(x) = w_b silu(x) + w_s sum_i c_i B_i(x)`` on a
+  cubic B-spline grid, and whose nodes only add. The first layer's edge functions are
+  curves you can draw (``edge_curves``); the second layer is what lets it express an
+  interaction, which a one-layer sum of curves cannot.
+
+And three ways to hand the network a numeric feature (``encoding``), after Gorishniy,
+Rubachev & Babenko, "On embeddings for numerical features in tabular deep learning" (2022):
+
+- ``"design"`` (the default): the GLM's own encoded columns, so a smooth term's spline basis
+  is what the net sees.
+- ``"raw"``: the standardised value, one column.
+- ``"piecewise"``: the piecewise linear encoding, ``bins`` quantile bins with the fill of the
+  bin the value sits in; inside the training range it is the degree-1 B-spline
+  ``piecewise_linear`` term (the paper's version extrapolates linearly beyond the range,
+  ours holds the boundary value).
+- ``"periodic"``: ``concat[sin(v), cos(v)]`` with ``v = 2 pi c x`` for ``frequencies``
+  trainable ``c``, initialised from ``N(0, sigma)`` as in the paper, inside the network.
+  The paper says ``sigma`` is the hyperparameter that matters; on standardised inputs 0.3
+  trains well where 1.0 overfits, and it is a knob, not a constant.
+
+Categorical and interaction terms are always the GLM's design columns.
 
 All three start at the GLM (zero-initialised output layers), train on the same deviance,
 stop early the same way, are re-balanced the same way, and show up on the report the same
@@ -45,9 +67,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 
-from glasshouse._rows import subset_vector
-from glasshouse.arrays import F64, ArrayLike
+from glasshouse._rows import as_array, subset_column, subset_vector
+from glasshouse.arrays import F64, ArrayLike, columns, to_vector
+from glasshouse.encoders import BSpline, piecewise_linear
 from glasshouse.glm import GLM
 from glasshouse.metrics import FamilyName
 from glasshouse.splits import Fold
@@ -82,7 +106,12 @@ class CANN:
     seed
         For the validation slice, the shuffling and the weights.
     network
-        ``"mlp"``, ``"additive"`` or ``"localglm"``: see the module docstring.
+        ``"mlp"``, ``"additive"``, ``"localglm"`` or ``"kan"``: see the module docstring.
+        For ``"kan"`` the first entry of ``hidden`` is the inner width and ``grid`` the
+        number of spline intervals per edge.
+    encoding, bins, frequencies, sigma
+        How numeric features reach the network: see the module docstring. ``bins`` is for
+        ``"piecewise"``; ``frequencies`` and ``sigma`` for ``"periodic"``.
 
     Examples
     --------
@@ -108,7 +137,15 @@ class CANN:
     patience: int = 10
     seed: int = 0
     network: str = "mlp"
+    encoding: str = "design"
+    bins: int = 8
+    frequencies: int = 8
+    sigma: float = 0.3
+    grid: int = 5
     glm_: GLM = field(init=False, repr=False)
+    layout_: list[tuple[str, int, int]] = field(init=False, repr=False, default_factory=list)
+    numeric_: list[str] = field(init=False, repr=False, default_factory=list)
+    ple_: dict[str, Any] = field(init=False, repr=False, default_factory=dict)
     slices_: list[tuple[str, int, int]] = field(init=False, repr=False, default_factory=list)
     net_: Any = field(init=False, repr=False, default=None)
     mean_: F64 = field(init=False, repr=False, default_factory=lambda: np.empty(0))
@@ -135,6 +172,7 @@ class CANN:
             raise ValueError(msg)
         self.glm_.fit(X, y, sample_weight=sample_weight, offset=offset, fold=fold)
         rows = None if fold is None else fold.train_idx
+        self._fit_encoding(X, rows)
         inputs = self._inputs_all(X)
         eta_glm = self.glm_.predict_linear(X, offset)
         if rows is not None:
@@ -150,8 +188,7 @@ class CANN:
         x = (inputs - self.mean_) / self.std_
 
         torch.manual_seed(self.seed)
-        self.slices_ = self._term_slices()
-        self.net_ = _network(torch, self.network, x.shape[1], self.hidden, self.slices_)
+        self.net_ = self._build(torch, x.shape[1])
         self.shift_ = 0.0
         self.history_ = []
         if self.epochs > 0:
@@ -259,9 +296,8 @@ class CANN:
             terms = self.net_.double().terms(torch.tensor(x, dtype=torch.float64)).numpy()
         terms = np.asarray(terms, dtype=np.float64)
         terms[:, 0] += self.shift_  # the balance shift rides on the first column
-        net_names = (
-            ["network"] if self.network == "mlp" else [f"{n} (net)" for n, _, _ in self.slices_]
-        )
+        one_column = self.network in ("mlp", "kan")
+        net_names = ["network"] if one_column else [f"{n} (net)" for n, _, _ in self.slices_]
         return np.column_stack([parts, terms]), [*names, *net_names]
 
     def attention(self, X: ArrayLike) -> tuple[F64, list[str]]:  # noqa: N803
@@ -285,11 +321,62 @@ class CANN:
         return np.asarray(beta, dtype=np.float64), list(names)
 
     def _term_slices(self) -> list[tuple[str, int, int]]:
-        """Return the design's columns per input column, without the intercept."""
+        """Return the design's columns per term, without the intercept."""
         slices = self.glm_._slices
         if slices:
             return [(name, lo, hi) for name, (lo, hi) in slices.items()]
         return [(name, i, i + 1) for i, name in enumerate(self.glm_.input_columns_)]
+
+    def _fit_encoding(self, X: ArrayLike, rows: npt.NDArray[np.int64] | None) -> None:  # noqa: N803
+        """Decide the network's input layout and fit the piecewise bins on the training rows.
+
+        With ``encoding="design"`` the layout is the GLM's term slices. Otherwise every
+        numeric input column becomes its raw value (one column, or ``bins`` piecewise
+        columns) and everything else keeps its design block.
+        """
+        if self.encoding not in ("design", "raw", "piecewise", "periodic"):
+            msg = f"encoding must be design, raw, piecewise or periodic, not {self.encoding!r}"
+            raise ValueError(msg)
+        self.ple_, self.numeric_ = {}, []
+        if self.encoding == "design":
+            self.layout_ = self._term_slices()
+            return
+        cols = columns(X)
+        if cols is None:
+            msg = "an encoding other than 'design' needs a DataFrame with named columns"
+            raise ValueError(msg)
+        layout: list[tuple[str, int, int]] = []
+        for name, col in cols:
+            at = layout[-1][2] if layout else 0
+            layout.append((str(name), at, at + self._width(str(name), col, rows)))
+        for key, (lo, hi) in self.glm_._slices.items():
+            if "*" in key:  # interaction terms keep their design block
+                at = layout[-1][2] if layout else 0
+                layout.append((key, at, at + (hi - lo)))
+        self.layout_ = layout
+
+    def _width(self, name: str, col: Any, rows: npt.NDArray[np.int64] | None) -> int:
+        """How many input columns this frame column becomes, fitting the bins if asked."""
+        if as_array(col).dtype.kind not in "fiub":
+            lo, hi = self.glm_._slices.get(name, (0, 1))
+            return hi - lo
+        self.numeric_.append(name)
+        if self.encoding != "piecewise":
+            return 1
+        enc = piecewise_linear(name, df=self.bins).fit(subset_column(col, rows))
+        self.ple_[name] = enc
+        return int(enc.transform(subset_column(col, rows)[:2])[0].shape[1])
+
+    def _build(self, torch: Any, n_in: int) -> Any:
+        """Build the network on the layout, behind the periodic front layer when asked."""
+        if self.encoding != "periodic":
+            self.slices_ = list(self.layout_)
+            return _network(torch, self.network, n_in, self.hidden, self.slices_, self.grid)
+        positions = [lo for name, lo, _ in self.layout_ if name in self.numeric_]
+        front = _periodic_front(torch, n_in, positions, self.frequencies, self.sigma)
+        self.slices_ = front.slices(self.layout_)
+        body = _network(torch, self.network, front.n_out, self.hidden, self.slices_, self.grid)
+        return _with_front(torch, front, body)
 
     def _link_name(self) -> str:
         return self.glm_._link_name()
@@ -304,9 +391,63 @@ class CANN:
         return np.asarray(out.numpy(), dtype=np.float64)
 
     def _inputs_all(self, X: ArrayLike) -> F64:  # noqa: N803
-        """Return the GLM's design without the intercept: the same encoded columns, for the net."""
+        """Return the network's inputs for every row of ``X``, laid out as ``layout_``."""
         design = self.glm_._design_predict(X)
-        return np.asarray(design[:, 1:] if self.glm_.fit_intercept else design, dtype=np.float64)
+        design = design[:, 1:] if self.glm_.fit_intercept else design
+        if self.encoding == "design":
+            return np.asarray(design, dtype=np.float64)
+        by_name = dict(columns(X) or [])
+        blocks: list[F64] = []
+        for name, _, _ in self.layout_:
+            if name in self.ple_:
+                blocks.append(self.ple_[name].transform(by_name[name])[0])
+            elif name in self.numeric_:
+                blocks.append(to_vector(by_name[name], name)[:, None])
+            else:
+                lo, hi = self.glm_._slices[name]
+                blocks.append(design[:, lo:hi])
+        return np.ascontiguousarray(np.column_stack(blocks), dtype=np.float64)
+
+    def edge_curves(self, n_points: int = 41) -> dict[str, dict[str, list[Any]]]:
+        """Return the KAN's first-layer edge functions, one curve per hidden unit per input.
+
+        Each curve is ``phi_{q,p}`` on a grid over the input's standardised range, given
+        back in the input's own units: the one-dimensional pieces the network is made of,
+        which is the KAN's whole claim to being readable.
+        """
+        if self.network != "kan":
+            msg = "edge_curves is only defined for network='kan'"
+            raise ValueError(msg)
+        torch = _torch()
+        body = self.net_.body if hasattr(self.net_, "front") else self.net_
+        names = self._input_names()
+        grid = np.linspace(-3.0, 3.0, n_points)
+        with torch.no_grad():
+            curves = body.first.edge_functions(torch.tensor(grid, dtype=torch.float64)).numpy()
+        out: dict[str, dict[str, list[Any]]] = {}
+        for p, name in enumerate(names):
+            mean, std = (self.mean_[p], self.std_[p]) if p < len(self.mean_) else (0.0, 1.0)
+            out[name] = {
+                "x": (mean + std * grid).tolist(),
+                "curves": np.asarray(curves[:, p, :], dtype=np.float64).tolist(),
+            }
+        return out
+
+    def _input_names(self) -> list[str]:
+        """One name per column the first layer sees (design columns, or the periodic pairs)."""
+        names: list[str] = []
+        for name, lo, hi in self.layout_:
+            names.extend([name] if hi - lo == 1 else [f"{name}[{i}]" for i in range(hi - lo)])
+        if self.encoding != "periodic":
+            return names
+        expanded: list[str] = []
+        for name in names:
+            if name in self.numeric_:
+                expanded.extend(f"{name} sin{k}" for k in range(self.frequencies))
+                expanded.extend(f"{name} cos{k}" for k in range(self.frequencies))
+            else:
+                expanded.append(name)
+        return expanded
 
     # ------------------------------------------------------------------ persistence
 
@@ -318,7 +459,15 @@ class CANN:
             "power": self.power,
             "hidden": list(self.hidden),
             "network": self.network,
+            "encoding": self.encoding,
+            "bins": self.bins,
+            "frequencies": self.frequencies,
+            "sigma": self.sigma,
+            "grid": self.grid,
             "slices": [list(t) for t in self.slices_],
+            "layout": [list(t) for t in self.layout_],
+            "numeric": list(self.numeric_),
+            "ple": {k: v.to_dict() for k, v in self.ple_.items()},
             "glm": self.glm_.to_dict(),
             "weights": {k: v.tolist() for k, v in self.net_.state_dict().items()},
             "mean": self.mean_.tolist(),
@@ -338,14 +487,19 @@ class CANN:
             power=payload["power"],
             hidden=tuple(payload["hidden"]),
             network=payload.get("network", "mlp"),
+            encoding=payload.get("encoding", "design"),
+            bins=int(payload.get("bins", 8)),
+            frequencies=int(payload.get("frequencies", 8)),
+            sigma=float(payload.get("sigma", 0.3)),
+            grid=int(payload.get("grid", 5)),
         )
         model.glm_ = glm
         model.mean_ = np.asarray(payload["mean"], dtype=np.float64)
         model.std_ = np.asarray(payload["std"], dtype=np.float64)
-        model.slices_ = [(str(n), int(lo), int(hi)) for n, lo, hi in payload.get("slices", [])]
-        model.net_ = _network(
-            torch, model.network, len(model.mean_), model.hidden, model.slices_
-        ).double()
+        model.layout_ = [(str(n), int(lo), int(hi)) for n, lo, hi in payload.get("layout", [])]
+        model.numeric_ = [str(n) for n in payload.get("numeric", [])]
+        model.ple_ = {k: BSpline.from_dict(v) for k, v in payload.get("ple", {}).items()}
+        model.net_ = model._build(torch, len(model.mean_)).double()
         model.net_.load_state_dict(
             {k: torch.as_tensor(v, dtype=torch.float64) for k, v in payload["weights"].items()}
         )
@@ -383,16 +537,23 @@ def _mlp(torch: Any, n_in: int, hidden: tuple[int, ...], n_out: int = 1) -> Any:
 
 
 def _network(
-    torch: Any, kind: str, n_in: int, hidden: tuple[int, ...], slices: list[tuple[str, int, int]]
+    torch: Any,
+    kind: str,
+    n_in: int,
+    hidden: tuple[int, ...],
+    slices: list[tuple[str, int, int]],
+    grid: int = 5,
 ) -> Any:
     """Build the correction network of the asked kind.
 
     Every kind has ``forward`` (the total per row) and ``terms`` (per-column corrections that
-    add up to it); ``localglm`` also has ``beta``.
+    add up to it); ``localglm`` also has ``beta``; ``kan`` has ``first.edge_functions``.
     """
     builders = {"mlp": _mlp_net, "additive": _additive_net, "localglm": _localglm_net}
+    if kind == "kan":
+        return _kan_net(torch, n_in, hidden, grid)
     if kind not in builders:
-        msg = f"network must be one of {sorted(builders)}, not {kind!r}"
+        msg = f"network must be one of {[*sorted(builders), 'kan']}, not {kind!r}"
         raise ValueError(msg)
     return builders[kind](torch, n_in, hidden, slices)
 
@@ -464,6 +625,138 @@ def _localglm_net(
             return (self.beta(x) * x).sum(dim=1)
 
     return LocalGlm()
+
+
+def _kan_layer(torch: Any, n_in: int, n_out: int, grid: int, zero: bool) -> Any:
+    """Build one KAN layer: every edge ``phi(x) = w_b silu(x) + w_s sum_i c_i B_i(x)``.
+
+    Cubic B-splines on ``grid`` intervals over the standardised range [-3, 3] (inputs
+    outside are clamped), the spline coefficients starting at zero and, for the output
+    layer, the base weights too, so the network starts as the GLM.
+    """
+    order = 3
+    lo, hi = -3.0, 3.0
+    step = (hi - lo) / grid
+    knots = torch.linspace(
+        lo - order * step, hi + order * step, grid + 2 * order + 1, dtype=torch.float64
+    )
+    n_basis = grid + order
+
+    class KanLayer(torch.nn.Module):  # type: ignore[misc]
+        def __init__(self) -> None:
+            super().__init__()
+            self.base_weight = torch.nn.Parameter(torch.zeros(n_out, n_in, dtype=torch.float64))
+            self.spline_weight = torch.nn.Parameter(
+                torch.zeros(n_out, n_in, n_basis, dtype=torch.float64)
+            )
+            if not zero:
+                torch.nn.init.kaiming_uniform_(self.base_weight, a=5**0.5)
+            self.register_buffer("knots", knots)
+
+        def bases(self, x: Any) -> Any:
+            """B-spline basis values, shape (..., n_basis), by Cox-de Boor."""
+            x = x.clamp(lo, hi).unsqueeze(-1)
+            t = self.knots
+            b = ((x >= t[:-1]) & (x < t[1:])).to(x.dtype)
+            for k in range(1, order + 1):
+                left = (x - t[: -(k + 1)]) / (t[k:-1] - t[: -(k + 1)]) * b[..., :-1]
+                right = (t[k + 1 :] - x) / (t[k + 1 :] - t[1:-k]) * b[..., 1:]
+                b = left + right
+            return b
+
+        def forward(self, x: Any) -> Any:
+            base = torch.nn.functional.silu(x) @ self.base_weight.T
+            spline = torch.einsum("rib,oib->ro", self.bases(x), self.spline_weight)
+            return base + spline
+
+        def edge_functions(self, grid_x: Any) -> Any:
+            """``phi_{q,p}`` on a 1-D grid: shape (outputs, inputs, points)."""
+            g = grid_x.unsqueeze(-1).expand(len(grid_x), n_in)
+            spline = torch.einsum("pib,oib->oip", self.bases(g), self.spline_weight)
+            base = torch.nn.functional.silu(grid_x)[None, None, :] * self.base_weight[:, :, None]
+            return base + spline
+
+    return KanLayer()
+
+
+def _kan_net(torch: Any, n_in: int, hidden: tuple[int, ...], grid: int) -> Any:
+    width = hidden[0] if hidden else 8
+
+    class Kan(torch.nn.Module):  # type: ignore[misc]
+        """Two KAN layers: curves on every edge, sums on every node; one output column."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.first = _kan_layer(torch, n_in, width, grid, zero=False)
+            self.second = _kan_layer(torch, width, 1, grid, zero=True)
+
+        def forward(self, x: Any) -> Any:
+            return self.second(self.first(x)).squeeze(-1)
+
+        def terms(self, x: Any) -> Any:
+            return self.second(self.first(x))
+
+    return Kan()
+
+
+def _periodic_front(torch: Any, n_in: int, positions: list[int], k: int, sigma: float) -> Any:
+    """Build the periodic embedding of Gorishniy et al. as a front layer.
+
+    Each listed column becomes ``concat[sin(2 pi c x), cos(2 pi c x)]`` over ``k`` trainable
+    frequencies ``c``, initialised from ``N(0, sigma)``; the other columns pass through.
+    """
+    numeric = set(positions)
+    n_out = n_in + len(positions) * (2 * k - 1)
+
+    class Periodic(torch.nn.Module):  # type: ignore[misc]
+        def __init__(self) -> None:
+            super().__init__()
+            self.c = torch.nn.Parameter(torch.randn(len(positions), k, dtype=torch.float64) * sigma)
+            self.n_out = n_out
+
+        def forward(self, x: Any) -> Any:
+            pieces = []
+            j = 0
+            for col in range(n_in):
+                if col in numeric:
+                    v = 2.0 * torch.pi * x[:, col : col + 1] * self.c[j][None, :]
+                    pieces += [torch.sin(v), torch.cos(v)]
+                    j += 1
+                else:
+                    pieces.append(x[:, col : col + 1])
+            return torch.cat(pieces, dim=1)
+
+        def slices(self, layout: list[tuple[str, int, int]]) -> list[tuple[str, int, int]]:
+            """Return the layout after expansion: a periodic column becomes ``2k`` columns."""
+            out, at = [], 0
+            for name, lo, hi in layout:
+                width = sum(2 * k if col in numeric else 1 for col in range(lo, hi))
+                out.append((name, at, at + width))
+                at += width
+            return out
+
+    return Periodic()
+
+
+def _with_front(torch: Any, front: Any, body: Any) -> Any:
+    """Put a network behind a front layer; ``terms`` and ``beta`` pass through it too."""
+
+    class Fronted(torch.nn.Module):  # type: ignore[misc]
+        def __init__(self) -> None:
+            super().__init__()
+            self.front = front
+            self.body = body
+
+        def forward(self, x: Any) -> Any:
+            return self.body(self.front(x))
+
+        def terms(self, x: Any) -> Any:
+            return self.body.terms(self.front(x))
+
+        def beta(self, x: Any) -> Any:
+            return self.body.beta(self.front(x))
+
+    return Fronted()
 
 
 def _inverse_link(torch: Any, link: str, eta: Any) -> Any:

@@ -571,7 +571,8 @@
           "coefficients",
           "attributions",
           "path",
-          "gcv"
+          "gcv",
+          "edges"
         ],
         "properties": {
           "partial_dependence": {
@@ -868,6 +869,35 @@
               }
             ],
             "description": "Models with smooth terms: every (lambda, GCV, edf) the first fold's search evaluated per smooth, the lambda it chose, and the lambda every fold chose."
+          },
+          "edges": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "object",
+                  "required": [
+                    "x",
+                    "curves"
+                  ],
+                  "properties": {
+                    "x": {
+                      "$ref": "#/$defs/numbers"
+                    },
+                    "curves": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/$defs/numbers"
+                      }
+                    }
+                  }
+                }
+              }
+            ],
+            "description": "KAN models only: the first layer's edge functions, one curve per hidden unit, per input column, on a grid of that input in its own units (the first fold's)."
           }
         }
       }

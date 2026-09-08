@@ -219,4 +219,81 @@ def test_every_network_starts_as_the_glm() -> None:
         m = model.fit(DF[COLS], DF.ClaimNb, offset=OFFSET)
         np.testing.assert_allclose(m.predict(DF[COLS]), glm.predict(DF[COLS]), rtol=1e-9)
     with pytest.raises(ValueError, match="network must be"):
-        CANN(glm=_glm, epochs=0, network="kan").fit(DF[COLS], DF.ClaimNb)
+        CANN(glm=_glm, epochs=0, network="transformer").fit(DF[COLS], DF.ClaimNb)
+
+
+@pytest.mark.parametrize("encoding", ["raw", "piecewise", "periodic"])
+def test_every_encoding_starts_as_the_glm_and_lays_the_inputs_out_as_documented(
+    encoding: str,
+) -> None:
+    glm = _glm().fit(DF[COLS], DF.ClaimNb, offset=OFFSET)
+    m = CANN(glm=_glm, epochs=0, encoding=encoding, bins=6, frequencies=4).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET
+    )
+    np.testing.assert_allclose(m.predict(DF[COLS]), glm.predict(DF[COLS]), rtol=1e-9)
+    names = [n for n, _, _ in m.layout_]
+    assert names == ["region", "age", "power"] and m.numeric_ == ["age", "power"]
+    widths = {n: hi - lo for n, lo, hi in m.layout_}
+    assert widths["region"] == 2  # the one-hot block stays the GLM's
+    assert widths["age"] == (6 if encoding == "piecewise" else 1)
+    if encoding == "periodic":
+        assert [hi - lo for _, lo, hi in m.slices_] == [2, 8, 8]  # 2k sin/cos columns each
+        assert m.net_.front.c.shape == (2, 4) and m.net_.front.c.requires_grad
+    back = CANN.from_dict(json.loads(json.dumps(m.to_dict())))
+    np.testing.assert_allclose(back.predict(DF[COLS]), m.predict(DF[COLS]), rtol=1e-12)
+    assert back.encoding == encoding and back.layout_ == m.layout_
+    with pytest.raises(ValueError, match="encoding must be"):
+        CANN(glm=_glm, epochs=0, encoding="onehot").fit(DF[COLS], DF.ClaimNb)
+
+
+def test_the_piecewise_encoding_is_the_bin_fill_and_the_periodic_frequencies_train() -> None:
+    m = CANN(glm=_glm, epochs=0, encoding="piecewise", bins=4).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET
+    )
+    x = m._inputs_all(DF[COLS].iloc[:5])
+    lo, hi = next((lo, hi) for n, lo, hi in m.layout_ if n == "age")
+    assert hi - lo == 4 and np.all((x[:, lo:hi] >= 0) & (x[:, lo:hi] <= 1))
+    # hat functions on the quantile knots: at most two columns are non-zero per row, and they
+    # add to one away from the left boundary (a different basis for the bin-fill encoding's
+    # functions; the network's first layer is linear, so the model class is the same)
+    assert np.all((x[:, lo:hi] > 0).sum(axis=1) <= 2)
+    sums = x[:, lo:hi].sum(axis=1)
+    assert np.all((sums <= 1 + 1e-12) & (sums >= 0))
+    fold = splits.kfold(N, k=4, seed=0)[0]
+    per = CANN(glm=_glm, epochs=200, patience=20, encoding="periodic", frequencies=4).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold
+    )
+    fresh = CANN(glm=_glm, epochs=0, encoding="periodic", frequencies=4).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold
+    )
+    assert not np.allclose(per.net_.front.c.detach().numpy(), fresh.net_.front.c.detach().numpy())
+    assert _held_out_deviance(per, fold.test_idx) < _held_out_deviance(fresh, fold.test_idx)
+
+
+def test_the_kan_starts_as_the_glm_learns_the_interaction_and_draws_its_edges() -> None:
+    fold = splits.kfold(N, k=4, seed=0)[0]
+    te = fold.test_idx
+    glm = _glm().fit(DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold)
+    zero = CANN(glm=_glm, epochs=0, network="kan", hidden=(6,)).fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold
+    )
+    np.testing.assert_allclose(
+        zero.predict(DF[COLS].iloc[te]), glm.predict(DF[COLS].iloc[te]), rtol=1e-9
+    )
+    kan = CANN(glm=_glm, epochs=200, patience=20, network="kan", hidden=(6,), encoding="raw").fit(
+        DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold
+    )
+    assert _held_out_deviance(kan, te) < _held_out_deviance(glm, te) * 0.985
+    edges = kan.edge_curves(n_points=11)
+    assert list(edges) == ["region[0]", "region[1]", "age", "power"]
+    assert len(edges["age"]["x"]) == 11 and len(edges["age"]["curves"]) == 6
+    assert edges["age"]["x"][0] < edges["age"]["x"][-1]
+    parts, names = kan.term_contributions(DF[COLS].iloc[:10])
+    assert names[-1] == "network"
+    np.testing.assert_allclose(
+        parts.sum(axis=1), kan.predict_linear(DF[COLS].iloc[:10]), rtol=1e-10
+    )
+    back = CANN.from_dict(json.loads(json.dumps(kan.to_dict())))
+    np.testing.assert_allclose(back.predict(DF[COLS]), kan.predict(DF[COLS]), rtol=1e-12)
+    with pytest.raises(ValueError, match="edge_curves"):
+        CANN(glm=_glm, epochs=0).fit(DF[COLS], DF.ClaimNb).edge_curves()

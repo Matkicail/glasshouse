@@ -9,6 +9,8 @@ Three of them, all the same shape — ``fit(x, y=None, sample_weight=None)``, th
   fitted on get **out-of-fold** values (or **cumulative, past-only** values when the data is
   time-ordered), so the model never trains on an encoding that contains its own outcome.
 - :class:`Standardize` — ``(x - mean) / std`` with weighted moments from the training rows.
+- :class:`Interaction` — the tensor product of two columns' spline bases: the interaction of
+  two numeric features, named ``"a*b"`` in ``terms``.
 
 Leakage is a property of the split, not the transform: these only do the right thing if
 what you pass to ``fit`` is the training fold. The GLM's ``fold=`` does that for you.
@@ -561,7 +563,94 @@ class Smooth:
         return enc
 
 
-Encoder = OneHot | TargetEncode | Standardize | BSpline | Smooth
+@dataclass
+class Interaction:
+    """A tensor-product spline of two numeric columns: the interaction, and only that.
+
+    Each column gets a B-spline basis with ``df`` columns (first basis function dropped, as
+    :class:`BSpline` does), and the term is every product of one column from each: with the
+    two main effects in the model as their own terms, that is the part of the surface the
+    main effects cannot carry. Name it ``"a*b"`` in ``terms``::
+
+        GLM(family="poisson", terms={"DrivAge": "smooth", "BonusMalus": "smooth",
+                                     "DrivAge*BonusMalus": Interaction(df=4)})
+
+    ``df=4`` gives a 4 x 4 = 16-column term, enough to bend a surface without fitting noise;
+    the group lasso drops it whole. A two-feature A/E grid that goes flat after adding it
+    is the picture of an interaction found.
+
+    Examples
+    --------
+    >>> from glasshouse.encoders import Interaction
+    >>> enc = Interaction(df=4, name="a*b")
+    >>> m, names = enc.fit_transform(([0.0, 0.5, 1.0, 1.5, 2.0], [1.0, 2.0, 3.0, 4.0, 5.0]))
+    >>> m.shape, names[:2]
+    ((5, 16), ['a*b_1_1', 'a*b_1_2'])
+    """
+
+    df: int = 4
+    degree: int = 3
+    name: str = "a*b"
+    a_: BSpline = field(default_factory=BSpline, repr=False)
+    b_: BSpline = field(default_factory=BSpline, repr=False)
+
+    def fit(
+        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
+    ) -> Interaction:
+        """Fit the two marginal bases on the training rows; ``x`` is the pair of columns."""
+        _ = y, sample_weight
+        left, right = self._pair(x)
+        a, b = self.name.split("*", 1) if "*" in self.name else ("a", "b")
+        self.a_ = BSpline(df=self.df, degree=self.degree, name=a).fit(left)
+        self.b_ = BSpline(df=self.df, degree=self.degree, name=b).fit(right)
+        return self
+
+    def transform(self, x: ArrayLike) -> tuple[F64, list[str]]:
+        """Every product of one column of each marginal basis, in row-major order."""
+        left, right = self._pair(x)
+        ma, _ = self.a_.transform(left)
+        mb, _ = self.b_.transform(right)
+        out = (ma[:, :, None] * mb[:, None, :]).reshape(len(ma), -1)
+        names = [
+            f"{self.name}_{i}_{j}"
+            for i in range(1, ma.shape[1] + 1)
+            for j in range(1, mb.shape[1] + 1)
+        ]
+        return np.ascontiguousarray(out), names
+
+    def fit_transform(
+        self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
+    ) -> tuple[F64, list[str]]:
+        """``fit`` then ``transform`` on the same rows."""
+        return self.fit(x, y, sample_weight).transform(x)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-ready state: both marginal splines."""
+        return {
+            "kind": "interaction",
+            "name": self.name,
+            "df": self.df,
+            "degree": self.degree,
+            "a": self.a_.to_dict(),
+            "b": self.b_.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Interaction:
+        """Rebuild from :meth:`to_dict`."""
+        enc = cls(df=d["df"], degree=d["degree"], name=d["name"])
+        enc.a_ = BSpline.from_dict(d["a"])
+        enc.b_ = BSpline.from_dict(d["b"])
+        return enc
+
+    def _pair(self, x: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
+        if not (isinstance(x, tuple) and len(x) == 2):  # noqa: PLR2004
+            msg = f"{self.name}: an interaction takes a pair of columns (a, b)"
+            raise ValueError(msg)
+        return x[0], x[1]
+
+
+Encoder = OneHot | TargetEncode | Standardize | BSpline | Smooth | Interaction
 
 
 def piecewise_linear(name: str = "x", df: int = 6, monotone: Monotone | None = None) -> BSpline:
@@ -590,6 +679,7 @@ _KINDS: dict[str, type[Encoder]] = {
     "standardize": Standardize,
     "spline": BSpline,
     "smooth": Smooth,
+    "interaction": Interaction,
 }
 
 
@@ -619,6 +709,7 @@ def from_dict(d: dict[str, Any]) -> Encoder:
 __all__ = [
     "BSpline",
     "Encoder",
+    "Interaction",
     "OneHot",
     "Smooth",
     "Standardize",

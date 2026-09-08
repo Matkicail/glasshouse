@@ -298,6 +298,23 @@ function modelScreen(doc: ReportDoc, root: HTMLElement): void {
   }
 
   for (const m of labels) {
+    const e = explain[m]!.edges;
+    if (!e) continue;
+    const inputs = Object.keys(e);
+    if (inputs.length === 0) continue;
+    root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: KAN edge functions`]));
+    const sel = select(inputs, inputs[0]!);
+    const chart = el("div", { class: "chart edges" });
+    root.append(el("div", { class: "controls" }, ["Input ", sel]), chart);
+    const drawEdges = () => {
+      const curves = e[sel.value];
+      if (curves) renderChart(chart, edgeSpec(sel.value, curves));
+    };
+    sel.addEventListener("change", drawEdges);
+    drawEdges();
+  }
+
+  for (const m of labels) {
     const a = explain[m]!.attributions;
     if (!a || a.rows.length === 0) continue;
     root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: explain a row`]));

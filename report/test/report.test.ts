@@ -43,7 +43,7 @@ describe("glasshouse report viewer", () => {
   it("parses the fixture and refuses other schemas", () => {
     const { api } = boot(false);
     const doc = api.parse(text) as { models: string[] };
-    expect(doc.models).toEqual(["glm", "mean"]);
+    expect(doc.models).toEqual(["glm", "mean", "kan"]);
     expect(() => api.parse(JSON.stringify({ schema: "glasshouse-report/0", models: ["x"] }))).toThrow(/glasshouse-report\/1/);
     expect(() => api.parse(JSON.stringify({ schema: "glasshouse-report/1", models: [] }))).toThrow(/no models/);
   });
@@ -52,7 +52,7 @@ describe("glasshouse report viewer", () => {
     const { api, root } = boot(true);
     api.render(api.parse(text), root);
     const heads = Array.from(root.querySelectorAll("table.panel thead th")).map((n) => n.textContent);
-    expect(heads).toEqual(["metric", "glm", "mean", "naive"]);
+    expect(heads).toEqual(["metric", "glm", "mean", "kan", "naive"]);
     const metrics = Array.from(root.querySelectorAll("table.panel tbody tr > th")).map((n) => n.textContent?.replace(" ★", ""));
     expect(metrics).toContain("deviance");
     expect(metrics).toContain("gini");
@@ -61,7 +61,7 @@ describe("glasshouse report viewer", () => {
     expect(Array.from(root.querySelectorAll("nav.tabs button")).map((b) => b.textContent)).toEqual(["Overview", "Data", "Compare", "Curves", "Model", "Residuals"]);
     // the tournament: one row per model, shares that add to 100 %
     const rows = Array.from(root.querySelectorAll("table.tournament tbody tr"));
-    expect(rows.map((r) => r.querySelector("th")?.textContent)).toEqual(["glm", "mean"]);
+    expect(rows.map((r) => r.querySelector("th")?.textContent)).toEqual(["glm", "mean", "kan"]);
     const shares = rows.map((r) => parseFloat(r.querySelectorAll("td")[0]!.textContent ?? "0"));
     expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 0);
   });
@@ -72,11 +72,11 @@ describe("glasshouse report viewer", () => {
     tab(root, "Model").click();
     const pane = root.querySelector("#pane-model") as HTMLElement;
     expect(pane.hidden).toBe(false);
-    expect(pane.querySelectorAll("[data-plotly]").length).toBe(7); // importance, partial dependence, the path pair, one GCV trace, one attribution chart per GLM
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(9); // importance, partial dependence, the path pair, one GCV trace, the KAN edges, one attribution chart per model
     const options = Array.from(pane.querySelectorAll("select")[0]!.options).map((o) => o.value);
     expect(options).toEqual(["region", "age"]);
     const tables = pane.querySelectorAll("table.coefficients");
-    expect(tables.length).toBe(2);
+    expect(tables.length).toBe(2); // the KAN is not a glass box
     expect(tables[0]!.querySelector("tbody th")?.textContent).toBe("intercept");
     expect(Array.from(tables[0]!.querySelectorAll("thead th")).map((n) => n.textContent)).toContain("relativity");
   });
@@ -113,6 +113,22 @@ describe("glasshouse report viewer", () => {
     expect(traces.some((t) => t.name === "cv deviance")).toBe(true);
     expect(traces.some((t) => t.name === "GCV")).toBe(true);
     expect(traces.some((t) => t.name === "chosen alpha")).toBe(true);
+  });
+
+  it("model screen draws the KAN's edge functions, one curve per hidden unit", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    tab(root, "Model").click();
+    const pane = root.querySelector("#pane-model") as HTMLElement;
+    expect(pane.textContent).toContain("kan: KAN edge functions");
+    const doc = api.parse(text) as any;
+    const inputs = Object.keys(doc.explain.kan.edges);
+    expect(inputs).toEqual(["region[0]", "region[1]", "age"]);
+    const sel = Array.from(pane.querySelectorAll("select")).find((s) => s.options[0]?.value === "region[0]") as HTMLSelectElement;
+    expect(sel.options.length).toBe(3);
+    const calls = (root.ownerDocument.defaultView as any).Plotly.__calls as unknown[][];
+    const edgeTraces = calls.flat().filter((t: any) => typeof t.name === "string" && t.name.startsWith("unit ")) as any[];
+    expect(edgeTraces.length).toBe(3); // three hidden units
   });
 
   it("data screen summarises the outcome and the weight and profiles every feature", () => {
@@ -159,7 +175,7 @@ describe("glasshouse report viewer", () => {
       expect.arrayContaining(["lorenz", "lift", "calibration", "oneway:region", "ae:region", "ae:age", "ae:time"]),
     );
     expect(pane.querySelector("[data-plotly]")).not.toBeNull();
-    expect(pane.querySelectorAll(".toggles input").length).toBe(2);
+    expect(pane.querySelectorAll(".toggles input").length).toBe(3);
   });
 
   it("residuals tab shows the summary and two charts per model", () => {

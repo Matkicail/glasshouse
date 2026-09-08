@@ -403,6 +403,17 @@ function gcvSpec(name: string, t: GcvTrace, colour: string): ChartSpec {
   };
 }
 
+function edgeSpec(input: string, e: EdgeCurves): ChartSpec {
+  const rows: (string | number)[][] = e.x.map((x, i) => [fmt(x), ...e.curves.map((c) => fmt(c[i], 4))]);
+  return {
+    title: `KAN edge functions on ${input}`,
+    caption: "One curve per hidden unit: the learnable one-dimensional function each edge applies to this input before the network adds them up. A flat curve is an edge the network does not use; a bent one is what the input contributes to that unit. Nothing else in a KAN carries information, which is its claim to being readable.",
+    data: e.curves.map((c, q) => ({ type: "scatter", mode: "lines", x: e.x, y: c, name: `unit ${q + 1}`, line: { color: PALETTE[q % PALETTE.length] ?? "#000000", width: 1.5 }, hovertemplate: `unit ${q + 1}<br>${input} %{x:.4g}<br>%{y:.4f}<extra></extra>` })),
+    layout: { ...LAYOUT_BASE, xaxis: { ...(LAYOUT_BASE.xaxis as object), title: input }, yaxis: { ...(LAYOUT_BASE.yaxis as object), title: "edge function" }, legend: { orientation: "v", x: 1.02, y: 1 }, margin: { l: 56, r: 100, t: 36, b: 48 } },
+    table: { columns: [input, ...e.curves.map((_, q) => `unit ${q + 1}`)], rows },
+  };
+}
+
 function histogramSpec(r: ResidualDoc, label: string, models: string[]): ChartSpec {
   const edges = r.histogram.edges;
   const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
