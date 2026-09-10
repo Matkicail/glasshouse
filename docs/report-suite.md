@@ -76,7 +76,8 @@ Python side computes everything; the TS side only draws.
 ## The screens (v1)
 
 1. **Overview** — one row per model: the task's panel with a "better than naive?" tick per
-   metric, and the winner per metric highlighted across models. Sorted by the task's
+   metric (balance ties within a tenth of a percent), and the winner per metric highlighted
+   across models. Sorted by the task's
    primary metric (deviance for the actuarial trio, average precision for binary, MAE for
    regression, normalised Gini for ranking) — with a visible note that the primary is a
    convention, not a verdict. The provenance block (data, cleaning, split, sample) sits
@@ -173,6 +174,7 @@ the residuals tab. Adopted into the backlog, in order of value:
 4. **The solver's choices drawn** — DONE (2026-09-06): regularisation path (cross-validated
    deviance with its band and the chosen alpha; coefficient paths) and the GCV trace per
    smooth, on the Model tab. And "explain a row": per-row attributions for glass-box models.
+   Then (2026-09-08) what a net adds to its GLM along each feature, and a KAN's two layers.
 5. **SHAP for tree models** — waits for GBDT wrappers in the bench. Partial dependence
    and permutation importance landed first (2026-09-05, the Model tab): model-agnostic,
    on held-out rows, with the fold spread; SHAP would add per-row attributions on top.

@@ -129,6 +129,7 @@ def test_bench_carries_the_explain_block_and_it_validates() -> None:
     report.validate(doc)
     ex = doc["explain"]
     assert set(ex) == {"glm", "age_only"}
+    assert ex["glm"]["correction"] is None and ex["glm"]["link"] == "log"  # no net on a GLM
     assert [p["feature"] for p in ex["glm"]["partial_dependence"]] == ["age", "region", "noise"]
     assert [p["feature"] for p in ex["age_only"]["partial_dependence"]] == ["age"]
     age = ex["glm"]["partial_dependence"][0]

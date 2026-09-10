@@ -5,6 +5,10 @@
     "mean": 0.6106025635359638,
     "std": 0.0025494101454839333
    },
+   "deviance_per_row": {
+    "mean": 0.32272972240374503,
+    "std": 0.0013169143708586732
+   },
    "d2": {
     "mean": 0.02284886088896716,
     "std": 0.0002992681490906209
@@ -38,6 +42,10 @@
    "deviance": {
     "mean": 0.6049340308085424,
     "std": 0.002500486966701388
+   },
+   "deviance_per_row": {
+    "mean": 0.3197337511745324,
+    "std": 0.0013140106532450035
    },
    "d2": {
     "mean": 0.03192007371460208,
@@ -74,6 +82,10 @@
    "mean": 0.6248803864974756,
    "std": 0.0026066676573535067
   },
+  "deviance_per_row": {
+   "mean": 0.33027609895163024,
+   "std": 0.0013299700130194997
+  },
   "d2": {
    "mean": 2.3381296898605796e-14,
    "std": 1.6290963392855974e-14
@@ -107,52 +119,52 @@
   {
    "label": "glm_simple",
    "fold": 0,
-   "seconds": 0.838
+   "seconds": 0.667
   },
   {
    "label": "glm_simple",
    "fold": 1,
-   "seconds": 0.767
+   "seconds": 0.587
   },
   {
    "label": "glm_simple",
    "fold": 2,
-   "seconds": 0.757
+   "seconds": 0.576
   },
   {
    "label": "glm_simple",
    "fold": 3,
-   "seconds": 0.772
+   "seconds": 0.556
   },
   {
    "label": "glm_simple",
    "fold": 4,
-   "seconds": 0.774
+   "seconds": 0.581
   },
   {
    "label": "glm_full",
    "fold": 0,
-   "seconds": 1.754
+   "seconds": 1.289
   },
   {
    "label": "glm_full",
    "fold": 1,
-   "seconds": 1.692
+   "seconds": 1.22
   },
   {
    "label": "glm_full",
    "fold": 2,
-   "seconds": 1.815
+   "seconds": 1.266
   },
   {
    "label": "glm_full",
    "fold": 3,
-   "seconds": 1.824
+   "seconds": 1.225
   },
   {
    "label": "glm_full",
    "fold": 4,
-   "seconds": 1.897
+   "seconds": 1.221
   }
  ]
 }

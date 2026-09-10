@@ -16,6 +16,7 @@ from glasshouse.metrics import FamilyName, deviance
 
 torch = pytest.importorskip("torch", reason="the research track needs torch: uv sync installs it")
 from glasshouse.research import CANN, AdditiveNet, LocalGLMnet  # noqa: E402
+from glasshouse.research import cann as cann_mod  # noqa: E402
 from glasshouse.research.cann import deviance_torch  # noqa: E402
 
 rng = np.random.default_rng(21)
@@ -131,6 +132,16 @@ def test_the_bench_treats_a_cann_like_any_model_and_the_report_validates() -> No
     assert doc["explain"]["cann"]["coefficients"] is None  # not a glass box
     attr = doc["explain"]["cann"]["attributions"]
     assert attr["terms"][-1] == "network" and len(attr["rows"]) == 30
+    # what the net adds, along each explained feature, on the same grid as its dependence
+    ex = doc["explain"]["cann"]
+    assert ex["link"] == "log" and doc["explain"]["glm"]["correction"] is None
+    assert [c["feature"] for c in ex["correction"]] == ["age", "region"]
+    assert ex["correction"][0]["grid"] == ex["partial_dependence"][0]["grid"]
+    assert all(
+        lo <= m <= hi
+        for c in ex["correction"]
+        for lo, m, hi in zip(c["low"], c["mean"], c["high"], strict=True)
+    )
     assert (
         doc["bench"]["summary"]["cann"]["deviance"]["mean"]
         < doc["bench"]["summary"]["glm"]["deviance"]["mean"]
@@ -285,9 +296,13 @@ def test_the_kan_starts_as_the_glm_learns_the_interaction_and_draws_its_edges() 
     )
     assert _held_out_deviance(kan, te) < _held_out_deviance(glm, te) * 0.985
     edges = kan.edge_curves(n_points=11)
-    assert list(edges) == ["region[0]", "region[1]", "age", "power"]
+    inputs = ["region[0]", "region[1]", "age", "power"]
+    assert list(edges) == [*inputs, *(f"unit {q} -> output" for q in range(1, 7))]
     assert len(edges["age"]["x"]) == 11 and len(edges["age"]["curves"]) == 6
-    assert edges["age"]["x"][0] < edges["age"]["x"][-1]
+    assert len(edges["unit 1 -> output"]["curves"]) == 1  # the second layer has one output
+    age = DF.age.to_numpy()[fold.train_idx]
+    assert edges["age"]["x"][0] >= age.min() - 1e-9 and edges["age"]["x"][-1] <= age.max() + 1e-9
+    assert edges["age"]["x"][0] < edges["age"]["x"][-1]  # drawn over the training range only
     parts, names = kan.term_contributions(DF[COLS].iloc[:10])
     assert names[-1] == "network"
     np.testing.assert_allclose(
@@ -297,3 +312,24 @@ def test_the_kan_starts_as_the_glm_learns_the_interaction_and_draws_its_edges() 
     np.testing.assert_allclose(back.predict(DF[COLS]), kan.predict(DF[COLS]), rtol=1e-12)
     with pytest.raises(ValueError, match="edge_curves"):
         CANN(glm=_glm, epochs=0).fit(DF[COLS], DF.ClaimNb).edge_curves()
+
+
+def test_a_fold_is_forwarded_in_slabs_and_the_numbers_do_not_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Prediction and the per-epoch monitor go through the net a slab of rows at a time, so a
+    KAN's (rows, inputs, knots) spline basis never covers a whole fold; slab size is
+    invisible in the numbers."""
+    fold = splits.kfold(N, k=4, seed=0)[0]
+
+    def fit() -> CANN:
+        return CANN(glm=_glm, epochs=3, network="kan", hidden=(6,), encoding="raw").fit(
+            DF[COLS], DF.ClaimNb, offset=OFFSET, fold=fold
+        )
+
+    whole = fit()
+    monkeypatch.setattr(cann_mod, "_SLAB_ROWS", 1000)  # 6000 training rows -> six slabs
+    slabbed = fit()
+    np.testing.assert_allclose(slabbed.predict(DF[COLS]), whole.predict(DF[COLS]), rtol=1e-12)
+    assert slabbed.history_ == pytest.approx(whole.history_, rel=1e-12)
+    assert slabbed.shift_ == pytest.approx(whole.shift_, rel=1e-12)

@@ -88,6 +88,47 @@ def deviance(
     return float(_core.deviance(family, _f64(y, "y"), _f64(mu, "mu"), w, power))
 
 
+def deviance_per_row(
+    y: ArrayLike,
+    mu: ArrayLike,
+    *,
+    family: FamilyName,
+    sample_weight: ArrayLike | None = None,
+    power: float | None = None,
+) -> float:
+    """Weighted total deviance divided by the row count: the actuarial papers' convention.
+
+    :func:`deviance` divides the weighted total by the total weight, which is
+    scikit-learn's ``mean_poisson_deviance`` with ``sample_weight``, and for a frequency
+    model scored as a rate with exposure as the weight it is the deviance *per unit of
+    exposure*. This one divides the same total by ``n``, the number of rows, which for the
+    same frequency model is the deviance *per policy* of Wüthrich & Merz, *Statistical
+    Foundations of Actuarial Learning and its Applications* (2023), formula 5.28, the loss
+    reported by Schelldorfer & Wüthrich, "Nesting classical actuarial models into neural
+    networks" (2019, the CANN paper) and the papers that follow it: ``(2/n) sum_i [v_i
+    mu_i - Y_i - Y_i log(v_i mu_i / Y_i)]`` with ``Y_i`` the count and ``v_i`` the exposure,
+    since the Poisson unit deviance of a count at exposure ``v`` is ``v`` times the unit
+    deviance of the rate. The two differ by the factor ``sum(w) / n`` (about 0.53 on
+    freMTPL2, the mean exposure), and those tables print the value times 100.
+
+    Use it to put a number next to one of theirs; use :func:`deviance` to put it next to
+    scikit-learn's. Without weights the two are the same number.
+
+    Examples
+    --------
+    >>> from glasshouse.metrics import deviance, deviance_per_row
+    >>> y, mu, v = [0, 1, 2], [0.5, 1.0, 2.5], [0.5, 1.0, 0.5]
+    >>> round(deviance_per_row(y, mu, family="poisson", sample_weight=v), 4)
+    0.1846
+    >>> round(deviance(y, mu, family="poisson", sample_weight=v) * sum(v) / 3, 4)  # the same
+    0.1846
+    """
+    w = _weights(sample_weight)
+    mean = deviance(y, mu, family=family, sample_weight=w, power=power)
+    n = len(_f64(y, "y"))
+    return float(mean if w is None else mean * w.sum() / n)
+
+
 def d2(
     y: ArrayLike,
     mu: ArrayLike,
@@ -300,6 +341,7 @@ __all__ = [
     "calibration_table",
     "d2",
     "deviance",
+    "deviance_per_row",
     "gamma_deviance",
     "gaussian_deviance",
     "gini",

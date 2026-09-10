@@ -22,6 +22,7 @@ from glasshouse.metrics import CalibrationTable, FamilyName, _f64, _weights
 # Which way is "good" for each metric name. Anything not listed is a diagnostic, not a score.
 HIGHER_IS_BETTER: Mapping[str, bool] = {
     "deviance": False,
+    "deviance_per_row": False,
     "d2": True,
     "gini": True,
     "normalized_gini": True,
@@ -37,8 +38,13 @@ HIGHER_IS_BETTER: Mapping[str, bool] = {
     "brier": False,
 }
 
-# Distance from 1 is what matters for balance; treated specially in compare().
+# Distance from 1 is what matters for balance; treated specially in compare(). Two models
+# whose distances differ by less than this are a tie: a canonical-link GLM is balanced on
+# its training rows by construction, and a tenth of a percent of the held-out total is fold
+# noise, not a verdict (the naive row's balance is exactly 1, so without a band every model
+# would lose to it at the tenth decimal).
 _TARGET_ONE = frozenset({"balance"})
+BALANCE_TIE = 1e-3
 
 
 @dataclass(frozen=True)
@@ -93,7 +99,7 @@ def _verdict(name: str, a: float, b: float) -> str:
     """Is a better than b on this metric? 'yes' / 'no' / 'tie' / '-' when it isn't a score."""
     if name in _TARGET_ONE:
         da, db = abs(a - 1.0), abs(b - 1.0)
-        return "tie" if np.isclose(da, db) else ("yes" if da < db else "no")
+        return "tie" if abs(da - db) <= BALANCE_TIE else ("yes" if da < db else "no")
     if name not in HIGHER_IS_BETTER:
         return "-"
     if np.isclose(a, b):
@@ -137,8 +143,9 @@ def scorecard(  # noqa: PLR0913 — keyword-only knobs, all optional, one obviou
     """Score ``pred`` on the full panel for ``family``, and the naive baseline on the same panel.
 
     Regression / GLM families report: deviance, d2, gini, normalized_gini, balance, rmse, mae,
-    r2. Binomial reports: log_loss, brier, roc_auc, average_precision, ks, mcc, f1, balance.
-    Both come with the calibration table.
+    r2, and with ``sample_weight`` also deviance_per_row (the actuarial papers' convention:
+    see :func:`metrics.deviance_per_row`). Binomial reports: log_loss, brier, roc_auc,
+    average_precision, ks, mcc, f1, balance. Both come with the calibration table.
 
     Parameters
     ----------
@@ -163,7 +170,11 @@ def scorecard(  # noqa: PLR0913 — keyword-only knobs, all optional, one obviou
     w = _weights(sample_weight)
     base = naive_prediction(yy, family=family, sample_weight=w)
     naive_pred = np.full_like(yy, base)
-    panel = _binomial_panel(threshold) if family == "binomial" else _family_panel(family, power)
+    panel = (
+        _binomial_panel(threshold)
+        if family == "binomial"
+        else _family_panel(family, power, weighted=w is not None)
+    )
 
     def run(p: Any) -> dict[str, float]:
         return {name: fn(yy, p, w) for name, fn in panel.items()}
@@ -183,15 +194,21 @@ def scorecard(  # noqa: PLR0913 — keyword-only knobs, all optional, one obviou
 Metric = Callable[[Any, Any, Any], float]
 
 
-def _family_panel(family: FamilyName, power: float | None) -> dict[str, Metric]:
+def _family_panel(family: FamilyName, power: float | None, *, weighted: bool) -> dict[str, Metric]:
     def dev(y: Any, p: Any, w: Any) -> float:
         return metrics.deviance(y, p, family=family, sample_weight=w, power=power)
+
+    def per_row(y: Any, p: Any, w: Any) -> float:
+        return metrics.deviance_per_row(y, p, family=family, sample_weight=w, power=power)
 
     def d2(y: Any, p: Any, w: Any) -> float:
         return metrics.d2(y, p, family=family, sample_weight=w, power=power)
 
     return {
         "deviance": dev,
+        # the same total per row instead of per unit of weight: only worth a row when the
+        # two differ, i.e. when there are weights
+        **({"deviance_per_row": per_row} if weighted else {}),
         "d2": d2,
         "gini": _safe_gini(metrics.gini),
         "normalized_gini": _safe_gini(metrics.normalized_gini),

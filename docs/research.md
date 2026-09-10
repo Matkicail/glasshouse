@@ -171,12 +171,19 @@ Run on 2026-09-06 (held-out, mean ± std over five folds; best per metric in bol
 | metric | glm_smooth | glm_interaction | cann | additive | localglm | lightgbm | naive |
 |---|---|---|---|---|---|---|---|
 | deviance | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | 0.58414 ± 0.0027 | 0.59438 ± 0.0017 | 0.58869 ± 0.0023 | **0.5724 ± 0.0026** | 0.62488 |
+| deviance_per_row | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | 0.30874 ± 0.0015 | 0.31415 ± 0.0007 | 0.31115 ± 0.0012 | **0.30253 ± 0.0012** | 0.33028 |
 | d2 | 0.0527 ± 0.0011 | 0.0538 ± 0.0014 | 0.0652 ± 0.0016 | 0.0488 ± 0.0023 | 0.0579 ± 0.0034 | **0.0840 ± 0.0023** | 0 |
 | gini | 0.4894 ± 0.016 | 0.4910 ± 0.016 | 0.4799 ± 0.026 | 0.4785 ± 0.021 | 0.4771 ± 0.022 | **0.5351 ± 0.021** | 0 |
 | balance | **1.0000 ± 0.0033** | 0.9999 ± 0.0038 | 0.9997 ± 0.0039 | 1.0000 ± 0.0028 | 1.0001 ± 0.0045 | 0.9991 ± 0.0037 | 1 |
 
 Fit time over all folds: glm_smooth 163 s, glm_interaction 208 s, cann 279 s, additive
 346 s, localglm 235 s, lightgbm 53 s (each net contains the GLM).
+
+`deviance` is per unit of exposure, scikit-learn's convention; `deviance_per_row` is the
+same total per policy, the convention of Schelldorfer & Wüthrich's CANN paper and the
+Wüthrich–Merz book (formula 5.28), whose tables print it times 100: the smooth GLM's 31.29
+and the CANN's 30.87 are the numbers to put next to theirs. Both formulas and the factor
+between them (the mean exposure, about 0.53) are in `docs/methods.md`.
 
 **Verdicts, all three no-go, and each one says something.**
 
@@ -215,15 +222,17 @@ piecewise and the periodic encodings, the two-layer KAN under raw, piecewise and
 and LightGBM, on the same splits. The committed `benchmarks/fremtpl2_kan/report.md` is its
 summary and `pinned.json` its drift test.
 
-Run on 2026-09-07 (held-out, mean ± std over five folds; best per metric in bold):
+Run on 2026-09-07, re-run 2026-09-08 to the same numbers (held-out, mean ± std over five
+folds; best per metric in bold):
 
 | metric | glm_smooth | cann | cann_piecewise | cann_periodic | kan_raw | kan_piecewise | kan_periodic | lightgbm |
 |---|---|---|---|---|---|---|---|---|
 | deviance | 0.59198 ± 0.0021 | 0.58414 ± 0.0027 | 0.58360 ± 0.0032 | 0.58251 ± 0.0019 | 0.58299 ± 0.0020 | 0.58196 ± 0.0019 | 0.59197 ± 0.0021 | **0.5724 ± 0.0026** |
+| deviance_per_row | 0.31289 ± 0.0011 | 0.30874 ± 0.0015 | 0.30846 ± 0.0017 | 0.30788 ± 0.0011 | 0.30814 ± 0.0012 | 0.30759 ± 0.0008 | 0.31288 ± 0.0011 | **0.30253 ± 0.0012** |
 | d2 | 0.0527 | 0.0652 | 0.0661 | 0.0678 | 0.0670 | 0.0687 | 0.0527 | **0.0840** |
 | gini | 0.4894 ± 0.016 | 0.4799 ± 0.026 | 0.5009 ± 0.024 | 0.4881 ± 0.012 | 0.4863 ± 0.021 | 0.4903 ± 0.020 | 0.4894 ± 0.016 | **0.5351 ± 0.021** |
 | balance | 1.0000 ± 0.0033 | 0.9997 ± 0.0039 | 0.9991 ± 0.0026 | 0.9995 ± 0.0033 | 1.0003 ± 0.0041 | 0.9997 ± 0.0037 | **1.0000 ± 0.0033** | 0.9991 ± 0.0037 |
-| fit, all folds | 168 s | 316 s | 249 s | 388 s | 1 437 s | 2 372 s | 4 319 s | 53 s |
+| fit, all folds | 153 s | 255 s | 240 s | 346 s | 1 180 s | 2 018 s | 3 670 s | 50 s |
 
 **Verdicts.**
 
@@ -238,6 +247,12 @@ Run on 2026-09-07 (held-out, mean ± std over five folds; best per metric in bol
   which is the cost the paper states. The KAN under the periodic encoding did not train at
   all: it sits on the GLM's numbers to the fourth decimal after seventy minutes, an
   honest failure rather than a result.
+- **A caution on the KAN rows.** There is no published KAN benchmark on freMTPL2 to check
+  them against, where the GLM, CANN and boosted-tree rows have one (scikit-learn's tutorial
+  and the Wüthrich-school papers; see the deviance conventions in `docs/methods.md`). Each
+  net here is one seeded run, not the averaged "nagging predictor" those papers report, so
+  the ordering among the net rows carries run-to-run noise of about a fold standard
+  deviation; the gap to the GLM is several of them. Treat the KAN result as exploratory.
 - **The fence rule, applied.** No row beats the GLM on both deviance and calibration:
   every balance is a tie within a tenth of a percent, none is better. So every model stays
   in the fence. The two nearest the gate are `kan_piecewise` (deviance, Gini held, balance
@@ -250,6 +265,101 @@ Run on 2026-09-07 (held-out, mean ± std over five folds; best per metric in bol
   double lift between `kan_piecewise` and `glm_smooth`; on Residuals, the DrivAge by
   BonusMalus grid for each.
 
+
+## Reading a net on the Model tab
+
+Every model gets the same partial dependence, one line per model on one axis, so the
+first picture of any net is how far its curve sits from the GLM's. A net built on a GLM
+gets one more: **what the network adds**, the partial dependence of its correction alone
+along each explained feature, on the same grid, shown as a factor on the GLM's price under
+a log link (a dotted line at 1 is "the net leaves this to the GLM") and as an addition on
+the link scale otherwise. The GLM's own shape is the base model's curve; the two together
+are the net's account of itself along one axis. Interactions do not show on a marginal, by
+construction, so a feature whose curve sits flat at 1 while the deviance moved is one the
+net uses jointly with another; the two-feature A/E grids on the Residuals tab are where to
+look next.
+
+A KAN gets the whole network on the page: the first layer's edge functions per input (one
+curve per hidden unit, drawn over the input's training range) and then the second layer's,
+one curve per hidden unit into the output. Bend, sum, bend, sum: there is nothing else in
+it. Under the piecewise encoding each numeric feature is several inputs (one per bin), so
+the readable per-feature curves come from `encoding="raw"`; the piecewise run is the one
+that scores better.
+
+## The fence on the other three datasets
+
+Frequency is one shape. The same four rows (the recipe's GLM, the MLP on the design and on
+piecewise inputs, the KAN on piecewise inputs) run on a gamma severity, a Poisson count on a
+time-ordered split, and a churn classification, as `fremtpl2_sev_cann`, `bike_sharing_cann`
+and `telco_churn_cann`. Each has a committed `report.md` and `pinned.json`. Run on
+2026-09-08, held-out, mean ± std over five folds, best per metric in bold.
+
+**Bike sharing** (Poisson hourly counts, train strictly before test):
+
+| metric | glm_poisson | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 66.51 ± 19 | 42.23 ± 14 | 43.04 ± 15 | **40.78 ± 14** | 43.02 ± 14 | 161.6 |
+| d2 | 0.586 | 0.737 | 0.733 | **0.748** | 0.733 | 0 |
+| gini | 0.3995 ± 0.021 | 0.4458 ± 0.015 | 0.4449 ± 0.015 | **0.4460 ± 0.015** | 0.4447 ± 0.016 | 0 |
+| balance | 1.401 ± 0.17 | 1.399 ± 0.16 | 1.397 ± 0.16 | **1.382 ± 0.16** | 1.405 ± 0.15 | 1 |
+| fit, all folds | 1 s | 31 s | 8 s | 52 s | 14 s | |
+
+The one dataset where the nets clear the fence by the letter: every net cuts the GLM's
+deviance by more than a third, matches LightGBM, and the KAN on piecewise inputs is best on
+every row including balance. The picture on the Model tab says why: what the net adds along
+`hour` is a factor of 0.6 at seven in the morning and 1.1 at five in the afternoon, the
+commute peaks that a twelve-column spline on `hour` cannot sharpen and, more, cannot make
+depend on `workingday`. That is an interaction a rating table could hold
+(`"hour*workingday"` as an `Interaction` term is the glass-box reply, not run here). The
+balance row is honest about the split: demand grows over the year, every model trained on
+earlier months under-predicts later ones by forty percent, and a better 1.38 against 1.40
+is not calibration, it is less miscalibration. The rule needs calibration over time, the
+residuals-over-time panel, to say anything on a split like this.
+
+**Telco churn** (binomial; log loss and Brier stand in for deviance; no LightGBM row, the
+wrapper speaks the three actuarial objectives only):
+
+| metric | logistic | cann | cann_piecewise | kan_piecewise | naive |
+|---|---|---|---|---|---|
+| log_loss | 0.4186 ± 0.0097 | 0.4186 ± 0.0097 | 0.4143 ± 0.0092 | **0.4116 ± 0.0094** | 0.5786 |
+| brier | 0.1360 ± 0.0033 | 0.1360 ± 0.0033 | 0.1346 ± 0.0032 | **0.1337 ± 0.0030** | 0.1950 |
+| roc_auc | 0.8433 ± 0.0088 | 0.8433 ± 0.0088 | 0.8472 ± 0.0082 | **0.8491 ± 0.0086** | 0.5 |
+| balance | 1.0008 ± 0.025 | **0.9992 ± 0.025** | 1.0048 ± 0.031 | 1.0105 ± 0.031 | 1 |
+| fit, all folds | 1 s | 29 s | 6 s | 18 s | |
+
+The MLP on the design columns adds nothing to the logistic, to the fourth decimal: on
+fifteen one-hot factors and two standardised numerics there is no shape left to find and
+the interactions do not help. The piecewise encoding is what moves it, log loss down 1.7 %
+under the KAN, and what it hands the net is a shape on `tenure` and `MonthlyCharges` the
+logistic never had, since the recipe gives them linear terms. So the gain is shapes, and a
+spline on those two columns in the logistic is the first thing to try before a net. The
+balance drifts to 1.01 because a logit has no one constant that restores the total, and the
+rule's calibration half fails on it: the nets stay in the fence.
+
+**Motor severity** (gamma, weight = claim count):
+
+| metric | glm_gamma | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 1.5641 ± 0.14 | 1.5691 ± 0.14 | 1.5679 ± 0.13 | **1.5633 ± 0.12** | 1.5785 ± 0.21 | 1.5635 |
+| deviance_per_row | 1.6581 ± 0.15 | 1.6634 ± 0.15 | 1.6622 ± 0.14 | **1.6573 ± 0.13** | 1.6734 ± 0.22 | 1.6575 |
+| gini | 0.0574 ± 0.075 | **0.0626 ± 0.068** | 0.0528 ± 0.080 | 0.0532 ± 0.075 | 0.0417 ± 0.058 | 0 |
+| balance | 1.0109 ± 0.12 | 1.0053 ± 0.13 | 1.0045 ± 0.12 | **1.0037 ± 0.12** | 1.0807 ± 0.13 | 1 |
+| fit, all folds | 3 s | 36 s | 15 s | 69 s | 9 s | |
+
+Nothing here beats the mean. The naive row's deviance is 1.5635 and the best model's is
+1.5633; every d2 is negative, every Gini within a fold standard deviation of zero. The
+severity of a French motor claim, given these rating factors, is noise around two thousand
+with a heavy tail, and neither a net nor a boosted tree finds what is not there. The fence
+says nothing on this data because the scorecard's baseline row already said everything;
+that the nets neither help nor hurt beyond noise is the correct result.
+
+**What the three runs add to the frequency story.** The gain, where there is one, is
+either an interaction the GLM's terms cannot express (bike: `hour` by `workingday`) or a
+shape the recipe's GLM was not given (telco: linear terms on the numerics), and in both
+cases the glass-box reply is one more term in the GLM. Where the GLM already holds every
+shape the data supports (motor frequency's smooths) the nets find many small interactions;
+where there is no signal (severity) they find nothing. The encoding decision carries on
+every dataset: the MLP on the design columns is the weakest net row in all four reports.
 
 ## Save and load
 

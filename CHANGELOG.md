@@ -5,6 +5,36 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `metrics.deviance_per_row`, and a `deviance_per_row` row on every weighted scorecard: the
+  weighted total deviance divided by the row count rather than the total weight, which for
+  a frequency model is the deviance per policy of Wüthrich & Merz (formula 5.28) and the
+  CANN paper, where `deviance` is scikit-learn's per unit of exposure. The two differ by
+  the mean exposure (about 0.53 on freMTPL2) and the papers' tables print theirs times
+  100; `docs/methods.md` has both formulas and the citations. The frequency benchmarks are
+  re-pinned with the row.
+
+### Changed
+- `CANN` (every network) predicts and scores its per-epoch monitor a slab of 32 768 rows at
+  a time. A KAN layer's spline basis is a (rows, inputs, knots) tensor built through several
+  temporaries of that size, and one freMTPL2 fold of it wanted tens of gigabytes: the
+  `fremtpl2_kan` benchmark froze a 32 GB machine. The numbers are unchanged, the pins hold.
+- The scorecard's verdict on balance has a tie band of a tenth of a percent, in the report
+  and in `compare`: the naive row is exactly balanced, so without it a model at 1.0000
+  read as a cross at the tenth decimal.
+
+### Added
+- The Model tab draws **what a network adds to its GLM**: the partial dependence of the
+  net's correction alone along every explained feature, on the same grid as the model's
+  own, as a factor on the GLM's price under a log link (dotted line at 1) or an addition on
+  the link scale otherwise. Any model with a `correction` method gets it; a plain GLM does
+  not. And a KAN's `edge_curves` now carries both layers (`unit q -> output` after the
+  inputs), drawn over each input's training range rather than a fixed ±3 standard
+  deviations, so the whole network is on the page.
+- The research fence on the other three datasets: `fremtpl2_sev_cann`, `bike_sharing_cann`
+  and `telco_churn_cann` run the recipe's GLM, the MLP on the design and on piecewise
+  inputs, and the KAN on piecewise inputs (plus LightGBM where the wrapper has the family),
+  each pinned. `CANN` takes any family the GLM does; `benchmarks._research` takes the
+  family and the GLM factory. The three verdicts are in `docs/research.md`.
 - Three datasets and benchmarks, so the scorecard is proven on five shapes: `fremtpl2_sev`
   (gamma severity, claims summed per policy and joined to the frequency frame, weight =
   claim count; GLM with splines vs LightGBM), `bike_sharing` (Poisson hourly counts on a

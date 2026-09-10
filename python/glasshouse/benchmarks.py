@@ -17,6 +17,7 @@ from glasshouse.encoders import BSpline, Interaction, OneHot, Smooth
 from glasshouse.foss import GlumPoisson, SklearnPoisson
 from glasshouse.gbdt import LightGBM
 from glasshouse.glm import GLM
+from glasshouse.metrics import FamilyName
 
 
 @dataclass(frozen=True)
@@ -107,16 +108,22 @@ def _interaction_glm() -> GLM:
     return glm
 
 
-def _research(network: str, encoding: str = "design") -> Callable[[], Any]:
-    """Build a research model: the smooth GLM frozen, this kind of net on its residual."""
+def _research(
+    network: str,
+    encoding: str = "design",
+    *,
+    family: FamilyName = "poisson",
+    glm: Callable[[], GLM] = _smooth_glm,
+) -> Callable[[], Any]:
+    """Build a research model: the recipe's GLM frozen, this kind of net on its residual."""
 
     def make() -> Any:
         from glasshouse.research import CANN  # noqa: PLC0415 — the research extra (torch)
 
         hidden = (8,) if network == "kan" else (20, 15, 10)
         return CANN(
-            family="poisson",
-            glm=_smooth_glm,
+            family=family,
+            glm=glm,
             hidden=hidden,
             epochs=100,
             network=network,
@@ -124,6 +131,27 @@ def _research(network: str, encoding: str = "design") -> Callable[[], Any]:
         )
 
     return make
+
+
+def _fence(
+    family: FamilyName, glm: Callable[[], GLM], columns: list[str], base: str
+) -> list[ModelSpec]:
+    """Build the fence's rows on any recipe: its GLM, the MLP and the KAN on top of it.
+
+    The GLM is the bar. The MLP sees the design columns and then piecewise inputs, the KAN
+    piecewise inputs; the rows are the same on every dataset so the family is the only thing
+    that changes from one report to the next.
+    """
+    return [
+        ModelSpec(base, glm, list(columns)),
+        ModelSpec("cann", _research("mlp", family=family, glm=glm), list(columns)),
+        ModelSpec(
+            "cann_piecewise", _research("mlp", "piecewise", family=family, glm=glm), list(columns)
+        ),
+        ModelSpec(
+            "kan_piecewise", _research("kan", "piecewise", family=family, glm=glm), list(columns)
+        ),
+    ]
 
 
 def _foss_models() -> list[ModelSpec]:
@@ -190,6 +218,48 @@ _TELCO_TERMS = {
     **dict.fromkeys(_TELCO_CATEGORICAL, "onehot"),
     **dict.fromkeys(["tenure", "MonthlyCharges"], "standardize"),
 }
+
+
+def _sev_glm() -> GLM:
+    return GLM(
+        family="gamma",
+        terms={
+            "Area": "onehot",
+            "VehGas": "onehot",
+            "VehBrand": "onehot",
+            "Region": "target",
+            "DrivAge": BSpline(df=5),
+            "VehAge": BSpline(df=4),
+            "BonusMalus": BSpline(df=4),
+        },
+    )
+
+
+def _bike_glm() -> GLM:
+    return GLM(
+        family="poisson",
+        # train strictly before test means a season the model has never seen (winter is
+        # not in the first 30 % of 2011): encode it as the reference rather than refuse,
+        # and let the report show what that costs
+        terms={
+            "season": OneHot(unknown="zero"),
+            "weather": OneHot(unknown="zero"),
+            "hour": BSpline(df=12),
+            "temp": BSpline(df=4),
+            "humidity": BSpline(df=4),
+        },
+    )
+
+
+def _telco_glm() -> GLM:
+    return GLM(family="binomial", terms=dict(_TELCO_TERMS))
+
+
+def _lightgbm(family: FamilyName, categorical: list[str], columns: list[str]) -> ModelSpec:
+    return ModelSpec(
+        "lightgbm", lambda: LightGBM(family=family, categorical=list(categorical)), list(columns)
+    )
+
 
 BENCHMARKS: dict[str, Benchmark] = {
     "fremtpl2_glm": Benchmark(
@@ -275,29 +345,8 @@ BENCHMARKS: dict[str, Benchmark] = {
         dataset="fremtpl2_sev",
         task=TaskSpec(family="gamma", target="Severity", exposure="ClaimCount"),
         models=[
-            ModelSpec(
-                "glm_gamma",
-                lambda: GLM(
-                    family="gamma",
-                    terms={
-                        "Area": "onehot",
-                        "VehGas": "onehot",
-                        "VehBrand": "onehot",
-                        "Region": "target",
-                        "DrivAge": BSpline(df=5),
-                        "VehAge": BSpline(df=4),
-                        "BonusMalus": BSpline(df=4),
-                    },
-                ),
-                list(_SEV_COLUMNS),
-            ),
-            ModelSpec(
-                "lightgbm",
-                lambda: LightGBM(
-                    family="gamma", categorical=["Area", "VehGas", "VehBrand", "Region"]
-                ),
-                list(_SEV_COLUMNS),
-            ),
+            ModelSpec("glm_gamma", _sev_glm, list(_SEV_COLUMNS)),
+            _lightgbm("gamma", ["Area", "VehGas", "VehBrand", "Region"], _SEV_COLUMNS),
         ],
         make_splits=lambda df: splits.kfold(len(df), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
@@ -307,28 +356,8 @@ BENCHMARKS: dict[str, Benchmark] = {
         dataset="bike_sharing",
         task=TaskSpec(family="poisson", target="count"),
         models=[
-            ModelSpec(
-                "glm_poisson",
-                lambda: GLM(
-                    family="poisson",
-                    # train strictly before test means a season the model has never seen
-                    # (winter is not in the first 30 % of 2011): encode it as the reference
-                    # rather than refuse, and let the report show what that costs
-                    terms={
-                        "season": OneHot(unknown="zero"),
-                        "weather": OneHot(unknown="zero"),
-                        "hour": BSpline(df=12),
-                        "temp": BSpline(df=4),
-                        "humidity": BSpline(df=4),
-                    },
-                ),
-                list(_BIKE_COLUMNS),
-            ),
-            ModelSpec(
-                "lightgbm",
-                lambda: LightGBM(family="poisson", categorical=["season", "weather"]),
-                list(_BIKE_COLUMNS),
-            ),
+            ModelSpec("glm_poisson", _bike_glm, list(_BIKE_COLUMNS)),
+            _lightgbm("poisson", ["season", "weather"], _BIKE_COLUMNS),
         ],
         # train strictly before test: the first 30 % of hours, then five consecutive blocks
         make_splits=lambda df: splits.time_ordered(df.hour_index, n_folds=5),
@@ -340,11 +369,7 @@ BENCHMARKS: dict[str, Benchmark] = {
         dataset="telco_churn",
         task=TaskSpec(family="binomial", target="Churn"),
         models=[
-            ModelSpec(
-                "logistic",
-                lambda: GLM(family="binomial", terms=dict(_TELCO_TERMS)),
-                list(_TELCO_COLUMNS),
-            ),
+            ModelSpec("logistic", _telco_glm, list(_TELCO_COLUMNS)),
             ModelSpec(
                 "lasso_logistic",
                 lambda: GLM(
@@ -386,13 +411,7 @@ BENCHMARKS: dict[str, Benchmark] = {
             ModelSpec("cann", _research("mlp"), list(_FOSS_COLUMNS)),
             ModelSpec("additive", _research("additive"), list(_FOSS_COLUMNS)),
             ModelSpec("localglm", _research("localglm"), list(_FOSS_COLUMNS)),
-            ModelSpec(
-                "lightgbm",
-                lambda: LightGBM(
-                    family="poisson", categorical=["Area", "VehGas", "VehBrand", "Region"]
-                ),
-                list(_FOSS_COLUMNS),
-            ),
+            _lightgbm("poisson", ["Area", "VehGas", "VehBrand", "Region"], _FOSS_COLUMNS),
         ],
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
@@ -412,16 +431,47 @@ BENCHMARKS: dict[str, Benchmark] = {
             ModelSpec("kan_raw", _research("kan", "raw"), list(_FOSS_COLUMNS)),
             ModelSpec("kan_piecewise", _research("kan", "piecewise"), list(_FOSS_COLUMNS)),
             ModelSpec("kan_periodic", _research("kan", "periodic"), list(_FOSS_COLUMNS)),
-            ModelSpec(
-                "lightgbm",
-                lambda: LightGBM(
-                    family="poisson", categorical=["Area", "VehGas", "VehBrand", "Region"]
-                ),
-                list(_FOSS_COLUMNS),
-            ),
+            _lightgbm("poisson", ["Area", "VehGas", "VehBrand", "Region"], _FOSS_COLUMNS),
         ],
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+    ),
+    "fremtpl2_sev_cann": Benchmark(
+        # the fence on a gamma severity: the same rows as fremtpl2_kan's best, on claims
+        name="fremtpl2_sev_cann",
+        dataset="fremtpl2_sev",
+        task=TaskSpec(family="gamma", target="Severity", exposure="ClaimCount"),
+        models=[
+            *_fence("gamma", _sev_glm, _SEV_COLUMNS, "glm_gamma"),
+            _lightgbm("gamma", ["Area", "VehGas", "VehBrand", "Region"], _SEV_COLUMNS),
+        ],
+        make_splits=lambda df: splits.kfold(len(df), k=5, seed=0),
+        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+    ),
+    "bike_sharing_cann": Benchmark(
+        # the fence on a count regression with a time-ordered split: the nets are trained
+        # strictly before the fold they are scored on, like everything else in the recipe
+        name="bike_sharing_cann",
+        dataset="bike_sharing",
+        task=TaskSpec(family="poisson", target="count"),
+        models=[
+            *_fence("poisson", _bike_glm, _BIKE_COLUMNS, "glm_poisson"),
+            _lightgbm("poisson", ["season", "weather"], _BIKE_COLUMNS),
+        ],
+        make_splits=lambda df: splits.time_ordered(df.hour_index, n_folds=5),
+        features=["hour", "temp", "weather", "workingday"],
+        time="hour_index",
+    ),
+    "telco_churn_cann": Benchmark(
+        # the fence on a classification: log loss and Brier stand in for deviance, and the
+        # net's balance is not re-set (a logit has no one constant that restores the total).
+        # No LightGBM row: the wrapper speaks the three actuarial objectives only
+        name="telco_churn_cann",
+        dataset="telco_churn",
+        task=TaskSpec(family="binomial", target="Churn"),
+        models=_fence("binomial", _telco_glm, _TELCO_COLUMNS, "logistic"),
+        make_splits=lambda df: splits.stratified(df.Churn.astype(int), k=5, seed=0),
+        features=["Contract", "tenure", "InternetService", "MonthlyCharges"],
     ),
     "fremtpl2_vs_foss": Benchmark(
         name="fremtpl2_vs_foss",

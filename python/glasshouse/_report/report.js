@@ -4,7 +4,7 @@
 // Nothing here is computed: the browser only draws what Python wrote.
 // Direction of "better" per metric; mirrors glasshouse.scorecard.HIGHER_IS_BETTER.
 const HIGHER_IS_BETTER = {
-    deviance: false, d2: true, gini: true, normalized_gini: true, rmse: false, mae: false, r2: true,
+    deviance: false, deviance_per_row: false, d2: true, gini: true, normalized_gini: true, rmse: false, mae: false, r2: true,
     mcc: true, f1: true, roc_auc: true, average_precision: true, ks: true, log_loss: false, brier: false,
 };
 // Formatting and small DOM helpers. Numbers are formatted by what they are, not by magnitude
@@ -46,8 +46,9 @@ function clear(node) {
 function verdict(metric, a, b) {
     const close = (x, y) => Math.abs(x - y) <= 1e-9 * Math.max(1, Math.abs(x), Math.abs(y));
     if (metric === "balance") {
+        // a tenth of a percent of the total is fold noise, not a verdict (see docs/methods.md)
         const da = Math.abs(a - 1), db = Math.abs(b - 1);
-        return close(da, db) ? "tie" : da < db ? "yes" : "no";
+        return Math.abs(da - db) <= 1e-3 ? "tie" : da < db ? "yes" : "no";
     }
     const dir = HIGHER_IS_BETTER[metric];
     if (dir === undefined)
@@ -248,7 +249,21 @@ function importanceSpec(explain, models) {
         table: { columns: ["model", "feature", "increase", "fold spread"], rows },
     };
 }
-function partialDependenceSpec(curves, models) {
+const PD_WORDING = {
+    title: "Partial dependence",
+    caption: "The feature is set to each grid value on every held-out row and the predictions averaged: what the model says the feature does, averaged over how the other features co-occur. The band is the spread across folds; a wide band is a model that is not sure. Points sit at the feature's quantiles, so the picture is drawn where the data is.",
+    y: "mean prediction",
+};
+/** What a network adds to its GLM along one feature, worded for the link it adds on. */
+function correctionWording(link) {
+    const caption = "The same grid as the partial dependence, but averaging only the network's output: the GLM's own curve is the base model's partial dependence, and this is what the net draws on top of it. Flat at the reference is a feature the net leaves to the GLM; a bend is a shape the GLM's terms did not have, or an interaction averaged along this axis.";
+    if (link === "log")
+        return { title: "What the network adds", caption, y: "factor on the GLM's prediction", reference: 1 };
+    if (link === "logit")
+        return { title: "What the network adds", caption, y: "added to the GLM's log-odds", reference: 0 };
+    return { title: "What the network adds", caption, y: "added to the GLM's prediction", reference: 0 };
+}
+function partialDependenceSpec(curves, models, wording = PD_WORDING) {
     const first = curves[0];
     const feature = first ? first.pd.feature : "feature";
     const categorical = first ? first.pd.kind === "categorical" : false;
@@ -267,11 +282,12 @@ function partialDependenceSpec(curves, models) {
             data.push({ type: "scatter", mode: "lines+markers", x: pd.grid, y: pd.mean, name: label, line: { color: colour, width: 2 }, marker: { size: 4 } });
         }
     }
+    const reference = wording.reference === undefined ? {} : { shapes: [{ type: "line", xref: "paper", x0: 0, x1: 1, y0: wording.reference, y1: wording.reference, line: { color: "#888", width: 1, dash: "dot" } }] };
     return {
-        title: `Partial dependence: ${feature}`,
-        caption: "The feature is set to each grid value on every held-out row and the predictions averaged: what the model says the feature does, averaged over how the other features co-occur. The band is the spread across folds; a wide band is a model that is not sure. Points sit at the feature's quantiles, so the picture is drawn where the data is.",
+        title: `${wording.title}: ${feature}`,
+        caption: wording.caption,
         data,
-        layout: { ...LAYOUT_BASE, barmode: "group", xaxis: { ...LAYOUT_BASE.xaxis, title: feature, ...(categorical ? { type: "category" } : {}) }, yaxis: { ...LAYOUT_BASE.yaxis, title: "mean prediction" } },
+        layout: { ...LAYOUT_BASE, barmode: "group", xaxis: { ...LAYOUT_BASE.xaxis, title: feature, ...(categorical ? { type: "category" } : {}) }, yaxis: { ...LAYOUT_BASE.yaxis, title: wording.y }, ...reference },
         table: { columns: ["model", feature, "mean", "fold low", "fold high"], rows },
     };
 }
@@ -442,13 +458,18 @@ function gcvSpec(name, t, colour) {
     };
 }
 function edgeSpec(input, e) {
+    // an input's edges fan out to every hidden unit; a hidden unit's one edge goes to the output
+    const second = e.curves.length === 1;
+    const name = (q) => (second ? "output" : `unit ${q + 1}`);
     const rows = e.x.map((x, i) => [fmt(x), ...e.curves.map((c) => fmt(c[i], 4))]);
     return {
-        title: `KAN edge functions on ${input}`,
-        caption: "One curve per hidden unit: the learnable one-dimensional function each edge applies to this input before the network adds them up. A flat curve is an edge the network does not use; a bent one is what the input contributes to that unit. Nothing else in a KAN carries information, which is its claim to being readable.",
-        data: e.curves.map((c, q) => ({ type: "scatter", mode: "lines", x: e.x, y: c, name: `unit ${q + 1}`, line: { color: PALETTE[q % PALETTE.length] ?? "#000000", width: 1.5 }, hovertemplate: `unit ${q + 1}<br>${input} %{x:.4g}<br>%{y:.4f}<extra></extra>` })),
-        layout: { ...LAYOUT_BASE, xaxis: { ...LAYOUT_BASE.xaxis, title: input }, yaxis: { ...LAYOUT_BASE.yaxis, title: "edge function" }, legend: { orientation: "v", x: 1.02, y: 1 }, margin: { l: 56, r: 100, t: 36, b: 48 } },
-        table: { columns: [input, ...e.curves.map((_, q) => `unit ${q + 1}`)], rows },
+        title: second ? `KAN edge function from ${input}` : `KAN edge functions on ${input}`,
+        caption: second
+            ? "The second layer: the one-dimensional function the output applies to this hidden unit's sum, over the unit's standardised range. The network is the first layer's curves summed into units, then these curves summed into the correction; nothing else."
+            : "One curve per hidden unit: the learnable one-dimensional function each edge applies to this input before the network adds them up. A flat curve is an edge the network does not use; a bent one is what the input contributes to that unit. Nothing else in a KAN carries information, which is its claim to being readable.",
+        data: e.curves.map((c, q) => ({ type: "scatter", mode: "lines", x: e.x, y: c, name: name(q), line: { color: PALETTE[q % PALETTE.length] ?? "#000000", width: 1.5 }, hovertemplate: `${name(q)}<br>${input} %{x:.4g}<br>%{y:.4f}<extra></extra>` })),
+        layout: { ...LAYOUT_BASE, xaxis: { ...LAYOUT_BASE.xaxis, title: second ? `${input.split(" -> ")[0]} (standardised)` : input }, yaxis: { ...LAYOUT_BASE.yaxis, title: "edge function" }, legend: { orientation: "v", x: 1.02, y: 1 }, margin: { l: 56, r: 100, t: 36, b: 48 } },
+        table: { columns: [input, ...e.curves.map((_, q) => name(q))], rows },
     };
 }
 function histogramSpec(r, label, models) {
@@ -501,6 +522,7 @@ function table(columns, rows) {
 // which curve) lives in the selectors on the page, nothing else.
 const METRIC_HELP = {
     deviance: "Family deviance: did the model fit the distribution it claims? Lower is better; the naive row is the intercept-only model.",
+    deviance_per_row: "The same weighted deviance divided by the row count instead of the total weight: per policy rather than per unit of exposure, the convention of the Wüthrich–Merz actuarial papers (their tables print it times 100). Lower is better.",
     d2: "Deviance explained: 1 is perfect, 0 is no better than the mean. The honest 'vs naive' number for a GLM.",
     gini: "Does the model sort risk low to high? Blind to calibration — read next to balance and A/E.",
     normalized_gini: "Gini divided by the best achievable Gini; comparable across datasets.",
@@ -787,6 +809,27 @@ function modelScreen(doc, root) {
                 return pd ? [{ label: m, pd }] : [];
             });
             renderChart(chart, partialDependenceSpec(curves, doc.models));
+        };
+        sel.addEventListener("change", draw);
+        draw();
+    }
+    for (const m of labels) {
+        const c = explain[m].correction;
+        if (!c || c.length === 0)
+            continue;
+        root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: what the network adds to the GLM`]));
+        const link = explain[m].link;
+        const wording = correctionWording(link);
+        const sel = select(c.map((p) => p.feature), c[0].feature);
+        const chart = el("div", { class: "chart correction" });
+        root.append(el("div", { class: "controls" }, ["Along ", sel]), chart);
+        const draw = () => {
+            const pd = c.find((p) => p.feature === sel.value);
+            if (!pd)
+                return;
+            // on a log link the correction is a factor on the GLM's price, which is what a reader prices in
+            const shown = link === "log" ? { ...pd, mean: pd.mean.map(Math.exp), low: pd.low.map(Math.exp), high: pd.high.map(Math.exp) } : pd;
+            renderChart(chart, partialDependenceSpec([{ label: m, pd: shown }], doc.models, wording));
         };
         sel.addEventListener("change", draw);
         draw();

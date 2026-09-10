@@ -37,8 +37,9 @@ function clear(node: HTMLElement): void {
 function verdict(metric: string, a: number, b: number): "yes" | "no" | "tie" | "-" {
   const close = (x: number, y: number) => Math.abs(x - y) <= 1e-9 * Math.max(1, Math.abs(x), Math.abs(y));
   if (metric === "balance") {
+    // a tenth of a percent of the total is fold noise, not a verdict (see docs/methods.md)
     const da = Math.abs(a - 1), db = Math.abs(b - 1);
-    return close(da, db) ? "tie" : da < db ? "yes" : "no";
+    return Math.abs(da - db) <= 1e-3 ? "tie" : da < db ? "yes" : "no";
   }
   const dir = HIGHER_IS_BETTER[metric];
   if (dir === undefined) return "-";

@@ -150,6 +150,7 @@ class CANN:
     net_: Any = field(init=False, repr=False, default=None)
     mean_: F64 = field(init=False, repr=False, default_factory=lambda: np.empty(0))
     std_: F64 = field(init=False, repr=False, default_factory=lambda: np.empty(0))
+    range_: F64 = field(init=False, repr=False, default_factory=lambda: np.empty((2, 0)))
     shift_: float = field(init=False, repr=False, default=0.0)
     history_: list[tuple[float, float]] = field(init=False, repr=False, default_factory=list)
     best_epoch_: int = field(init=False, repr=False, default=0)
@@ -186,6 +187,8 @@ class CANN:
         self.mean_ = inputs.mean(axis=0)
         self.std_ = np.where(inputs.std(axis=0) > 0, inputs.std(axis=0), 1.0)
         x = (inputs - self.mean_) / self.std_
+        # the training range of each standardised input, for drawing curves where data is
+        self.range_ = np.clip(np.stack([x.min(axis=0), x.max(axis=0)]), -3.0, 3.0)
 
         torch.manual_seed(self.seed)
         self.net_ = self._build(torch, x.shape[1])
@@ -211,9 +214,8 @@ class CANN:
         best, best_state, since_best = float("inf"), None, 0
         for epoch in range(self.epochs):
             self._epoch(torch, net, optimiser, tensors, train, epoch)
-            with torch.no_grad():
-                train_dev = float(self._loss(torch, net, tensors, train))
-                valid_dev = float(self._loss(torch, net, tensors, valid))
+            train_dev = float(self._monitor(torch, net, tensors, train))
+            valid_dev = float(self._monitor(torch, net, tensors, valid))
             self.history_.append((train_dev, valid_dev))
             if valid_dev < best - 1e-12:
                 best, since_best = valid_dev, 0
@@ -243,8 +245,14 @@ class CANN:
 
     def _loss(self, torch: Any, net: Any, t: dict[str, Any], idx: Any) -> Any:
         """Return the weighted mean deviance of the batch, on the response scale."""
-        eta = t["eta"][idx] + net(t["x"][idx]).squeeze(-1)
-        mu = _inverse_link(torch, self.glm_._link_name(), eta)
+        return self._deviance(torch, t, idx, net(t["x"][idx]).squeeze(-1))
+
+    def _monitor(self, torch: Any, net: Any, t: dict[str, Any], idx: Any) -> Any:
+        """Return the same deviance over a whole slice, forwarded a slab at a time, no gradients."""
+        return self._deviance(torch, t, idx, _forward_in_slabs(torch, net, t["x"][idx]))
+
+    def _deviance(self, torch: Any, t: dict[str, Any], idx: Any, correction: Any) -> Any:
+        mu = _inverse_link(torch, self.glm_._link_name(), t["eta"][idx] + correction)
         return deviance_torch(torch, self.family, t["y"][idx], mu, t["w"][idx], self.power)
 
     def _balance_shift(self, x: F64, y: F64, w: F64, eta_glm: F64) -> float:
@@ -386,8 +394,7 @@ class CANN:
 
     def _net(self, x: F64) -> F64:
         torch = _torch()
-        with torch.no_grad():
-            out = self.net_.double()(torch.tensor(x, dtype=torch.float64)).squeeze(-1)
+        out = _forward_in_slabs(torch, self.net_.double(), torch.tensor(x, dtype=torch.float64))
         return np.asarray(out.numpy(), dtype=np.float64)
 
     def _inputs_all(self, X: ArrayLike) -> F64:  # noqa: N803
@@ -411,9 +418,11 @@ class CANN:
     def edge_curves(self, n_points: int = 41) -> dict[str, dict[str, list[Any]]]:
         """Return the KAN's first-layer edge functions, one curve per hidden unit per input.
 
-        Each curve is ``phi_{q,p}`` on a grid over the input's standardised range, given
+        Each curve is ``phi_{q,p}`` on a grid over the input's training range, given
         back in the input's own units: the one-dimensional pieces the network is made of,
-        which is the KAN's whole claim to being readable.
+        which is the KAN's whole claim to being readable. After the inputs come the second
+        layer's edges, ``unit q -> output``, one curve each over the unit's (standardised)
+        range, so the whole network is on the page: inputs bent, summed, bent again, summed.
         """
         if self.network != "kan":
             msg = "edge_curves is only defined for network='kan'"
@@ -421,15 +430,27 @@ class CANN:
         torch = _torch()
         body = self.net_.body if hasattr(self.net_, "front") else self.net_
         names = self._input_names()
-        grid = np.linspace(-3.0, 3.0, n_points)
+        n_in = body.first.spline_weight.shape[1]
+        seen = self.range_.shape[1]  # columns of the front layer have no training range
+        lo = np.concatenate([self.range_[0], np.full(n_in - seen, -3.0)])
+        hi = np.concatenate([self.range_[1], np.full(n_in - seen, 3.0)])
+        unit = np.linspace(0.0, 1.0, n_points)[:, None]
+        grid = lo + (hi - lo) * unit  # (points, inputs)
+        grid_2 = np.linspace(-3.0, 3.0, n_points)  # the hidden units' clamped range
         with torch.no_grad():
             curves = body.first.edge_functions(torch.tensor(grid, dtype=torch.float64)).numpy()
+            second = body.second.edge_functions(torch.tensor(grid_2, dtype=torch.float64)).numpy()
         out: dict[str, dict[str, list[Any]]] = {}
         for p, name in enumerate(names):
             mean, std = (self.mean_[p], self.std_[p]) if p < len(self.mean_) else (0.0, 1.0)
             out[name] = {
-                "x": (mean + std * grid).tolist(),
+                "x": (mean + std * grid[:, p]).tolist(),
                 "curves": np.asarray(curves[:, p, :], dtype=np.float64).tolist(),
+            }
+        for q in range(second.shape[1]):
+            out[f"unit {q + 1} -> output"] = {
+                "x": grid_2.tolist(),
+                "curves": [np.asarray(second[0, q, :], dtype=np.float64).tolist()],
             }
         return out
 
@@ -472,6 +493,7 @@ class CANN:
             "weights": {k: v.tolist() for k, v in self.net_.state_dict().items()},
             "mean": self.mean_.tolist(),
             "std": self.std_.tolist(),
+            "range": self.range_.tolist(),
             "shift": self.shift_,
             "best_epoch": self.best_epoch_,
             "history": [list(h) for h in self.history_],
@@ -496,6 +518,7 @@ class CANN:
         model.glm_ = glm
         model.mean_ = np.asarray(payload["mean"], dtype=np.float64)
         model.std_ = np.asarray(payload["std"], dtype=np.float64)
+        model.range_ = np.asarray(payload["range"], dtype=np.float64)
         model.layout_ = [(str(n), int(lo), int(hi)) for n, lo, hi in payload.get("layout", [])]
         model.numeric_ = [str(n) for n in payload.get("numeric", [])]
         model.ple_ = {k: BSpline.from_dict(v) for k, v in payload.get("ple", {}).items()}
@@ -670,10 +693,10 @@ def _kan_layer(torch: Any, n_in: int, n_out: int, grid: int, zero: bool) -> Any:
             return base + spline
 
         def edge_functions(self, grid_x: Any) -> Any:
-            """``phi_{q,p}`` on a 1-D grid: shape (outputs, inputs, points)."""
-            g = grid_x.unsqueeze(-1).expand(len(grid_x), n_in)
+            """``phi_{q,p}`` on a grid, one shared or one per input: (outputs, inputs, points)."""
+            g = grid_x.unsqueeze(-1).expand(len(grid_x), n_in) if grid_x.dim() == 1 else grid_x
             spline = torch.einsum("pib,oib->oip", self.bases(g), self.spline_weight)
-            base = torch.nn.functional.silu(grid_x)[None, None, :] * self.base_weight[:, :, None]
+            base = torch.nn.functional.silu(g).T[None, :, :] * self.base_weight[:, :, None]
             return base + spline
 
     return KanLayer()
@@ -765,6 +788,25 @@ def _inverse_link(torch: Any, link: str, eta: Any) -> Any:
     if link == "log":
         return torch.exp(eta)
     return torch.sigmoid(eta)
+
+
+_SLAB_ROWS = 32_768
+"""Rows per forward pass when only predicting.
+
+A KAN layer's spline basis is a (rows, inputs, knots) tensor, built through several
+temporaries of that size; a whole fold of freMTPL2 through it wants tens of gigabytes. Each
+row's output does not depend on the others, so slabs give the same numbers.
+"""
+
+
+def _forward_in_slabs(torch: Any, net: Any, x: Any) -> Any:
+    """Return ``net(x)`` squeezed to one column, without gradients, ``_SLAB_ROWS`` at a time."""
+    with torch.no_grad():
+        if len(x) <= _SLAB_ROWS:
+            return net(x).squeeze(-1)
+        return torch.cat(
+            [net(x[s : s + _SLAB_ROWS]).squeeze(-1) for s in range(0, len(x), _SLAB_ROWS)]
+        )
 
 
 def deviance_torch(

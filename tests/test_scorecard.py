@@ -7,6 +7,7 @@ import json
 import numpy as np
 import pytest
 
+from glasshouse.metrics import deviance_per_row
 from glasshouse.scorecard import HIGHER_IS_BETTER, compare, naive_prediction, scorecard
 
 rng = np.random.default_rng(5)
@@ -47,6 +48,26 @@ def test_gaussian_target_with_negatives_reports_nan_gini_not_an_error() -> None:
     assert card.metrics["r2"] > 0.5
 
 
+def test_deviance_per_row_is_the_cann_papers_formula_and_only_on_weighted_panels() -> None:
+    """(2/n) sum [v mu - Y - Y log(v mu / Y)] on counts, Y log(.) = 0 at Y = 0 (W&M 5.28)."""
+    v, mu = EXPOSURE, RATE
+    expected = (
+        v * mu
+        - COUNT
+        - np.where(COUNT > 0, COUNT * np.log(v * mu / np.where(COUNT > 0, COUNT, 1)), 0)
+    )
+    expected = 2.0 * expected.sum() / N
+    got = deviance_per_row(COUNT / v, mu, family="poisson", sample_weight=v)
+    assert got == pytest.approx(expected, rel=1e-12)
+    card = scorecard(COUNT / v, mu, family="poisson", sample_weight=v)
+    assert card.metrics["deviance_per_row"] == pytest.approx(expected, rel=1e-12)
+    assert card.metrics["deviance_per_row"] == pytest.approx(card.metrics["deviance"] * v.sum() / N)
+    assert "deviance_per_row" not in scorecard(COUNT, RATE * v, family="poisson").metrics
+    assert deviance_per_row([0, 1, 2], [0.5, 1, 2.5], family="poisson") == pytest.approx(
+        deviance_per_row([0, 1, 2], [0.5, 1, 2.5], family="poisson", sample_weight=[1, 1, 1])
+    )
+
+
 def test_compare_is_direction_aware_and_refuses_mismatches() -> None:
     good = scorecard(COUNT, RATE * EXPOSURE, family="poisson", label="good")
     bad = scorecard(COUNT, np.full(N, COUNT.mean()), family="poisson", label="bad")
@@ -54,7 +75,11 @@ def test_compare_is_direction_aware_and_refuses_mismatches() -> None:
     by_name = {name: winner for name, _, _, winner in cmp.rows}
     assert by_name["deviance"] == "good"  # lower is better and good is lower
     assert by_name["d2"] == "good"
-    assert by_name["balance"] == "bad"  # the mean is exactly balanced; 'bad' wins that one
+    # the mean is exactly balanced; 'good' is a rate times exposure, off by fold noise only,
+    # and a tenth of a percent is a tie, not a loss
+    assert by_name["balance"] == ("tie" if abs(good.metrics["balance"] - 1) <= 1e-3 else "bad")
+    far = scorecard(COUNT, 1.5 * RATE * EXPOSURE, family="poisson", label="far")
+    assert {n: w for n, _, _, w in compare(far, bad).rows}["balance"] == "bad"
     assert "good" in str(cmp) and "metric" in str(cmp)
     with pytest.raises(ValueError, match="same family"):
         compare(good, scorecard(LABEL, PROB, family="binomial"))

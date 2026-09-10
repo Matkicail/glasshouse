@@ -5,6 +5,10 @@
     "mean": 0.6049340308085424,
     "std": 0.002500486966701388
    },
+   "deviance_per_row": {
+    "mean": 0.3197337511745324,
+    "std": 0.0013140106532450035
+   },
    "d2": {
     "mean": 0.03192007371460208,
     "std": 0.000328513207550939
@@ -38,6 +42,10 @@
    "deviance": {
     "mean": 0.5927880020447561,
     "std": 0.0020740502922185497
+   },
+   "deviance_per_row": {
+    "mean": 0.3133141901912662,
+    "std": 0.0011282175345934252
    },
    "d2": {
     "mean": 0.05135461156320673,
@@ -73,6 +81,10 @@
     "mean": 0.5919761576458861,
     "std": 0.0021196514677406975
    },
+   "deviance_per_row": {
+    "mean": 0.3128850689210382,
+    "std": 0.0011444485766403574
+   },
    "d2": {
     "mean": 0.052654077599321725,
     "std": 0.0010760486714514474
@@ -107,6 +119,10 @@
     "mean": 0.5912789307254769,
     "std": 0.002072017367818573
    },
+   "deviance_per_row": {
+    "mean": 0.3125166076383731,
+    "std": 0.0011349864823669519
+   },
    "d2": {
     "mean": 0.053769231494035764,
     "std": 0.0013640736386526697
@@ -140,6 +156,10 @@
    "deviance": {
     "mean": 0.5723956066407831,
     "std": 0.002617389322885018
+   },
+   "deviance_per_row": {
+    "mean": 0.3025349050926829,
+    "std": 0.0011669926896462168
    },
    "d2": {
     "mean": 0.08399042784750173,
@@ -176,6 +196,10 @@
    "mean": 0.6248803864974756,
    "std": 0.0026066676573535067
   },
+  "deviance_per_row": {
+   "mean": 0.33027609895163024,
+   "std": 0.0013299700130194997
+  },
   "d2": {
    "mean": 2.3381296898605796e-14,
    "std": 1.6290963392855974e-14
@@ -209,127 +233,127 @@
   {
    "label": "glm_full",
    "fold": 0,
-   "seconds": 1.553
+   "seconds": 1.381
   },
   {
    "label": "glm_full",
    "fold": 1,
-   "seconds": 1.366
+   "seconds": 1.247
   },
   {
    "label": "glm_full",
    "fold": 2,
-   "seconds": 1.366
+   "seconds": 1.215
   },
   {
    "label": "glm_full",
    "fold": 3,
-   "seconds": 1.37
+   "seconds": 1.235
   },
   {
    "label": "glm_full",
    "fold": 4,
-   "seconds": 1.497
+   "seconds": 1.255
   },
   {
    "label": "glm_splines",
    "fold": 0,
-   "seconds": 2.872
+   "seconds": 2.335
   },
   {
    "label": "glm_splines",
    "fold": 1,
-   "seconds": 2.766
+   "seconds": 2.282
   },
   {
    "label": "glm_splines",
    "fold": 2,
-   "seconds": 2.859
+   "seconds": 2.323
   },
   {
    "label": "glm_splines",
    "fold": 3,
-   "seconds": 2.874
+   "seconds": 2.358
   },
   {
    "label": "glm_splines",
    "fold": 4,
-   "seconds": 2.859
+   "seconds": 2.272
   },
   {
    "label": "glm_smooth",
    "fold": 0,
-   "seconds": 37.156
+   "seconds": 30.945
   },
   {
    "label": "glm_smooth",
    "fold": 1,
-   "seconds": 33.216
+   "seconds": 30.655
   },
   {
    "label": "glm_smooth",
    "fold": 2,
-   "seconds": 33.525
+   "seconds": 31.255
   },
   {
    "label": "glm_smooth",
    "fold": 3,
-   "seconds": 35.638
+   "seconds": 30.573
   },
   {
    "label": "glm_smooth",
    "fold": 4,
-   "seconds": 36.052
+   "seconds": 31.863
   },
   {
    "label": "glm_interaction",
    "fold": 0,
-   "seconds": 43.766
+   "seconds": 42.027
   },
   {
    "label": "glm_interaction",
    "fold": 1,
-   "seconds": 41.935
+   "seconds": 41.377
   },
   {
    "label": "glm_interaction",
    "fold": 2,
-   "seconds": 42.08
+   "seconds": 42.613
   },
   {
    "label": "glm_interaction",
    "fold": 3,
-   "seconds": 41.35
+   "seconds": 40.91
   },
   {
    "label": "glm_interaction",
    "fold": 4,
-   "seconds": 40.619
+   "seconds": 39.356
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 13.197
+   "seconds": 13.72
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 9.421
+   "seconds": 9.109
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 6.727
+   "seconds": 6.434
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 9.757
+   "seconds": 9.174
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 9.457
+   "seconds": 9.023
   }
  ]
 }

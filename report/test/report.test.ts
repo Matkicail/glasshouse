@@ -72,7 +72,7 @@ describe("glasshouse report viewer", () => {
     tab(root, "Model").click();
     const pane = root.querySelector("#pane-model") as HTMLElement;
     expect(pane.hidden).toBe(false);
-    expect(pane.querySelectorAll("[data-plotly]").length).toBe(9); // importance, partial dependence, the path pair, one GCV trace, the KAN edges, one attribution chart per model
+    expect(pane.querySelectorAll("[data-plotly]").length).toBe(10); // importance, partial dependence, the KAN's correction, the path pair, one GCV trace, the KAN edges, one attribution chart per model
     const options = Array.from(pane.querySelectorAll("select")[0]!.options).map((o) => o.value);
     expect(options).toEqual(["region", "age"]);
     const tables = pane.querySelectorAll("table.coefficients");
@@ -123,12 +123,33 @@ describe("glasshouse report viewer", () => {
     expect(pane.textContent).toContain("kan: KAN edge functions");
     const doc = api.parse(text) as any;
     const inputs = Object.keys(doc.explain.kan.edges);
-    expect(inputs).toEqual(["region[0]", "region[1]", "age"]);
+    expect(inputs).toEqual(["region[0]", "region[1]", "age", "unit 1 -> output", "unit 2 -> output", "unit 3 -> output"]);
+    expect(doc.explain.kan.edges["unit 1 -> output"].curves.length).toBe(1); // the second layer, one output
     const sel = Array.from(pane.querySelectorAll("select")).find((s) => s.options[0]?.value === "region[0]") as HTMLSelectElement;
-    expect(sel.options.length).toBe(3);
+    expect(sel.options.length).toBe(6);
     const calls = (root.ownerDocument.defaultView as any).Plotly.__calls as unknown[][];
     const edgeTraces = calls.flat().filter((t: any) => typeof t.name === "string" && t.name.startsWith("unit ")) as any[];
     expect(edgeTraces.length).toBe(3); // three hidden units
+  });
+
+  it("model screen draws what a net adds to its GLM, as a factor on a log link, with the reference line", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    tab(root, "Model").click();
+    const pane = root.querySelector("#pane-model") as HTMLElement;
+    expect(pane.textContent).toContain("kan: what the network adds to the GLM");
+    expect(pane.textContent).not.toContain("glm: what the network adds");
+    const doc = api.parse(text) as any;
+    expect(doc.explain.glm.correction).toBeNull();
+    expect(doc.explain.kan.link).toBe("log");
+    expect(doc.explain.kan.correction.map((c: any) => c.feature)).toEqual(doc.explain.kan.partial_dependence.map((c: any) => c.feature));
+    const titles = Array.from(pane.querySelectorAll("h3.chart-title")).map((h) => h.textContent);
+    expect(titles).toContain("What the network adds: region");
+    // the fake Plotly keeps the traces: on a log link the drawn curve is exp of the stored one
+    const stored = doc.explain.kan.correction[0].mean as number[];
+    const calls = (root.ownerDocument.defaultView as any).Plotly.__calls as unknown[][];
+    const drawn = calls.flat().find((t: any) => t.name === "kan" && t.x?.length === stored.length && Math.abs(t.y[0] - Math.exp(stored[0]!)) < 1e-12) as any;
+    expect(drawn).toBeDefined();
   });
 
   it("data screen summarises the outcome and the weight and profiles every feature", () => {

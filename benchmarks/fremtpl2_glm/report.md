@@ -17,6 +17,7 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | metric | glm_simple | glm_full | naive |
 |---|---|---|---|
 | deviance | 0.6106 ± 0.0025 | **0.60493 ± 0.0025** | 0.62488 |
+| deviance_per_row | 0.32273 ± 0.0013 | **0.31973 ± 0.0013** | 0.33028 |
 | d2 | 0.022849 ± 0.0003 | **0.03192 ± 0.00033** | 2.3381e-14 |
 | gini | 0.19634 ± 0.02 | **0.39515 ± 0.016** | 0 |
 | normalized_gini | 0.19833 ± 0.02 | **0.39913 ± 0.016** | 0 |
@@ -25,4 +26,4 @@ Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is
 | mae | 0.18705 ± 0.00043 | **0.1868 ± 0.00047** | 0.18894 |
 | r2 | 0.0033886 ± 0.00015 | **0.0042698 ± 0.00023** | 5.5955e-15 |
 
-Fit time (all folds): glm_simple 3.9s, glm_full 9.0s.
+Fit time (all folds): glm_simple 3.0s, glm_full 6.2s.

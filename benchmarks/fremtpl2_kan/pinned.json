@@ -5,6 +5,10 @@
     "mean": 0.5919761576458861,
     "std": 0.0021196514677406975
    },
+   "deviance_per_row": {
+    "mean": 0.3128850689210382,
+    "std": 0.0011444485766403574
+   },
    "d2": {
     "mean": 0.052654077599321725,
     "std": 0.0010760486714514474
@@ -38,6 +42,10 @@
    "deviance": {
     "mean": 0.5841394879552506,
     "std": 0.002703412864082641
+   },
+   "deviance_per_row": {
+    "mean": 0.3087431732880136,
+    "std": 0.0014733092573794085
    },
    "d2": {
     "mean": 0.0651984436832255,
@@ -73,6 +81,10 @@
     "mean": 0.5835955992373061,
     "std": 0.0031674898666041377
    },
+   "deviance_per_row": {
+    "mean": 0.30845550403407174,
+    "std": 0.0016765603315482842
+   },
    "d2": {
     "mean": 0.06607030692858826,
     "std": 0.0026060177483954246
@@ -106,6 +118,10 @@
    "deviance": {
     "mean": 0.5825053087611335,
     "std": 0.0018855178280679922
+   },
+   "deviance_per_row": {
+    "mean": 0.3078794158350223,
+    "std": 0.0010544854769096775
    },
    "d2": {
     "mean": 0.06780679456204941,
@@ -141,6 +157,10 @@
     "mean": 0.582993823842649,
     "std": 0.0020231664791898235
    },
+   "deviance_per_row": {
+    "mean": 0.30813774909835717,
+    "std": 0.0011583461050890267
+   },
    "d2": {
     "mean": 0.06702609973651281,
     "std": 0.00226725985655751
@@ -174,6 +194,10 @@
    "deviance": {
     "mean": 0.5819577463082991,
     "std": 0.0019022578175928004
+   },
+   "deviance_per_row": {
+    "mean": 0.3075892764469173,
+    "std": 0.0008234044579541637
    },
    "d2": {
     "mean": 0.06868489502727597,
@@ -209,6 +233,10 @@
     "mean": 0.5919742208211716,
     "std": 0.0021188584777621765
    },
+   "deviance_per_row": {
+    "mean": 0.3128840423893486,
+    "std": 0.0011432571128479213
+   },
    "d2": {
     "mean": 0.05265717669744121,
     "std": 0.00107241903194231
@@ -242,6 +270,10 @@
    "deviance": {
     "mean": 0.5723956066407831,
     "std": 0.002617389322885018
+   },
+   "deviance_per_row": {
+    "mean": 0.3025349050926829,
+    "std": 0.0011669926896462168
    },
    "d2": {
     "mean": 0.08399042784750173,
@@ -278,6 +310,10 @@
    "mean": 0.6248803864974756,
    "std": 0.0026066676573535067
   },
+  "deviance_per_row": {
+   "mean": 0.33027609895163024,
+   "std": 0.0013299700130194997
+  },
   "d2": {
    "mean": 2.3381296898605796e-14,
    "std": 1.6290963392855974e-14
@@ -311,202 +347,202 @@
   {
    "label": "glm_smooth",
    "fold": 0,
-   "seconds": 33.488
+   "seconds": 31.974
   },
   {
    "label": "glm_smooth",
    "fold": 1,
-   "seconds": 33.587
+   "seconds": 30.541
   },
   {
    "label": "glm_smooth",
    "fold": 2,
-   "seconds": 33.863
+   "seconds": 30.904
   },
   {
    "label": "glm_smooth",
    "fold": 3,
-   "seconds": 33.142
+   "seconds": 29.729
   },
   {
    "label": "glm_smooth",
    "fold": 4,
-   "seconds": 33.393
+   "seconds": 29.662
   },
   {
    "label": "cann",
    "fold": 0,
-   "seconds": 96.76
+   "seconds": 66.747
   },
   {
    "label": "cann",
    "fold": 1,
-   "seconds": 54.485
+   "seconds": 44.984
   },
   {
    "label": "cann",
    "fold": 2,
-   "seconds": 52.17
+   "seconds": 45.179
   },
   {
    "label": "cann",
    "fold": 3,
-   "seconds": 58.212
+   "seconds": 50.54
   },
   {
    "label": "cann",
    "fold": 4,
-   "seconds": 54.35
+   "seconds": 47.361
   },
   {
    "label": "cann_piecewise",
    "fold": 0,
-   "seconds": 54.915
+   "seconds": 48.831
   },
   {
    "label": "cann_piecewise",
    "fold": 1,
-   "seconds": 48.295
+   "seconds": 47.074
   },
   {
    "label": "cann_piecewise",
    "fold": 2,
-   "seconds": 46.916
+   "seconds": 45.66
   },
   {
    "label": "cann_piecewise",
    "fold": 3,
-   "seconds": 47.835
+   "seconds": 47.368
   },
   {
    "label": "cann_piecewise",
    "fold": 4,
-   "seconds": 50.696
+   "seconds": 51.068
   },
   {
    "label": "cann_periodic",
    "fold": 0,
-   "seconds": 92.412
+   "seconds": 79.949
   },
   {
    "label": "cann_periodic",
    "fold": 1,
-   "seconds": 99.192
+   "seconds": 86.904
   },
   {
    "label": "cann_periodic",
    "fold": 2,
-   "seconds": 66.643
+   "seconds": 60.961
   },
   {
    "label": "cann_periodic",
    "fold": 3,
-   "seconds": 69.099
+   "seconds": 63.328
   },
   {
    "label": "cann_periodic",
    "fold": 4,
-   "seconds": 60.196
+   "seconds": 54.898
   },
   {
    "label": "kan_raw",
    "fold": 0,
-   "seconds": 373.129
+   "seconds": 312.17
   },
   {
    "label": "kan_raw",
    "fold": 1,
-   "seconds": 223.291
+   "seconds": 179.155
   },
   {
    "label": "kan_raw",
    "fold": 2,
-   "seconds": 221.434
+   "seconds": 184.402
   },
   {
    "label": "kan_raw",
    "fold": 3,
-   "seconds": 229.73
+   "seconds": 191.926
   },
   {
    "label": "kan_raw",
    "fold": 4,
-   "seconds": 389.677
+   "seconds": 312.02
   },
   {
    "label": "kan_piecewise",
    "fold": 0,
-   "seconds": 389.567
+   "seconds": 334.724
   },
   {
    "label": "kan_piecewise",
    "fold": 1,
-   "seconds": 451.338
+   "seconds": 392.414
   },
   {
    "label": "kan_piecewise",
    "fold": 2,
-   "seconds": 345.695
+   "seconds": 294.214
   },
   {
    "label": "kan_piecewise",
    "fold": 3,
-   "seconds": 467.913
+   "seconds": 400.923
   },
   {
    "label": "kan_piecewise",
    "fold": 4,
-   "seconds": 717.654
+   "seconds": 595.681
   },
   {
    "label": "kan_periodic",
    "fold": 0,
-   "seconds": 854.068
+   "seconds": 732.663
   },
   {
    "label": "kan_periodic",
    "fold": 1,
-   "seconds": 964.998
+   "seconds": 817.687
   },
   {
    "label": "kan_periodic",
    "fold": 2,
-   "seconds": 989.469
+   "seconds": 821.461
   },
   {
    "label": "kan_periodic",
    "fold": 3,
-   "seconds": 922.299
+   "seconds": 791.974
   },
   {
    "label": "kan_periodic",
    "fold": 4,
-   "seconds": 588.288
+   "seconds": 506.065
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 18.83
+   "seconds": 17.008
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 9.031
+   "seconds": 8.887
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 6.379
+   "seconds": 6.212
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 9.21
+   "seconds": 9.037
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 9.062
+   "seconds": 8.804
   }
  ]
 }

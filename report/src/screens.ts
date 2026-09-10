@@ -3,6 +3,7 @@
 
 const METRIC_HELP: Record<string, string> = {
   deviance: "Family deviance: did the model fit the distribution it claims? Lower is better; the naive row is the intercept-only model.",
+  deviance_per_row: "The same weighted deviance divided by the row count instead of the total weight: per policy rather than per unit of exposure, the convention of the Wüthrich–Merz actuarial papers (their tables print it times 100). Lower is better.",
   d2: "Deviance explained: 1 is perfect, 0 is no better than the mean. The honest 'vs naive' number for a GLM.",
   gini: "Does the model sort risk low to high? Blind to calibration — read next to balance and A/E.",
   normalized_gini: "Gini divided by the best achievable Gini; comparable across datasets.",
@@ -263,6 +264,26 @@ function modelScreen(doc: ReportDoc, root: HTMLElement): void {
         return pd ? [{ label: m, pd }] : [];
       });
       renderChart(chart, partialDependenceSpec(curves, doc.models));
+    };
+    sel.addEventListener("change", draw);
+    draw();
+  }
+
+  for (const m of labels) {
+    const c = explain[m]!.correction;
+    if (!c || c.length === 0) continue;
+    root.append(el("h3", { style: `color:${colourOf(doc.models, m)}` }, [`${m}: what the network adds to the GLM`]));
+    const link = explain[m]!.link;
+    const wording = correctionWording(link);
+    const sel = select(c.map((p) => p.feature), c[0]!.feature);
+    const chart = el("div", { class: "chart correction" });
+    root.append(el("div", { class: "controls" }, ["Along ", sel]), chart);
+    const draw = () => {
+      const pd = c.find((p) => p.feature === sel.value);
+      if (!pd) return;
+      // on a log link the correction is a factor on the GLM's price, which is what a reader prices in
+      const shown = link === "log" ? { ...pd, mean: pd.mean.map(Math.exp), low: pd.low.map(Math.exp), high: pd.high.map(Math.exp) } : pd;
+      renderChart(chart, partialDependenceSpec([{ label: m, pd: shown }], doc.models, wording));
     };
     sel.addEventListener("change", draw);
     draw();
