@@ -361,6 +361,86 @@ shape the data supports (motor frequency's smooths) the nets find many small int
 where there is no signal (severity) they find nothing. The encoding decision carries on
 every dataset: the MLP on the design columns is the weakest net row in all four reports.
 
+## The glass-box replies
+
+Each dataset's verdict above ends by naming the one GLM term the net's gain pointed at.
+This section runs them. Each reply is a row in its dataset's plain benchmark
+(`fremtpl2_challengers`, `bike_sharing`, `telco_churn`) and, on bike sharing and churn,
+sits next to the nets in the fence benchmark too; the committed `report.md` and
+`pinned.json` of all five hold the numbers. Run on 2026-10-17, same splits as everything
+above, held-out, mean ± std over five folds.
+
+**Churn: `logistic_splines`.** The recipe's logistic gave tenure and the monthly charge a
+straight line each; the reply gives them a cubic spline each (`"spline"`, six columns) and
+changes nothing else.
+
+| metric | logistic | logistic_splines | cann | cann_piecewise | kan_piecewise | naive |
+|---|---|---|---|---|---|---|
+| log_loss | 0.4186 ± 0.0097 | **0.4101 ± 0.011** | 0.4186 ± 0.0097 | 0.4143 ± 0.0092 | 0.4116 ± 0.0094 | 0.5786 |
+| brier | 0.1360 ± 0.0033 | **0.1329 ± 0.0033** | 0.1360 ± 0.0033 | 0.1346 ± 0.0032 | 0.1337 ± 0.0030 | 0.1950 |
+| roc_auc | 0.8433 ± 0.0088 | **0.8502 ± 0.0092** | 0.8433 ± 0.0088 | 0.8472 ± 0.0082 | 0.8491 ± 0.0086 | 0.5 |
+| balance | 1.0008 ± 0.025 | **1.0006 ± 0.026** | 0.9992 ± 0.025 | 1.0048 ± 0.031 | 1.0105 ± 0.031 | 1 |
+| fit, all folds | 1 s | 2 s | 32 s | 6 s | 18 s | |
+
+The reply beats every net on every metric and keeps the balance the nets drifted from. Log
+loss is down 2.0 % on the logistic where the best net managed 1.7 %, and the two curves are
+on the Model tab. The shape is tenure's: the log-odds of churn fall by about 1.2 over the
+first three months, by 1.9 over the first year, and then drift down at a quarter of that
+pace, a curve one slope cannot hold. The monthly charge, given the services a customer
+holds, stays close to a line. The nets had found the tenure shape through the piecewise
+encoding, and a spline in the logistic holds it better than a network on top of a line
+does. On this book the research track's whole result is one spline term.
+
+**Bike sharing: `glm_interaction`.** The recipe's GLM has a twelve-column spline on the
+hour; the reply adds that spline times the working-day flag
+(`Interaction(df=12, factor="workingday")`), so working days and the rest each get their
+own hour curve.
+
+| metric | glm_poisson | glm_interaction | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
+|---|---|---|---|---|---|---|---|
+| deviance | 66.51 ± 19 | 45.84 ± 16 | 42.23 ± 14 | 43.04 ± 15 | **40.78 ± 14** | 43.02 ± 14 | 161.6 |
+| d2 | 0.586 | 0.716 | 0.737 | 0.733 | **0.748** | 0.733 | 0 |
+| gini | 0.3995 ± 0.021 | 0.4391 ± 0.017 | 0.4458 ± 0.015 | 0.4449 ± 0.015 | **0.4460 ± 0.015** | 0.4447 ± 0.016 | 0 |
+| balance | 1.401 ± 0.17 | 1.402 ± 0.17 | 1.399 ± 0.16 | 1.397 ± 0.16 | **1.382 ± 0.16** | 1.405 ± 0.15 | 1 |
+| fit, all folds | 1 s | 2 s | 37 s | 8 s | 54 s | 14 s | |
+
+One term takes the GLM's deviance from 66.5 to 45.8: four fifths of the way to the best
+net's 40.8, and within a fold standard deviation of LightGBM. The Model tab draws it as two
+hour curves: on working days two peaks, at seven to eight in the morning and five to six in
+the evening, with a dip between; on the other days one broad hump from eleven to four. What
+is left between 45.8 and 40.8 is the nets' other
+interactions (temperature by hour, season by hour), each smaller, and the pair grid on the
+Residuals tab is where to look for the next one. The balance is unchanged at 1.40, which is
+the split talking, not the model: every row here under-predicts a year it has not seen.
+
+**Motor frequency: `glm_piecewise`.** The nets did best on piecewise inputs, so this row
+asks what the encoding alone does for a GLM: the smooth GLM's four shapes as piecewise
+linear terms (`"piecewise"`, six pieces; the bonus-malus one held increasing), nothing
+learned on top.
+
+| metric | glm_splines | glm_piecewise | glm_smooth | glm_interaction | cann_piecewise | kan_piecewise | lightgbm |
+|---|---|---|---|---|---|---|---|
+| deviance | 0.59279 ± 0.0021 | 0.59221 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | 0.58360 ± 0.0032 | **0.58196 ± 0.0019** | 0.5724 ± 0.0026 |
+| gini | 0.4888 ± 0.016 | 0.4863 ± 0.018 | 0.4894 ± 0.016 | 0.4910 ± 0.016 | 0.5009 ± 0.024 | 0.4903 ± 0.020 | **0.5351 ± 0.021** |
+| balance | 1.0000 ± 0.0037 | **1.0000 ± 0.0036** | 1.0000 ± 0.0033 | 0.9999 ± 0.0038 | 0.9991 ± 0.0026 | 0.9997 ± 0.0037 | 0.9991 ± 0.0037 |
+| fit, all folds | 14 s | 15 s | 190 s | 250 s | 240 s | 2 018 s | 55 s |
+
+(The net and tree columns are from `fremtpl2_kan`, the same splits.) Nothing: the
+piecewise GLM lands between the cubic splines and the GCV smooths, a tenth of a percent
+apart, at the splines' fit time. So the piecewise encoding's gift to the nets was not a
+better shape, which the GLM already had three ways, but a basis the network's first layer
+could combine across features, which is an interaction. That agrees with what the additive
+net said in the go/no-go run: on motor frequency the GLM has every marginal shape the data
+supports, and what remains is many small interactions.
+
+**What the three replies say together.** Where the research track found one thing (a
+shape on churn, one interaction on bike sharing), a single GLM term takes most or all of it
+back, at a hundredth of the fit time, as a table someone can read. Where it found many
+small things (motor frequency), no one term does, and the next question is not another net
+but which interactions, in order: a ranking of the pair grid, and a tree constrained to
+depth one and to depth two to say how much of LightGBM's gap is shapes, how much pairs, and
+how much is beyond a rating table at all.
+
 ## Save and load
 
 `to_dict` writes the GLM, the network's weights as plain lists, the scaling and the shift;

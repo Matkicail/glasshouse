@@ -8,18 +8,18 @@ cleaning:
   - season and weather kept as their level names; temperatures, humidity and windspeed are the source's normalised values, untouched
   - nothing dropped, nothing capped
 
-Split: {'kind': 'time', 'method': 'time_ordered', 'n_folds': 5, 'min_train_fraction': 0.3}. Rows: 17,379. Models: glm_poisson, cann, cann_piecewise, kan_piecewise, lightgbm.
+Split: {'kind': 'time', 'method': 'time_ordered', 'n_folds': 5, 'min_train_fraction': 0.3}. Rows: 17,379. Models: glm_poisson, glm_interaction, cann, cann_piecewise, kan_piecewise, lightgbm.
 Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is the weighted mean of y (class prior for binomial), same folds.
 
-| metric | glm_poisson | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
-|---|---|---|---|---|---|---|
-| deviance | 66.508 ± 19 | 42.229 ± 14 | 43.038 ± 15 | **40.78 ± 14** | 43.015 ± 14 | 161.63 |
-| d2 | 0.58618 ± 0.096 | 0.73726 ± 0.088 | 0.73315 ± 0.086 | **0.74771 ± 0.075** | 0.73281 ± 0.077 | 0 |
-| gini | 0.39949 ± 0.021 | 0.44583 ± 0.015 | 0.44489 ± 0.015 | **0.44597 ± 0.015** | 0.44469 ± 0.016 | 0 |
-| normalized_gini | 0.84323 ± 0.042 | 0.94116 ± 0.031 | 0.93912 ± 0.03 | **0.94131 ± 0.025** | 0.93867 ± 0.03 | 0 |
-| balance | 1.4006 ± 0.17 | 1.399 ± 0.16 | 1.3974 ± 0.16 | **1.3818 ± 0.16** | 1.405 ± 0.15 | 1 |
-| rmse | 128.39 ± 33 | 102.2 ± 30 | 103.26 ± 30 | **100.78 ± 29** | 103.63 ± 29 | 182.25 |
-| mae | 85.364 ± 22 | 71.583 ± 23 | 71.754 ± 23 | **70.335 ± 23** | 72.17 ± 23 | 146.7 |
-| r2 | 0.49765 ± 0.11 | 0.67787 ± 0.1 | 0.6707 ± 0.11 | **0.68934 ± 0.092** | 0.6707 ± 0.095 | 0 |
+| metric | glm_poisson | glm_interaction | cann | cann_piecewise | kan_piecewise | lightgbm | naive |
+|---|---|---|---|---|---|---|---|
+| deviance | 66.508 ± 19 | 45.836 ± 16 | 42.229 ± 14 | 43.038 ± 15 | **40.78 ± 14** | 43.015 ± 14 | 161.63 |
+| d2 | 0.58618 ± 0.096 | 0.71568 ± 0.093 | 0.73726 ± 0.088 | 0.73315 ± 0.086 | **0.74771 ± 0.075** | 0.73281 ± 0.077 | 0 |
+| gini | 0.39949 ± 0.021 | 0.4391 ± 0.017 | 0.44583 ± 0.015 | 0.44489 ± 0.015 | **0.44597 ± 0.015** | 0.44469 ± 0.016 | 0 |
+| normalized_gini | 0.84323 ± 0.042 | 0.92697 ± 0.035 | 0.94116 ± 0.031 | 0.93912 ± 0.03 | **0.94131 ± 0.025** | 0.93867 ± 0.03 | 0 |
+| balance | 1.4006 ± 0.17 | 1.4015 ± 0.17 | 1.399 ± 0.16 | 1.3974 ± 0.16 | **1.3818 ± 0.16** | 1.405 ± 0.15 | 1 |
+| rmse | 128.39 ± 33 | 108.41 ± 31 | 102.2 ± 30 | 103.26 ± 30 | **100.78 ± 29** | 103.63 ± 29 | 182.25 |
+| mae | 85.364 ± 22 | 73.269 ± 23 | 71.583 ± 23 | 71.754 ± 23 | **70.335 ± 23** | 72.17 ± 23 | 146.7 |
+| r2 | 0.49765 ± 0.11 | 0.63684 ± 0.12 | 0.67787 ± 0.1 | 0.6707 ± 0.11 | **0.68934 ± 0.092** | 0.6707 ± 0.095 | 0 |
 
-Fit time (all folds): glm_poisson 1.0s, cann 30.6s, cann_piecewise 7.8s, kan_piecewise 48.5s, lightgbm 13.3s.
+Fit time (all folds): glm_poisson 1.0s, glm_interaction 1.5s, cann 36.5s, cann_piecewise 8.4s, kan_piecewise 54.2s, lightgbm 14.1s.
