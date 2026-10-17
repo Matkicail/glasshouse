@@ -190,6 +190,82 @@
     "std": 0.0006158229544656124
    }
   },
+  "lightgbm_additive": {
+   "deviance": {
+    "mean": 0.5876637645764842,
+    "std": 0.0023535120963323456
+   },
+   "deviance_per_row": {
+    "mean": 0.31060608238223597,
+    "std": 0.0013375000338975076
+   },
+   "d2": {
+    "mean": 0.059556042485065054,
+    "std": 0.0015795306792468343
+   },
+   "gini": {
+    "mean": 0.4963570844230986,
+    "std": 0.016322158575704168
+   },
+   "normalized_gini": {
+    "mean": 0.5013548481015803,
+    "std": 0.016393719524393266
+   },
+   "balance": {
+    "mean": 1.0011424706384093,
+    "std": 0.00313462802587367
+   },
+   "rmse": {
+    "mean": 0.7332035319565893,
+    "std": 0.01161126893078293
+   },
+   "mae": {
+    "mean": 0.18484613646251852,
+    "std": 0.0006405194420468946
+   },
+   "r2": {
+    "mean": 0.009034052638559298,
+    "std": 0.0006769088114355211
+   }
+  },
+  "lightgbm_pairs": {
+   "deviance": {
+    "mean": 0.5775125374347125,
+    "std": 0.002527264031576969
+   },
+   "deviance_per_row": {
+    "mean": 0.3052401357833449,
+    "std": 0.0012907398538530377
+   },
+   "d2": {
+    "mean": 0.07580055065532469,
+    "std": 0.002487545587273573
+   },
+   "gini": {
+    "mean": 0.5151643766602005,
+    "std": 0.022604057513994098
+   },
+   "normalized_gini": {
+    "mean": 0.5203512803195738,
+    "std": 0.022757657161185656
+   },
+   "balance": {
+    "mean": 1.001063122235537,
+    "std": 0.003693051543405349
+   },
+   "rmse": {
+    "mean": 0.730998032434502,
+    "std": 0.011667164505645672
+   },
+   "mae": {
+    "mean": 0.18314066589083197,
+    "std": 0.000570646666794378
+   },
+   "r2": {
+    "mean": 0.01499057871919307,
+    "std": 0.0008036164774579093
+   }
+  },
   "lightgbm": {
    "deviance": {
     "mean": 0.5723956066407831,
@@ -271,152 +347,211 @@
   {
    "label": "glm_full",
    "fold": 0,
-   "seconds": 1.671
+   "seconds": 1.553
   },
   {
    "label": "glm_full",
    "fold": 1,
-   "seconds": 1.542
+   "seconds": 1.353
   },
   {
    "label": "glm_full",
    "fold": 2,
-   "seconds": 1.515
+   "seconds": 1.33
   },
   {
    "label": "glm_full",
    "fold": 3,
-   "seconds": 1.528
+   "seconds": 1.323
   },
   {
    "label": "glm_full",
    "fold": 4,
-   "seconds": 1.522
+   "seconds": 1.379
   },
   {
    "label": "glm_splines",
    "fold": 0,
-   "seconds": 2.78
+   "seconds": 2.617
   },
   {
    "label": "glm_splines",
    "fold": 1,
-   "seconds": 2.88
+   "seconds": 2.495
   },
   {
    "label": "glm_splines",
    "fold": 2,
-   "seconds": 3.003
+   "seconds": 2.549
   },
   {
    "label": "glm_splines",
    "fold": 3,
-   "seconds": 2.811
+   "seconds": 2.546
   },
   {
    "label": "glm_splines",
    "fold": 4,
-   "seconds": 2.859
+   "seconds": 2.453
   },
   {
    "label": "glm_piecewise",
    "fold": 0,
-   "seconds": 2.928
+   "seconds": 2.474
   },
   {
    "label": "glm_piecewise",
    "fold": 1,
-   "seconds": 2.895
+   "seconds": 2.512
   },
   {
    "label": "glm_piecewise",
    "fold": 2,
-   "seconds": 2.909
+   "seconds": 2.528
   },
   {
    "label": "glm_piecewise",
    "fold": 3,
-   "seconds": 2.933
+   "seconds": 2.549
   },
   {
    "label": "glm_piecewise",
    "fold": 4,
-   "seconds": 2.934
+   "seconds": 2.516
   },
   {
    "label": "glm_smooth",
    "fold": 0,
-   "seconds": 37.611
+   "seconds": 32.005
   },
   {
    "label": "glm_smooth",
    "fold": 1,
-   "seconds": 37.98
+   "seconds": 31.711
   },
   {
    "label": "glm_smooth",
    "fold": 2,
-   "seconds": 38.415
+   "seconds": 33.488
   },
   {
    "label": "glm_smooth",
    "fold": 3,
-   "seconds": 38.051
+   "seconds": 32.006
   },
   {
    "label": "glm_smooth",
    "fold": 4,
-   "seconds": 37.833
+   "seconds": 31.647
   },
   {
    "label": "glm_interaction",
    "fold": 0,
-   "seconds": 48.522
+   "seconds": 42.501
   },
   {
    "label": "glm_interaction",
    "fold": 1,
-   "seconds": 49.226
+   "seconds": 42.71
   },
   {
    "label": "glm_interaction",
    "fold": 2,
-   "seconds": 53.021
+   "seconds": 42.917
   },
   {
    "label": "glm_interaction",
    "fold": 3,
-   "seconds": 50.673
+   "seconds": 43.402
   },
   {
    "label": "glm_interaction",
    "fold": 4,
-   "seconds": 48.495
+   "seconds": 40.046
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 0,
+   "seconds": 38.715
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 1,
+   "seconds": 32.443
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 2,
+   "seconds": 22.988
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 3,
+   "seconds": 38.494
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 4,
+   "seconds": 20.194
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 0,
+   "seconds": 8.293
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 1,
+   "seconds": 7.195
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 2,
+   "seconds": 6.732
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 3,
+   "seconds": 6.208
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 4,
+   "seconds": 5.569
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 15.49
+   "seconds": 8.156
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 10.599
+   "seconds": 9.73
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 7.54
+   "seconds": 6.795
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 10.984
+   "seconds": 9.763
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 10.449
+   "seconds": 9.606
   }
+ ],
+ "ladder": [
+  "glm_full",
+  "glm_splines",
+  "glm_smooth",
+  "glm_interaction",
+  "lightgbm_additive",
+  "lightgbm_pairs",
+  "lightgbm"
  ]
 }

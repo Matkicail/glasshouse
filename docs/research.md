@@ -441,6 +441,82 @@ but which interactions, in order: a ranking of the pair grid, and a tree constra
 depth one and to depth two to say how much of LightGBM's gap is shapes, how much pairs, and
 how much is beyond a rating table at all.
 
+## The ladder: what the tree's gap is made of
+
+The replies left one question: on motor frequency the free trees are 3.3 % below the smooth
+GLM and no one term gets near. Rather than guess what that gap is, `fremtpl2_challengers`,
+`fremtpl2_sev` and `bike_sharing` now carry two constrained LightGBM rows next to the free
+one, and each recipe names a `ladder` of its models least flexible first, which the
+Overview tab draws. Trees held to **depth one** (`lightgbm_additive`) are a sum of
+one-feature steps: every shape, no interaction, so their distance from the GLM is shapes the
+GLM's terms do not hold. Trees of **depth two** (`lightgbm_pairs`) are a sum of two-feature
+steps: the further step is pairwise interactions. Whatever the free trees add beyond that is
+three-way and higher structure. (Both shallow rows take bigger steps, learning rate 0.2,
+because a stump moves the fit little per round: at the default rate the additive row hit a
+5 000-round cap and read a thousandth worse than converged. Early stopping decides the
+rounds, as for every tree here.) Run on 2026-10-17, held-out, mean ± std over five folds.
+
+**Motor frequency**, deviance per unit of exposure:
+
+| rung | model | deviance | step | share of the GLM-to-tree gap |
+|---|---|---|---|---|
+| 1 | glm_full (a linear table) | 0.60493 ± 0.0025 | | |
+| 2 | glm_splines | 0.59279 ± 0.0021 | −0.0121 | |
+| 3 | glm_smooth | 0.59198 ± 0.0021 | −0.0008 | the bar |
+| 4 | glm_interaction (one pair) | 0.59128 ± 0.0021 | −0.0007 | 4 % |
+| 5 | lightgbm_additive (shapes) | 0.58766 ± 0.0024 | −0.0043 | 22 % |
+| 6 | lightgbm_pairs (pairs) | 0.57751 ± 0.0025 | −0.0102 | 52 % |
+| 7 | lightgbm (free) | 0.5724 ± 0.0026 | −0.0051 | 26 % |
+
+Shares are of the 0.0196 between rungs 3 and 7. Half the gap is pairwise interactions, a
+quarter is beyond pairs, and a fifth is shapes: the additive trees do beat the smooth GLM,
+by 0.7 %, which is more than the additive net managed on the same GLM (it was worse), so
+there are marginal shapes the smooths miss, most likely in the factors (the trees take
+Region and VehBrand as native categoricals where the GLM has a target encoding and a
+one-hot) and in VehPower, which the GLM has as a straight line. The hand-picked
+DrivAge-by-BonusMalus term took back a fifteenth of the pairs step, so there are several
+pairs worth having and the order matters; ranking them from the two-way A/E grid is the next
+glass-box step. The 26 % beyond pairs is the part a rating table cannot hold, and the
+number to quote when someone asks what the tree knows that the table cannot.
+
+**Bike sharing**, deviance:
+
+| rung | model | deviance | step |
+|---|---|---|---|
+| 1 | glm_poisson | 66.51 ± 19 | |
+| 2 | glm_interaction (hour by working day) | 45.84 ± 16 | −20.7 |
+| 3 | lightgbm_additive | 65.09 ± 18 | |
+| 4 | lightgbm_pairs | **41.81 ± 14** | |
+| 5 | lightgbm | 43.02 ± 14 | |
+
+The clearest ladder of the three. Additive trees gain almost nothing on the GLM (1.4 of a
+gap of 23.5): the twelve-column spline on the hour and the splines on temperature and
+humidity already hold every shape. Depth-two trees take the whole gap and beat the free
+trees, which are over-fitting a two-year series. So the gap is pairwise interactions and
+nothing else, and the one term the nets pointed at is 84 % of it. The remaining pairs are
+smaller (temperature by hour, season by hour) and the pair grid names them.
+
+**Motor severity**, deviance:
+
+| rung | model | deviance | balance |
+|---|---|---|---|
+| 1 | glm_gamma | **1.5641 ± 0.14** | 1.011 ± 0.12 |
+| 2 | lightgbm_additive | 1.5983 ± 0.19 | 1.038 ± 0.15 |
+| 3 | lightgbm_pairs | 1.5926 ± 0.20 | 1.064 ± 0.16 |
+| 4 | lightgbm | 1.5785 ± 0.21 | 1.081 ± 0.13 |
+
+Flat, within the fold spread, and every tree is worse than the GLM and the mean (1.5635).
+The ladder adds one thing to the earlier verdict: the trees drift further off balance the
+more they are allowed, from 4 % over to 8 % over, which on a severity book is money. There
+is no structure here for any model class to find, and the panel says so on every rung.
+
+**What the ladder decides.** Pairwise interactions are the biggest piece of what a tree
+knows and a GLM does not, on both datasets where there is anything to know: half the gap
+on motor frequency, all of it on bike sharing. That is the case for the next piece of
+glass-box work, ranking the feature pairs from the two-way A/E grid and adding the top few
+as interaction terms, before any further neural model. It also bounds that work: on motor
+frequency a GLM with every pair would still sit a quarter of the gap above the free trees.
+
 ## Save and load
 
 `to_dict` writes the GLM, the network's weights as plain lists, the scaling and the shift;

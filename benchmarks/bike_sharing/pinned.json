@@ -68,6 +68,74 @@
     "std": 0.11729269405007083
    }
   },
+  "lightgbm_additive": {
+   "deviance": {
+    "mean": 65.09315871281004,
+    "std": 17.53029654485607
+   },
+   "d2": {
+    "mean": 0.5935946629466237,
+    "std": 0.09545011213912219
+   },
+   "gini": {
+    "mean": 0.40223710600219087,
+    "std": 0.02186095517638431
+   },
+   "normalized_gini": {
+    "mean": 0.8489715801177354,
+    "std": 0.04164567780772264
+   },
+   "balance": {
+    "mean": 1.4024835631568395,
+    "std": 0.15667448458032915
+   },
+   "rmse": {
+    "mean": 126.42564951570935,
+    "std": 32.22515835085682
+   },
+   "mae": {
+    "mean": 85.0705698541671,
+    "std": 22.005269867882195
+   },
+   "r2": {
+    "mean": 0.5114500707205396,
+    "std": 0.11278362528593205
+   }
+  },
+  "lightgbm_pairs": {
+   "deviance": {
+    "mean": 41.81256371950601,
+    "std": 14.106852269505694
+   },
+   "d2": {
+    "mean": 0.7412669851699437,
+    "std": 0.079297854852452
+   },
+   "gini": {
+    "mean": 0.4453050941515938,
+    "std": 0.015790871812168174
+   },
+   "normalized_gini": {
+    "mean": 0.9399506759773402,
+    "std": 0.029107147772231227
+   },
+   "balance": {
+    "mean": 1.389653055872375,
+    "std": 0.15827345093425427
+   },
+   "rmse": {
+    "mean": 103.00041417265456,
+    "std": 29.82259705859487
+   },
+   "mae": {
+    "mean": 71.47856173936526,
+    "std": 22.779173408740757
+   },
+   "r2": {
+    "mean": 0.673825076373127,
+    "std": 0.10046278784885576
+   }
+  },
   "lightgbm": {
    "deviance": {
     "mean": 43.014584926764584,
@@ -141,77 +209,134 @@
   {
    "label": "glm_poisson",
    "fold": 0,
+   "seconds": 0.254
+  },
+  {
+   "label": "glm_poisson",
+   "fold": 1,
+   "seconds": 0.193
+  },
+  {
+   "label": "glm_poisson",
+   "fold": 2,
+   "seconds": 0.219
+  },
+  {
+   "label": "glm_poisson",
+   "fold": 3,
    "seconds": 0.223
   },
   {
    "label": "glm_poisson",
-   "fold": 1,
-   "seconds": 0.18
-  },
-  {
-   "label": "glm_poisson",
-   "fold": 2,
-   "seconds": 0.206
-  },
-  {
-   "label": "glm_poisson",
-   "fold": 3,
-   "seconds": 0.202
-  },
-  {
-   "label": "glm_poisson",
    "fold": 4,
-   "seconds": 0.201
+   "seconds": 0.231
   },
   {
    "label": "glm_interaction",
    "fold": 0,
-   "seconds": 0.279
+   "seconds": 0.308
   },
   {
    "label": "glm_interaction",
    "fold": 1,
-   "seconds": 0.28
+   "seconds": 0.317
   },
   {
    "label": "glm_interaction",
    "fold": 2,
-   "seconds": 0.289
+   "seconds": 0.323
   },
   {
    "label": "glm_interaction",
    "fold": 3,
-   "seconds": 0.303
+   "seconds": 0.316
   },
   {
    "label": "glm_interaction",
    "fold": 4,
-   "seconds": 0.298
+   "seconds": 0.329
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 0,
+   "seconds": 6.256
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 1,
+   "seconds": 2.02
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 2,
+   "seconds": 1.613
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 3,
+   "seconds": 0.868
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 4,
+   "seconds": 1.703
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 0,
+   "seconds": 1.051
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 1,
+   "seconds": 1.187
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 2,
+   "seconds": 1.702
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 3,
+   "seconds": 1.849
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 4,
+   "seconds": 1.947
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 6.215
+   "seconds": 1.03
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 1.121
+   "seconds": 1.153
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 2.095
+   "seconds": 2.149
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 2.109
+   "seconds": 2.245
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 1.611
+   "seconds": 1.745
   }
+ ],
+ "ladder": [
+  "glm_poisson",
+  "glm_interaction",
+  "lightgbm_additive",
+  "lightgbm_pairs",
+  "lightgbm"
  ]
 }

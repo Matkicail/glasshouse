@@ -38,6 +38,82 @@
     "std": 0.004839671548360375
    }
   },
+  "lightgbm_additive": {
+   "deviance": {
+    "mean": 1.598254407545356,
+    "std": 0.1910336889383332
+   },
+   "deviance_per_row": {
+    "mean": 1.694308091968169,
+    "std": 0.20202116516267118
+   },
+   "d2": {
+    "mean": -0.022432836647434673,
+    "std": 0.016309616011213494
+   },
+   "gini": {
+    "mean": 0.05297522417690368,
+    "std": 0.07030885684509862
+   },
+   "normalized_gini": {
+    "mean": 0.08352195488364984,
+    "std": 0.10541746782818812
+   },
+   "balance": {
+    "mean": 1.037493464108669,
+    "std": 0.1500193411677195
+   },
+   "rmse": {
+    "mean": 12492.481089801728,
+    "std": 5120.576521881908
+   },
+   "mae": {
+    "mean": 1968.016398795716,
+    "std": 146.9989190155414
+   },
+   "r2": {
+    "mean": -0.005042092787598618,
+    "std": 0.002705237726889569
+   }
+  },
+  "lightgbm_pairs": {
+   "deviance": {
+    "mean": 1.5925932091477912,
+    "std": 0.20012440180584265
+   },
+   "deviance_per_row": {
+    "mean": 1.6882827917031065,
+    "std": 0.21143229353755297
+   },
+   "d2": {
+    "mean": -0.018058761085820763,
+    "std": 0.009399183301221806
+   },
+   "gini": {
+    "mean": 0.0382617404110871,
+    "std": 0.05003477044595606
+   },
+   "normalized_gini": {
+    "mean": 0.05984908074172642,
+    "std": 0.07480321400047331
+   },
+   "balance": {
+    "mean": 1.0642573091003427,
+    "std": 0.15671269685724537
+   },
+   "rmse": {
+    "mean": 12479.133324979066,
+    "std": 5126.556191464777
+   },
+   "mae": {
+    "mean": 1926.16939162023,
+    "std": 146.02948863102688
+   },
+   "r2": {
+    "mean": -0.0021427267940714147,
+    "std": 0.0013427155739094128
+   }
+  },
   "lightgbm": {
    "deviance": {
     "mean": 1.5785261725541537,
@@ -119,52 +195,108 @@
   {
    "label": "glm_gamma",
    "fold": 0,
-   "seconds": 0.546
+   "seconds": 0.569
   },
   {
    "label": "glm_gamma",
    "fold": 1,
-   "seconds": 0.517
+   "seconds": 0.525
   },
   {
    "label": "glm_gamma",
    "fold": 2,
-   "seconds": 0.519
+   "seconds": 0.536
   },
   {
    "label": "glm_gamma",
    "fold": 3,
-   "seconds": 0.514
+   "seconds": 0.532
   },
   {
    "label": "glm_gamma",
    "fold": 4,
-   "seconds": 0.507
+   "seconds": 0.533
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 0,
+   "seconds": 6.563
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 1,
+   "seconds": 1.001
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 2,
+   "seconds": 1.074
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 3,
+   "seconds": 1.103
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 4,
+   "seconds": 1.173
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 0,
+   "seconds": 1.141
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 1,
+   "seconds": 0.832
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 2,
+   "seconds": 0.817
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 3,
+   "seconds": 0.771
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 4,
+   "seconds": 0.797
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 5.878
+   "seconds": 0.795
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 0.674
+   "seconds": 0.775
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 0.73
+   "seconds": 0.698
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 0.696
+   "seconds": 0.731
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 0.72
+   "seconds": 0.773
   }
+ ],
+ "ladder": [
+  "glm_gamma",
+  "lightgbm_additive",
+  "lightgbm_pairs",
+  "lightgbm"
  ]
 }

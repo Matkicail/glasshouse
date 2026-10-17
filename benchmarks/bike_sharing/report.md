@@ -8,18 +8,19 @@ cleaning:
   - season and weather kept as their level names; temperatures, humidity and windspeed are the source's normalised values, untouched
   - nothing dropped, nothing capped
 
-Split: {'kind': 'time', 'method': 'time_ordered', 'n_folds': 5, 'min_train_fraction': 0.3}. Rows: 17,379. Models: glm_poisson, glm_interaction, lightgbm.
+Split: {'kind': 'time', 'method': 'time_ordered', 'n_folds': 5, 'min_train_fraction': 0.3}. Rows: 17,379. Models: glm_poisson, glm_interaction, lightgbm_additive, lightgbm_pairs, lightgbm.
 Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is the weighted mean of y (class prior for binomial), same folds.
+Ladder: glm_poisson → glm_interaction → lightgbm_additive → lightgbm_pairs → lightgbm.
 
-| metric | glm_poisson | glm_interaction | lightgbm | naive |
-|---|---|---|---|---|
-| deviance | 66.508 ± 19 | 45.836 ± 16 | **43.015 ± 14** | 161.63 |
-| d2 | 0.58618 ± 0.096 | 0.71568 ± 0.093 | **0.73281 ± 0.077** | 0 |
-| gini | 0.39949 ± 0.021 | 0.4391 ± 0.017 | **0.44469 ± 0.016** | 0 |
-| normalized_gini | 0.84323 ± 0.042 | 0.92697 ± 0.035 | **0.93867 ± 0.03** | 0 |
-| balance | **1.4006 ± 0.17** | 1.4015 ± 0.17 | 1.405 ± 0.15 | 1 |
-| rmse | 128.39 ± 33 | 108.41 ± 31 | **103.63 ± 29** | 182.25 |
-| mae | 85.364 ± 22 | 73.269 ± 23 | **72.17 ± 23** | 146.7 |
-| r2 | 0.49765 ± 0.11 | 0.63684 ± 0.12 | **0.6707 ± 0.095** | 0 |
+| metric | glm_poisson | glm_interaction | lightgbm_additive | lightgbm_pairs | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 66.508 ± 19 | 45.836 ± 16 | 65.093 ± 18 | **41.813 ± 14** | 43.015 ± 14 | 161.63 |
+| d2 | 0.58618 ± 0.096 | 0.71568 ± 0.093 | 0.59359 ± 0.095 | **0.74127 ± 0.079** | 0.73281 ± 0.077 | 0 |
+| gini | 0.39949 ± 0.021 | 0.4391 ± 0.017 | 0.40224 ± 0.022 | **0.44531 ± 0.016** | 0.44469 ± 0.016 | 0 |
+| normalized_gini | 0.84323 ± 0.042 | 0.92697 ± 0.035 | 0.84897 ± 0.042 | **0.93995 ± 0.029** | 0.93867 ± 0.03 | 0 |
+| balance | 1.4006 ± 0.17 | 1.4015 ± 0.17 | 1.4025 ± 0.16 | **1.3897 ± 0.16** | 1.405 ± 0.15 | 1 |
+| rmse | 128.39 ± 33 | 108.41 ± 31 | 126.43 ± 32 | **103 ± 30** | 103.63 ± 29 | 182.25 |
+| mae | 85.364 ± 22 | 73.269 ± 23 | 85.071 ± 22 | **71.479 ± 23** | 72.17 ± 23 | 146.7 |
+| r2 | 0.49765 ± 0.11 | 0.63684 ± 0.12 | 0.51145 ± 0.11 | **0.67383 ± 0.1** | 0.6707 ± 0.095 | 0 |
 
-Fit time (all folds): glm_poisson 1.0s, glm_interaction 1.4s, lightgbm 13.2s.
+Fit time (all folds): glm_poisson 1.1s, glm_interaction 1.6s, lightgbm_additive 12.5s, lightgbm_pairs 7.7s, lightgbm 8.3s.

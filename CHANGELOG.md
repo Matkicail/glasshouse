@@ -5,6 +5,15 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `LightGBM(max_depth=...)`, and two constrained rows on motor frequency, motor severity
+  and bike sharing: `lightgbm_additive` (depth 1, a sum of one-feature steps, no
+  interaction) and `lightgbm_pairs` (depth 2, a sum of two-feature steps). Next to the free
+  trees they say how much of a GBM's gain over the GLM is shapes, how much pairs, and how
+  much neither.
+- `bench.run(ladder=[...])` and `Benchmark.ladder`: the recipe's models least flexible
+  first. The Overview tab draws the primary metric along the ladder with the fold spread
+  and the naive line, `report.md` states the order, and the labels must be models of the
+  run. Three benchmarks re-pinned.
 - `Interaction(factor="workingday")`: an interaction where one side is a categorical or a
   0/1 flag. That side is one-hot encoded with its reference level dropped and the other
   side's spline is multiplied by each indicator, so every level gets its own curve as a
