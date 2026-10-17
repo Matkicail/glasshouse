@@ -255,7 +255,12 @@ term: every product of one column of each, `df² ` columns. With the two main ef
 the model as their own terms, the products are the part of the surface the main effects
 cannot carry, so the term is the interaction and only that. It is unpenalised (choose `df`
 small), enters the group lasso as one block, and reads as one bar on "explain a row". The
-picture that says it worked is the two-feature A/E grid going flat.
+picture that says it worked is the two-feature A/E grid going flat. When one side is a
+categorical or a 0/1 flag, name it: `Interaction(df=12, factor="workingday")` one-hot
+encodes that side with its reference level dropped and multiplies the other side's spline
+by each indicator, so every level gets its own curve as a departure from the reference
+level's (`df × (levels − 1)` columns). A spline on a two-valued column would collapse to
+constant columns, so the factor form is the one for a curve that differs by group.
 
 **Per-row attributions.** With `β` on the link scale, row `i`'s linear predictor is
 `β₀ + Σ_j β_j x_ij`; `GLM.term_contributions` sums the `β_j x_ij` of the design columns that

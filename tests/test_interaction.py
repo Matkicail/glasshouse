@@ -93,3 +93,39 @@ def test_round_trip_group_lasso_and_refusals() -> None:
         GLM(family="poisson", terms={"age*speed": Interaction()}).fit(DF[COLS], DF.ClaimNb)
     with pytest.raises(ValueError, match="pair of columns"):
         Interaction().fit(DF.age)
+
+
+def test_the_factor_form_gives_each_level_its_own_curve() -> None:
+    """A spline times a flag: the curve on one level departs from the other's."""
+    g = rng.choice([0.0, 1.0], size=N)
+    frame = DF.assign(flag=g)
+    # on flag=1 the age effect bends the other way; the main effects alone cannot say so
+    eta = -0.5 + np.where(g == 1.0, 2.0 * frame.age**2 - 0.8, -1.0 * frame.age**2)
+    frame["ClaimNb"] = rng.poisson(np.exp(eta) * frame.Exposure).astype(float)
+    cols = ["age", "flag"]
+    fold = splits.kfold(N, k=4, seed=1)[0]
+    main = GLM(family="poisson", terms={"age": "smooth"}).fit(
+        frame[cols], frame.ClaimNb, offset=OFFSET, fold=fold
+    )
+    both = GLM(
+        family="poisson",
+        terms={"age": "smooth", "age*flag": Interaction(df=5, factor="flag")},
+    ).fit(frame[cols], frame.ClaimNb, offset=OFFSET, fold=fold)
+    te = fold.test_idx
+    w = frame.Exposure.to_numpy()[te]
+    rate = frame.ClaimNb.to_numpy()[te] / w
+
+    def held_out(model: GLM) -> float:
+        return float(
+            deviance(rate, model.predict(frame[cols].iloc[te]), family="poisson", sample_weight=w)
+        )
+
+    assert held_out(both) < held_out(main) * 0.95, (held_out(both), held_out(main))
+    # five spline columns times the one non-reference level, named by that level
+    lo, hi = both._slices["age*flag"]
+    assert hi - lo == 5
+    assert both.feature_names_in_[lo + 1] == "age*flag_1_flag=1.0"  # + 1: the intercept
+    back = GLM.from_dict(json.loads(json.dumps(both.to_dict())))
+    np.testing.assert_allclose(back.predict(frame[cols]), both.predict(frame[cols]), rtol=1e-12)
+    with pytest.raises(ValueError, match="neither side"):
+        Interaction(factor="speed", name="age*flag").fit((frame.age, frame.flag))
