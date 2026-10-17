@@ -109,6 +109,25 @@ def _interaction_glm() -> GLM:
     return glm
 
 
+def _interactions_glm() -> GLM:
+    """Build the smooth GLM plus the three pairs the ranked candidates table named.
+
+    The Residuals tab ranks every pair of features by the deviance its A/E grid explains
+    beyond the one-way views; on the smooth GLM the top three are vehicle brand by vehicle
+    age, fuel by vehicle age and region by driver age, each a factor by a number, so each
+    is a spline of the number with one curve per level.
+    """
+    glm = _smooth_glm()
+    assert glm.terms is not None
+    glm.terms = {
+        **glm.terms,
+        "VehBrand*VehAge": Interaction(df=4, factor="VehBrand"),
+        "VehGas*VehAge": Interaction(df=4, factor="VehGas"),
+        "Region*DrivAge": Interaction(df=4, factor="Region"),
+    }
+    return glm
+
+
 def _piecewise_glm() -> GLM:
     """Build the smooth GLM's shapes as piecewise linear terms: the nets' best encoding, as a GLM.
 
@@ -389,16 +408,19 @@ BENCHMARKS: dict[str, Benchmark] = {
             ModelSpec("glm_piecewise", _piecewise_glm, list(_FOSS_COLUMNS)),
             ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
             ModelSpec("glm_interaction", _interaction_glm, list(_FOSS_COLUMNS)),
+            ModelSpec("glm_interactions", _interactions_glm, list(_FOSS_COLUMNS)),
             *_shallow_lightgbm("poisson", _FOSS_ONEHOT, _FOSS_COLUMNS),
             _lightgbm("poisson", _FOSS_ONEHOT, _FOSS_COLUMNS),
         ],
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
-        features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+        # every column, so the interaction candidates rank every pair
+        features=list(_FOSS_COLUMNS),
         ladder=[
             "glm_full",
             "glm_splines",
             "glm_smooth",
             "glm_interaction",
+            "glm_interactions",
             "lightgbm_additive",
             "lightgbm_pairs",
             "lightgbm",
@@ -443,7 +465,7 @@ BENCHMARKS: dict[str, Benchmark] = {
         ],
         # train strictly before test: the first 30 % of hours, then five consecutive blocks
         make_splits=lambda df: splits.time_ordered(df.hour_index, n_folds=5),
-        features=["hour", "temp", "weather", "workingday"],
+        features=list(_BIKE_COLUMNS),  # every column, so the candidates rank every pair
         time="hour_index",
         ladder=[
             "glm_poisson",

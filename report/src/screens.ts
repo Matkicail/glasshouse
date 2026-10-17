@@ -419,9 +419,27 @@ function residualsScreen(doc: ReportDoc, root: HTMLElement): void {
     renderChart(c1, histogramSpec(r, label, doc.models));
     renderChart(c2, scatterSpec(r, label, doc.models, doc.provenance.sample_rows));
     const pairs = r.by_pair ?? [];
+    const ranked = r.pairs_ranked ?? [];
+    if (ranked.length) {
+      const modelDeviance = doc.scorecards[label]?.metrics["deviance"];
+      out.append(el("h3", {}, ["Interaction candidates: which pair the model most needs"]));
+      out.append(el("table", { class: "grid candidates" }, [
+        el("thead", {}, [el("tr", {}, [el("th", {}, ["rank"]), el("th", {}, ["pair"]), el("th", {}, ["strength"]), el("th", {}, ["of the model's deviance"])])]),
+        el("tbody", {}, ranked.map((p, i) => el("tr", {}, [
+          el("td", { class: "num" }, [String(i + 1)]),
+          el("th", {}, [p.pair]),
+          el("td", { class: "num" }, [fmt(p.strength, 3)]),
+          el("td", { class: "num muted" }, [modelDeviance ? `${fmt(100 * p.strength / modelDeviance, 2)} %` : "—"]),
+        ]))),
+      ]));
+      out.append(el("p", { class: "caption" }, [
+        "Strength is the deviance per unit weight that the pair's A/E grid explains beyond its two one-way views: the model's expected totals are rescaled row by row and column by column until the margins match the actual totals, and what is left is the interaction. It is the most a perfect a × b term could remove on these rows, on the scorecard's deviance scale for a frequency model. The top of this table is the next term to add to a glass-box model; a tree's table should read near zero everywhere.",
+      ]));
+    }
     if (pairs.length) {
       out.append(el("h3", {}, ["Segments: A/E by two features"]));
-      const pairSel = select(pairs.map((g) => `${g.feature_a} × ${g.feature_b}`), `${pairs[0]!.feature_a} × ${pairs[0]!.feature_b}`);
+      const first = ranked[0] ? `${ranked[0].feature_a} × ${ranked[0].feature_b}` : `${pairs[0]!.feature_a} × ${pairs[0]!.feature_b}`;
+      const pairSel = select(pairs.map((g) => `${g.feature_a} × ${g.feature_b}`), first);
       const heat = el("div", { class: "chart heatmap" });
       out.append(el("div", { class: "controls" }, ["Pair ", pairSel]), heat);
       const drawPair = () => {

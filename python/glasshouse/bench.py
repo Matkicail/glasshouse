@@ -230,7 +230,25 @@ class BenchResult:
             "",
             "Fit time (all folds): " + ", ".join(f"{k} {v:.1f}s" for k, v in secs.items()) + ".",
         ]
+        candidates = self._candidates()
+        if candidates:
+            lines += [
+                "",
+                "Interaction candidates (deviance per unit weight a pair's A/E grid explains "
+                "beyond the one-way views; the three biggest per model):",
+                *candidates,
+            ]
         return "\n".join(lines)
+
+    def _candidates(self) -> list[str]:
+        """One line per model naming its three strongest pairs, if the report has any."""
+        out = []
+        for label in self.labels:
+            ranked = self.doc.get("residuals", {}).get(label, {}).get("pairs_ranked", [])
+            if ranked:
+                top = ", ".join(f"{r['pair']} {r['strength']:.3g}" for r in ranked[:3])
+                out.append(f"- {label}: {top}")
+        return out
 
     def write(self, directory: str | Path) -> Path:
         """Write the suite into ``directory``.

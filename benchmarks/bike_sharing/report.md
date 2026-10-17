@@ -23,4 +23,11 @@ Ladder: glm_poisson → glm_interaction → lightgbm_additive → lightgbm_pairs
 | mae | 85.364 ± 22 | 73.269 ± 23 | 85.071 ± 22 | **71.479 ± 23** | 72.17 ± 23 | 146.7 |
 | r2 | 0.49765 ± 0.11 | 0.63684 ± 0.12 | 0.51145 ± 0.11 | **0.67383 ± 0.1** | 0.6707 ± 0.095 | 0 |
 
-Fit time (all folds): glm_poisson 1.1s, glm_interaction 1.6s, lightgbm_additive 12.5s, lightgbm_pairs 7.7s, lightgbm 8.3s.
+Fit time (all folds): glm_poisson 1.6s, glm_interaction 2.4s, lightgbm_additive 17.1s, lightgbm_pairs 12.6s, lightgbm 13.3s.
+
+Interaction candidates (deviance per unit weight a pair's A/E grid explains beyond the one-way views; the three biggest per model):
+- glm_poisson: hour × workingday 19.6, workingday × temp 1.64, hour × temp 1.54
+- glm_interaction: hour × temp 1.44, season × hour 1.12, workingday × temp 0.707
+- lightgbm_additive: hour × workingday 19.7, hour × temp 1.62, workingday × temp 1.59
+- lightgbm_pairs: hour × workingday 0.669, temp × humidity 0.442, season × temp 0.431
+- lightgbm: season × temp 0.403, temp × humidity 0.392, hour × temp 0.315
