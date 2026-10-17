@@ -105,6 +105,7 @@ interface BenchBlock {
   summary: Record<string, Record<string, { mean: number; std: number }>>;
   naive_summary?: Record<string, { mean: number; std: number }>;
   folds: { label: string; fold: number; seconds: number }[];
+  ladder?: string[]; // model labels, least flexible first
 }
 
 interface ThresholdGrid {

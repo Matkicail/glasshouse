@@ -82,7 +82,15 @@ models = [
     ModelSpec("lightgbm", lambda: LightGBM(family="poisson", categorical=["region"]), cols),
 ]
 folds = splits.kfold(n, k=3, seed=0)
-result = bench.run(df, task, models, folds, dataset="synthetic frequency", features=["age"])
+result = bench.run(
+    df,
+    task,
+    models,
+    folds,
+    dataset="synthetic frequency",
+    features=["age"],
+    ladder=["glm_linear", "glm_smooth", "lightgbm"],
+)
 print(result.to_markdown())
 ```
 
@@ -91,19 +99,21 @@ print(result.to_markdown())
 
 Split: {'kind': 'random', 'method': 'kfold', 'k': 3, 'seed': 0}. Rows: 6,000. Models: glm_linear, glm_smooth, lightgbm.
 Scores are held-out, mean ± std over folds. Best per metric in bold; `naive` is the weighted mean of y (class prior for binomial), same folds.
+Ladder: glm_linear → glm_smooth → lightgbm.
 
 | metric | glm_linear | glm_smooth | lightgbm | naive |
 |---|---|---|---|---|
-| deviance | 0.7436 ± 0.036 | **0.71431 ± 0.029** | 0.74902 ± 0.036 | 0.77719 |
-| d2 | 0.043227 ± 0.00066 | **0.080579 ± 0.0067** | 0.036209 ± 0.002 | -3.7007e-17 |
-| gini | 0.24842 ± 0.01 | **0.34338 ± 0.022** | 0.28301 ± 0.021 | 0 |
-| normalized_gini | 0.26453 ± 0.0096 | **0.36581 ± 0.025** | 0.30134 ± 0.021 | 0 |
+| deviance | 0.7436 ± 0.036 | **0.71428 ± 0.029** | 0.74902 ± 0.036 | 0.77719 |
+| deviance_per_row | 0.44973 ± 0.021 | **0.43201 ± 0.017** | 0.45301 ± 0.021 | 0.47005 |
+| d2 | 0.043227 ± 0.00066 | **0.080629 ± 0.0067** | 0.036209 ± 0.002 | -3.7007e-17 |
+| gini | 0.24842 ± 0.01 | **0.34335 ± 0.022** | 0.28301 ± 0.021 | 0 |
+| normalized_gini | 0.26453 ± 0.0096 | **0.36578 ± 0.025** | 0.30134 ± 0.021 | 0 |
 | balance | 1.0003 ± 0.086 | **0.99974 ± 0.086** | 0.84322 ± 0.063 | 1 |
-| rmse | 0.53816 ± 0.024 | **0.53346 ± 0.022** | 0.54067 ± 0.022 | 0.54507 |
-| mae | 0.28835 ± 0.0075 | **0.28106 ± 0.0066** | 0.3043 ± 0.011 | 0.29608 |
-| r2 | 0.025201 ± 0.00071 | **0.041904 ± 0.0057** | 0.015785 ± 0.0068 | -7.4015e-17 |
+| rmse | 0.53816 ± 0.024 | **0.53345 ± 0.022** | 0.54067 ± 0.022 | 0.54507 |
+| mae | 0.28835 ± 0.0075 | **0.28105 ± 0.0066** | 0.3043 ± 0.011 | 0.29608 |
+| r2 | 0.025201 ± 0.00071 | **0.041942 ± 0.0057** | 0.015785 ± 0.0068 | -7.4015e-17 |
 
-Fit time (all folds): glm_linear 0.1s, glm_smooth 0.2s, lightgbm 0.4s.
+Fit time (all folds): glm_linear 0.1s, glm_smooth 0.3s, lightgbm 6.0s.
 ```
 
 The smooth found the U on its own (its `lambda_` is chosen by GCV on each training fold)
@@ -115,6 +125,17 @@ hidden that. If a term must not dip by business rule, say a premium that cannot 
 the bonus-malus rises, give it `Smooth(monotone="increasing")` and the fit honours it at
 every step; the one-way chart on the Curves tab shows the constraint doing its work. Now
 write the report and open it:
+
+The `ladder` names the models least flexible first: a linear table, a table with a shape,
+free trees. The Overview tab draws the primary metric along it, with the fold spread on each
+rung and the naive baseline as a dashed line, so the question "what did each step buy?" is
+one picture: here the step to the smooth is the whole gain and the step to the trees gives
+some back. On the real benchmarks the ladder has more rungs (`glm_full`, `glm_splines`,
+`glm_smooth`, `glm_interaction`, then LightGBM capped at depth one, at depth two, and
+free), and the two capped trees are what make it a decomposition: depth one is a sum of
+one-feature steps, so its distance from the GLM is shapes the GLM lacks; depth two is a sum
+of two-feature steps, so its further step is pairwise interactions; whatever the free trees
+add beyond that is structure a rating table cannot hold.
 
 ```python
 out = result.write("reports/synthetic_frequency")

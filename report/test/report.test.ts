@@ -66,6 +66,22 @@ describe("glasshouse report viewer", () => {
     expect(shares.reduce((a, b) => a + b, 0)).toBeCloseTo(100, 0);
   });
 
+  it("overview draws the ladder when the bench names one, least flexible first", () => {
+    const { api, root } = boot(true);
+    api.render(api.parse(text), root);
+    const chart = root.querySelector("#pane-overview .chart.ladder") as HTMLElement;
+    expect(chart).not.toBeNull();
+    expect(chart.querySelector(".chart-body")?.getAttribute("data-plotly")).toBe("2"); // the bars and the naive line
+    const calls = ((root.ownerDocument.defaultView as unknown as Record<string, unknown>).Plotly as { __calls: unknown[][] }).__calls;
+    const bars = calls.find((d) => (d[0] as { type: string }).type === "bar" && (d[0] as { name: string }).name === "deviance") as [{ x: string[]; y: number[] }];
+    expect(bars[0].x).toEqual(["mean", "glm", "kan"]);
+    expect(bars[0].y).toHaveLength(3);
+    // a document without a bench block (the binary fixture) draws no ladder
+    const other = boot(true);
+    other.api.render(other.api.parse(binaryText), other.root);
+    expect(other.root.querySelector(".chart.ladder")).toBeNull();
+  });
+
   it("model screen shows importance, a partial dependence per feature and the GLM coefficients", () => {
     const { api, root } = boot(true);
     api.render(api.parse(text), root);

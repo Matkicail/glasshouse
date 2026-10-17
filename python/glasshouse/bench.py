@@ -145,6 +145,7 @@ class BenchResult:
     folds: list[FoldResult]
     doc: dict[str, Any] = field(repr=False, default_factory=dict)
     labels: list[str] = field(default_factory=list)
+    ladder: list[str] | None = None
 
     def naive_summary(self) -> dict[str, tuple[float, float]]:
         """Return the naive baseline: metric -> (mean, std) across folds (same for every model)."""
@@ -184,6 +185,8 @@ class BenchResult:
                 for r in self.folds
             ],
         }
+        if self.ladder:
+            out["bench"]["ladder"] = list(self.ladder)
         return out
 
     def to_markdown(self) -> str:
@@ -199,6 +202,7 @@ class BenchResult:
             f"Split: {self.splits_spec}. Rows: {self.n_rows:,}. Models: {', '.join(self.labels)}.",
             "Scores are held-out, mean ± std over folds. Best per metric in bold; "
             "`naive` is the weighted mean of y (class prior for binomial), same folds.",
+            *([f"Ladder: {' → '.join(self.ladder)}."] if self.ladder else []),
             "",
             "| metric | " + " | ".join(self.labels) + " | naive |",
             "|---|" + "---|" * (len(self.labels) + 1),
@@ -258,6 +262,7 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
     time: str | None = None,
     progress: bool = False,
     explain_rows: int = 5000,
+    ladder: list[str] | None = None,
 ) -> BenchResult:
     """Fit every model on every fold, score every held-out fold, build the report.
 
@@ -276,8 +281,17 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
         the folds are time-ordered: it is the view that catches drift.
     progress
         Show a progress bar on stderr (one unit per model-fold, plus the report build).
+    ladder
+        Model labels in order of flexibility, least first (a linear table, then shapes, then
+        one interaction, then additive trees, pairwise trees, free trees). The report draws
+        the primary metric along it, so what each step buys is one picture; the labels must
+        be models of this run.
     """
     have = {str(c) for c in getattr(frame, "columns", [])}
+    unknown_rungs = [m for m in (ladder or []) if m not in {spec.label for spec in models}]
+    if unknown_rungs:
+        msg = f"ladder names models not in this run: {unknown_rungs}"
+        raise ValueError(msg)
     wanted = {task.target, *((task.exposure and [task.exposure]) or []), *(features or [])}
     wanted.update([time] if time else [])
     for spec in models:
@@ -338,6 +352,7 @@ def run(  # noqa: PLR0913 — the recipe: data, task, models, folds, plus proven
         folds=results,
         doc=built.to_dict(),
         labels=[m.label for m in models],
+        ladder=list(ladder) if ladder else None,
     )
 
 
