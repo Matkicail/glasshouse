@@ -16,6 +16,11 @@ Fairness and leakage choices, stated plainly:
 - Defaults are modest and named (2000 trees cap, learning rate 0.05, 31 leaves, stop after
   50 rounds without improvement); pass others if you disagree — they are printed in
   ``repr`` and land in the report's provenance either way.
+- ``max_depth`` caps every tree. Depth 1 is an additive model (each tree bends one feature,
+  no interactions); depth 2 lets each tree use two features, so the model is a sum of
+  pairwise interactions. Next to the unconstrained trees these two say how much of a GBM's
+  gain over a GLM is shapes, how much is pairs, and how much is beyond both. Set
+  ``num_leaves`` to match (2 and 4); LightGBM caps at the depth either way.
 
 Needs the dev dependencies (``lightgbm``, ``pandas``); import errors say so.
 """
@@ -45,6 +50,7 @@ class LightGBM:
     n_estimators: int = 2000
     learning_rate: float = 0.05
     num_leaves: int = 31
+    max_depth: int = -1  # LightGBM's "no limit"
     early_stopping: int = 50
     valid_fraction: float = 0.2
     seed: int = 0
@@ -86,6 +92,7 @@ class LightGBM:
             "n_estimators": self.n_estimators,
             "learning_rate": self.learning_rate,
             "num_leaves": self.num_leaves,
+            "max_depth": self.max_depth,
             "random_state": self.seed,
             "verbose": -1,
         }

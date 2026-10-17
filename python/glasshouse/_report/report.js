@@ -472,6 +472,32 @@ function edgeSpec(input, e) {
         table: { columns: [input, ...e.curves.map((_, q) => name(q))], rows },
     };
 }
+/** The primary metric along the bench's ladder of models, least flexible first, with the fold spread and the naive line. */
+function ladderSpec(bench, ladder, metric, models, naive) {
+    const rungs = ladder.filter((m) => bench.summary[m]?.[metric] !== undefined);
+    const mean = rungs.map((m) => bench.summary[m][metric].mean);
+    const std = rungs.map((m) => bench.summary[m][metric].std);
+    const lower = HIGHER_IS_BETTER[metric] === false;
+    const rows = rungs.map((m, i) => [i + 1, m, fmt(mean[i]), fmt(std[i]), i === 0 ? "—" : fmt(mean[i] - mean[i - 1])]);
+    const data = [{
+            type: "bar", name: metric, x: rungs, y: mean,
+            error_y: { type: "data", array: std, visible: true, thickness: 1 },
+            marker: { color: rungs.map((m) => colourOf(models, m)) },
+            hovertemplate: "%{x}<br>" + metric + " %{y:.5g}<extra></extra>",
+        }];
+    if (naive !== undefined && Number.isFinite(naive)) {
+        data.push({ type: "scatter", mode: "lines", name: "naive", x: rungs, y: rungs.map(() => naive), line: { color: "#999999", dash: "dash", width: 1 }, hoverinfo: "skip" });
+    }
+    const finite = [...mean, ...(naive !== undefined ? [naive] : [])];
+    const lo = Math.min(...finite), hi = Math.max(...finite), pad = (hi - lo) * 0.15 || Math.abs(hi) * 0.05 || 1;
+    return {
+        title: `The ladder: ${metric} as the model is allowed more`,
+        caption: `Left to right, each model may express more than the one before: a linear table, then shapes, then one interaction, then trees that bend one feature at a time (additive), trees of depth two (pairs) and free trees. A big step is where the data has that kind of structure; a flat step says the model class before it already held it. ${lower ? "Lower" : "Higher"} is better; the whisker is the spread across folds and the dashed line is the naive baseline.`,
+        data,
+        layout: { ...LAYOUT_BASE, showlegend: false, xaxis: { ...LAYOUT_BASE.xaxis, type: "category", title: "least flexible → most" }, yaxis: { ...LAYOUT_BASE.yaxis, title: metric, range: [lo - pad, hi + pad] } },
+        table: { columns: ["rung", "model", metric, "fold spread", "step from previous"], rows },
+    };
+}
 function histogramSpec(r, label, models) {
     const edges = r.histogram.edges;
     const centers = r.histogram.counts.map((_, i) => ((edges[i] ?? 0) + (edges[i + 1] ?? 0)) / 2);
@@ -571,6 +597,13 @@ function overviewScreen(doc, root) {
     root.append(el("p", { class: "caption" }, [
         `★ primary metric by convention for a ${doc.task.type} task, not a verdict. Bold = best model on that metric. ✓ / ✗ = better / worse than the naive baseline (the weighted mean of y${doc.task.type === "binary" ? ", i.e. the class prior" : ""}). Hover a metric for what it is for.`,
     ]));
+    const ladder = (doc.bench?.ladder ?? []).filter((m) => doc.bench?.summary[m]);
+    if (doc.bench && ladder.length > 1) {
+        root.append(el("h3", {}, ["The ladder: what each step of flexibility buys"]));
+        const chart = el("div", { class: "chart ladder" });
+        root.append(chart);
+        renderChart(chart, ladderSpec(doc.bench, ladder, primary, doc.models, doc.bench.naive_summary?.[primary]?.mean ?? doc.naive[primary]));
+    }
     if (doc.tournament && doc.models.length > 1) {
         root.append(el("h3", {}, ["Tournament: every risk to the cheapest model"]));
         root.append(tournamentTable(doc.tournament.overall, doc.models));

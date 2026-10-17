@@ -108,3 +108,29 @@ def test_fails_early() -> None:
         LightGBM(family="tweedie").fit(X, Y)
     with pytest.raises(ValueError, match="LightGBM supports"):
         LightGBM(family="binomial").fit(X, Y)
+
+
+def test_depth_caps_what_a_tree_can_learn() -> None:
+    """Depth 1 is additive and cannot hold an interaction; depth 2 holds a pair."""
+    frame = df.assign(power=rng.uniform(-1.0, 1.0, size=N))
+    eta_pair = -1.0 + 2.5 * ((frame.age - 45) / 30) * frame.power  # a pure interaction
+    frame["y"] = rng.poisson(np.exp(eta_pair) * frame.Exposure).astype(float)
+    cols = frame[["age", "power"]]
+    fold = splits.kfold(N, k=3, seed=0)[0]
+    te = fold.test_idx
+    w = frame.Exposure.to_numpy()[te]
+    rate = frame.y.to_numpy()[te] / w
+
+    def fit(depth: int) -> LightGBM:
+        return LightGBM(family="poisson", max_depth=depth, num_leaves=2**depth, seed=2).fit(
+            cols, frame.y, offset=OFFSET, fold=fold
+        )
+
+    def held_out(m: LightGBM) -> float:
+        return float(deviance(rate, m.predict(cols.iloc[te]), family="poisson", sample_weight=w))
+
+    additive, pairs = fit(1), fit(2)
+    for tree in additive.model_.booster_.dump_model()["tree_info"]:
+        assert tree["num_leaves"] <= 2  # one split per tree
+    assert held_out(pairs) < held_out(additive) * 0.9, (held_out(pairs), held_out(additive))
+    assert "max_depth=1" in repr(additive)
