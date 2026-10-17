@@ -13,7 +13,7 @@ from typing import Any
 
 from glasshouse import data, splits
 from glasshouse.bench import BenchResult, ModelSpec, TaskSpec, run
-from glasshouse.encoders import BSpline, Interaction, OneHot, Smooth
+from glasshouse.encoders import BSpline, Interaction, OneHot, Smooth, piecewise_linear
 from glasshouse.foss import GlumPoisson, SklearnPoisson
 from glasshouse.gbdt import LightGBM
 from glasshouse.glm import GLM
@@ -31,6 +31,7 @@ class Benchmark:
     make_splits: Callable[[Any], splits.Splits]
     features: list[str] = ()  # type: ignore[assignment]
     time: str | None = None  # residuals over this column; set it whenever the split is time-ordered
+    ladder: list[str] | None = None  # model labels least flexible first; the Overview draws it
 
 
 def _fremtpl2_models() -> list[ModelSpec]:
@@ -106,6 +107,28 @@ def _interaction_glm() -> GLM:
     assert glm.terms is not None
     glm.terms = {**glm.terms, "DrivAge*BonusMalus": Interaction(df=4)}
     return glm
+
+
+def _piecewise_glm() -> GLM:
+    """Build the smooth GLM's shapes as piecewise linear terms: the nets' best encoding, as a GLM.
+
+    The research track found the piecewise linear encoding the best way to hand a network a
+    number. The same encoding is a GLM term, so this row asks whether the encoding alone,
+    with nothing learned on top, moves the GLM.
+    """
+    return GLM(
+        family="poisson",
+        terms={
+            "Area": "onehot",
+            "VehGas": "onehot",
+            "VehBrand": "onehot",
+            "Region": "target",
+            "DrivAge": "piecewise",
+            "VehAge": "piecewise",
+            "BonusMalus": piecewise_linear(monotone="increasing"),
+            "LogDensity": "piecewise",
+        },
+    )
 
 
 def _research(
@@ -251,14 +274,74 @@ def _bike_glm() -> GLM:
     )
 
 
+def _bike_interaction_glm() -> GLM:
+    """Build the bike GLM plus the hour-by-workingday interaction the nets found.
+
+    The nets' correction on the bike data is the commute peaks: an hour curve that differs
+    between working days and the rest. A spline on hour times the workingday flag is that
+    interaction as a GLM term, one curve per kind of day.
+    """
+    glm = _bike_glm()
+    assert glm.terms is not None
+    glm.terms = {**glm.terms, "hour*workingday": Interaction(df=12, factor="workingday")}
+    return glm
+
+
 def _telco_glm() -> GLM:
     return GLM(family="binomial", terms=dict(_TELCO_TERMS))
+
+
+def _telco_splines_glm() -> GLM:
+    """Build the logistic with splines on its two numerics: the shapes the nets found.
+
+    The nets' gain on the churn data came through the piecewise encoding of tenure and the
+    monthly charge, which the recipe's logistic was given as straight lines. A spline on
+    each is the glass-box reply.
+    """
+    return GLM(
+        family="binomial",
+        terms={**_TELCO_TERMS, "tenure": "spline", "MonthlyCharges": "spline"},
+    )
+
+
+def _with_reply(fence: list[ModelSpec], reply: ModelSpec) -> list[ModelSpec]:
+    """Put the glass-box reply right after the fence's GLM, before the nets."""
+    return [fence[0], reply, *fence[1:]]
 
 
 def _lightgbm(family: FamilyName, categorical: list[str], columns: list[str]) -> ModelSpec:
     return ModelSpec(
         "lightgbm", lambda: LightGBM(family=family, categorical=list(categorical)), list(columns)
     )
+
+
+def _shallow_lightgbm(
+    family: FamilyName, categorical: list[str], columns: list[str]
+) -> list[ModelSpec]:
+    """Build the two constrained trees that decompose a GBM's gain: additive, then pairs.
+
+    Depth 1 is a sum of one-feature steps (every shape, no interaction); depth 2 is a sum
+    of two-feature steps (pairwise interactions). A stump moves the fit a little per round,
+    so at the default rate the additive row hit a 5 000-round cap on freMTPL2 and scored a
+    thousandth worse than when it converges; both shallow rows therefore take bigger steps
+    and a cap that is never reached (1 700 and 1 300 rounds on fold 0), and early stopping
+    decides, as for the free trees.
+    """
+
+    def make(depth: int) -> Callable[[], LightGBM]:
+        return lambda: LightGBM(
+            family=family,
+            categorical=list(categorical),
+            max_depth=depth,
+            num_leaves=2**depth,
+            learning_rate=0.2,
+            n_estimators=20_000,
+        )
+
+    return [
+        ModelSpec("lightgbm_additive", make(1), list(columns)),
+        ModelSpec("lightgbm_pairs", make(2), list(columns)),
+    ]
 
 
 BENCHMARKS: dict[str, Benchmark] = {
@@ -303,28 +386,23 @@ BENCHMARKS: dict[str, Benchmark] = {
                     "LogDensity",
                 ],
             ),
+            ModelSpec("glm_piecewise", _piecewise_glm, list(_FOSS_COLUMNS)),
             ModelSpec("glm_smooth", _smooth_glm, list(_FOSS_COLUMNS)),
             ModelSpec("glm_interaction", _interaction_glm, list(_FOSS_COLUMNS)),
-            ModelSpec(
-                "lightgbm",
-                lambda: LightGBM(
-                    family="poisson", categorical=["Area", "VehGas", "VehBrand", "Region"]
-                ),
-                [
-                    "Area",
-                    "VehGas",
-                    "VehBrand",
-                    "Region",
-                    "DrivAge",
-                    "VehAge",
-                    "VehPower",
-                    "BonusMalus",
-                    "LogDensity",
-                ],
-            ),
+            *_shallow_lightgbm("poisson", _FOSS_ONEHOT, _FOSS_COLUMNS),
+            _lightgbm("poisson", _FOSS_ONEHOT, _FOSS_COLUMNS),
         ],
         make_splits=lambda df: splits.stratified((df.ClaimNb > 0).astype(int), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+        ladder=[
+            "glm_full",
+            "glm_splines",
+            "glm_smooth",
+            "glm_interaction",
+            "lightgbm_additive",
+            "lightgbm_pairs",
+            "lightgbm",
+        ],
     ),
     "creditcard_glm": Benchmark(
         name="creditcard_glm",
@@ -346,10 +424,12 @@ BENCHMARKS: dict[str, Benchmark] = {
         task=TaskSpec(family="gamma", target="Severity", exposure="ClaimCount"),
         models=[
             ModelSpec("glm_gamma", _sev_glm, list(_SEV_COLUMNS)),
-            _lightgbm("gamma", ["Area", "VehGas", "VehBrand", "Region"], _SEV_COLUMNS),
+            *_shallow_lightgbm("gamma", _FOSS_ONEHOT, _SEV_COLUMNS),
+            _lightgbm("gamma", _FOSS_ONEHOT, _SEV_COLUMNS),
         ],
         make_splits=lambda df: splits.kfold(len(df), k=5, seed=0),
         features=["Region", "DrivAge", "VehBrand", "BonusMalus"],
+        ladder=["glm_gamma", "lightgbm_additive", "lightgbm_pairs", "lightgbm"],
     ),
     "bike_sharing": Benchmark(
         name="bike_sharing",
@@ -357,12 +437,21 @@ BENCHMARKS: dict[str, Benchmark] = {
         task=TaskSpec(family="poisson", target="count"),
         models=[
             ModelSpec("glm_poisson", _bike_glm, list(_BIKE_COLUMNS)),
+            ModelSpec("glm_interaction", _bike_interaction_glm, list(_BIKE_COLUMNS)),
+            *_shallow_lightgbm("poisson", ["season", "weather"], _BIKE_COLUMNS),
             _lightgbm("poisson", ["season", "weather"], _BIKE_COLUMNS),
         ],
         # train strictly before test: the first 30 % of hours, then five consecutive blocks
         make_splits=lambda df: splits.time_ordered(df.hour_index, n_folds=5),
         features=["hour", "temp", "weather", "workingday"],
         time="hour_index",
+        ladder=[
+            "glm_poisson",
+            "glm_interaction",
+            "lightgbm_additive",
+            "lightgbm_pairs",
+            "lightgbm",
+        ],
     ),
     "telco_churn": Benchmark(
         name="telco_churn",
@@ -370,6 +459,7 @@ BENCHMARKS: dict[str, Benchmark] = {
         task=TaskSpec(family="binomial", target="Churn"),
         models=[
             ModelSpec("logistic", _telco_glm, list(_TELCO_COLUMNS)),
+            ModelSpec("logistic_splines", _telco_splines_glm, list(_TELCO_COLUMNS)),
             ModelSpec(
                 "lasso_logistic",
                 lambda: GLM(
@@ -455,7 +545,10 @@ BENCHMARKS: dict[str, Benchmark] = {
         dataset="bike_sharing",
         task=TaskSpec(family="poisson", target="count"),
         models=[
-            *_fence("poisson", _bike_glm, _BIKE_COLUMNS, "glm_poisson"),
+            *_with_reply(
+                _fence("poisson", _bike_glm, _BIKE_COLUMNS, "glm_poisson"),
+                ModelSpec("glm_interaction", _bike_interaction_glm, list(_BIKE_COLUMNS)),
+            ),
             _lightgbm("poisson", ["season", "weather"], _BIKE_COLUMNS),
         ],
         make_splits=lambda df: splits.time_ordered(df.hour_index, n_folds=5),
@@ -469,7 +562,10 @@ BENCHMARKS: dict[str, Benchmark] = {
         name="telco_churn_cann",
         dataset="telco_churn",
         task=TaskSpec(family="binomial", target="Churn"),
-        models=_fence("binomial", _telco_glm, _TELCO_COLUMNS, "logistic"),
+        models=_with_reply(
+            _fence("binomial", _telco_glm, _TELCO_COLUMNS, "logistic"),
+            ModelSpec("logistic_splines", _telco_splines_glm, list(_TELCO_COLUMNS)),
+        ),
         make_splits=lambda df: splits.stratified(df.Churn.astype(int), k=5, seed=0),
         features=["Contract", "tenure", "InternetService", "MonthlyCharges"],
     ),
@@ -509,6 +605,7 @@ def run_named(name: str, *, progress: bool = False) -> BenchResult:
         features=list(b.features),
         time=b.time,
         progress=progress,
+        ladder=b.ladder,
     )
 
 

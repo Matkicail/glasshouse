@@ -74,7 +74,7 @@ If you already have predictions from any library, skip the fitting: `report.buil
 
 | tab | what it answers |
 |---|---|
-| Overview | every model on the task's panel with a tick against naive, the tournament (every risk to the cheapest model: who wins what, at what actual over expected), provenance |
+| Overview | every model on the task's panel with a tick against naive; the ladder (the primary metric along the recipe's models, least flexible first: what each step buys); the tournament (every risk to the cheapest model: who wins what, at what actual over expected); provenance |
 | Data | the outcome and the weight before any model: distributions, and each feature's weight and outcome rate |
 | Compare | two models: which wins each metric, their win sets, the double lift, both calibrations |
 | Curves | Lorenz, lift, calibration, one-way actual vs predicted by feature; ROC and precision-recall for binary tasks |
@@ -94,13 +94,13 @@ wrong: heavy-tailed claims, a rare event, a time-ordered series, and a churn boo
 **French motor claim frequency** (freMTPL2, 678,013 policies, Poisson with exposure offset,
 stratified 5-fold): `uv run glasshouse bench fremtpl2_challengers`.
 
-| metric | glm_full | glm_splines | glm_smooth | glm_interaction | lightgbm | naive |
-|---|---|---|---|---|---|---|
-| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | **0.5724 ± 0.0026** | 0.62488 |
-| deviance_per_row | 0.31973 ± 0.0013 | 0.31331 ± 0.0011 | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | **0.30253 ± 0.0012** | 0.33028 |
-| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052654 ± 0.0011 | 0.053769 ± 0.0014 | **0.08399 ± 0.0023** | 0 |
-| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48938 ± 0.016 | 0.49098 ± 0.016 | **0.53505 ± 0.021** | 0 |
-| balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0033 | 0.99991 ± 0.0038 | 0.99912 ± 0.0037 | 1 |
+| metric | glm_full | glm_splines | glm_piecewise | glm_smooth | glm_interaction | lightgbm_additive | lightgbm_pairs | lightgbm | naive |
+|---|---|---|---|---|---|---|---|---|---|
+| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59221 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | 0.58766 ± 0.0024 | 0.57751 ± 0.0025 | **0.5724 ± 0.0026** | 0.62488 |
+| deviance_per_row | 0.31973 ± 0.0013 | 0.31331 ± 0.0011 | 0.31301 ± 0.0011 | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | 0.31061 ± 0.0013 | 0.30524 ± 0.0013 | **0.30253 ± 0.0012** | 0.33028 |
+| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052279 ± 0.0012 | 0.052654 ± 0.0011 | 0.053769 ± 0.0014 | 0.059556 ± 0.0016 | 0.075801 ± 0.0025 | **0.08399 ± 0.0023** | 0 |
+| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48625 ± 0.018 | 0.48938 ± 0.016 | 0.49098 ± 0.016 | 0.49636 ± 0.016 | 0.51516 ± 0.023 | **0.53505 ± 0.021** | 0 |
+| balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0036 | 1 ± 0.0033 | 0.99991 ± 0.0038 | 1.0011 ± 0.0031 | 1.0011 ± 0.0037 | 0.99912 ± 0.0037 | 1 |
 
 `deviance` is scikit-learn's convention, per unit of exposure (its freMTPL2 tutorial gets
 0.625, 0.594 and 0.575 for the same three shapes); `deviance_per_row` is the same total per
@@ -111,51 +111,75 @@ The splined GLM closes most of the gap to LightGBM on ranking while staying a ta
 relativities. The two-feature A/E grids in the report name the biggest interaction it
 misses, age by bonus-malus, and adding that one term as a tensor-product spline buys a
 little more; the research track's nets on top of the same GLM (`docs/research.md`) say the
-rest of the gap is many small interactions, not one.
+rest of the gap is many small interactions, not one. `glm_piecewise` is the smooth GLM's
+shapes as piecewise linear terms, the encoding that served the nets best: as a GLM term it
+lands between the splines and the smooths, so what the nets gained from it was what they
+could build on top, not the encoding itself.
+
+The two capped trees turn the table into a ladder (the Overview tab draws it). LightGBM
+held to depth one is a sum of one-feature steps, so its distance from the smooth GLM is
+shapes the GLM lacks; depth two is a sum of two-feature steps, so its further step is
+pairwise interactions; the free trees add whatever is beyond pairs. Of the gap from the
+smooth GLM (0.5920) to the free trees (0.5724), shapes are about a fifth, pairs about a
+half, and higher-order structure about a quarter. The GLM's one hand-picked interaction
+took back a fifteenth of the pairs step, so the next glass-box question is which pairs, in
+order; `docs/research.md` has the ladder on all three datasets.
 
 **French motor claim severity** (freMTPL2sev, 24,944 policies with claims, gamma, weight =
 claim count): `uv run glasshouse bench fremtpl2_sev`.
 
-| metric | glm_gamma | lightgbm | naive |
-|---|---|---|---|
-| deviance | **1.5641 ± 0.14** | 1.5785 ± 0.21 | 1.5635 |
-| deviance_per_row | **1.6581 ± 0.15** | 1.6734 ± 0.22 | 1.6575 |
-| d2 | **-0.0047 ± 0.045** | -0.0083 ± 0.011 | 0 |
-| gini | **0.057 ± 0.075** | 0.042 ± 0.058 | 0 |
-| balance | **1.011 ± 0.12** | 1.081 ± 0.13 | 1 |
+| metric | glm_gamma | lightgbm_additive | lightgbm_pairs | lightgbm | naive |
+|---|---|---|---|---|---|
+| deviance | **1.5641 ± 0.14** | 1.5983 ± 0.19 | 1.5926 ± 0.2 | 1.5785 ± 0.21 | 1.5635 |
+| deviance_per_row | **1.6581 ± 0.15** | 1.6943 ± 0.2 | 1.6883 ± 0.21 | 1.6734 ± 0.22 | 1.6575 |
+| d2 | **-0.0046644 ± 0.045** | -0.022433 ± 0.016 | -0.018059 ± 0.0094 | -0.0083372 ± 0.011 | 0 |
+| gini | **0.057426 ± 0.075** | 0.052975 ± 0.07 | 0.038262 ± 0.05 | 0.041688 ± 0.058 | 0 |
+| balance | **1.0109 ± 0.12** | 1.0375 ± 0.15 | 1.0643 ± 0.16 | 1.0807 ± 0.13 | 1 |
 
-Neither model beats the mean claim on held-out deviance, and the panel says so. That is the
+No model beats the mean claim on held-out deviance, and the panel says so. That is the
 known result on this data: severity is close to unpredictable from the policy features, and
-a report that hides the naive row would have you deploy a model that adds nothing.
+a report that hides the naive row would have you deploy a model that adds nothing. The
+ladder is flat within the fold spread, and the trees drift further off balance the more
+they are allowed.
 
 **Hourly bike rentals** (17,379 hours over two years, Poisson, time-ordered folds that train
 strictly before they test): `uv run glasshouse bench bike_sharing`.
 
-| metric | glm_poisson | lightgbm | naive |
-|---|---|---|---|
-| deviance | 66.51 ± 19 | **43.02 ± 14** | 161.63 |
-| d2 | 0.586 ± 0.096 | **0.733 ± 0.077** | 0 |
-| balance | **1.401 ± 0.17** | 1.405 ± 0.15 | 1 |
-| mae | 85.4 ± 22 | **72.2 ± 23** | 146.7 |
+| metric | glm_poisson | glm_interaction | lightgbm_additive | lightgbm_pairs | lightgbm | naive |
+|---|---|---|---|---|---|---|
+| deviance | 66.508 ± 19 | 45.836 ± 16 | 65.093 ± 18 | **41.813 ± 14** | 43.015 ± 14 | 161.63 |
+| d2 | 0.58618 ± 0.096 | 0.71568 ± 0.093 | 0.59359 ± 0.095 | **0.74127 ± 0.079** | 0.73281 ± 0.077 | 0 |
+| balance | 1.4006 ± 0.17 | 1.4015 ± 0.17 | 1.4025 ± 0.16 | **1.3897 ± 0.16** | 1.405 ± 0.15 | 1 |
+| mae | 85.364 ± 22 | 73.269 ± 23 | 85.071 ± 22 | **71.479 ± 23** | 72.17 ± 23 | 146.7 |
 
-Both models rank the hours well and both are 40% under on the level: demand grew from 2011
+All three rank the hours well and all are 40% under on the level: demand grew from 2011
 to 2012 and a model trained on the past cannot see the growth. A random split would have
-hidden that; the time split and the residuals-over-time view show it.
+hidden that; the time split and the residuals-over-time view show it. `glm_interaction` is
+the GLM plus one term, the hour curve by working day (`Interaction(df=12,
+factor="workingday")`): the commute peaks the nets found, as a rating table, in under two
+seconds, closing most of the gap to the tree. The ladder says why that one term does so
+much: trees held to depth one gain almost nothing on the GLM (its splines already hold the
+shapes), trees of depth two take the whole gap and beat the free trees, so on this data the
+gap is pairwise interactions and nothing else.
 
-**Telco customer churn** (7,043 customers, 26.5% churn, logistic vs lasso logistic on
-fifteen one-hot factors, stratified 5-fold): `uv run glasshouse bench telco_churn`.
+**Telco customer churn** (7,043 customers, 26.5% churn, logistic, splined logistic and
+lasso logistic on fifteen one-hot factors, stratified 5-fold): `uv run glasshouse bench
+telco_churn`.
 
-| metric | logistic | lasso_logistic | group_lasso_logistic | naive |
-|---|---|---|---|---|
-| log_loss | 0.4186 ± 0.0097 | **0.4183 ± 0.01** | 0.4266 ± 0.012 | 0.5786 |
-| roc_auc | 0.8433 ± 0.0088 | **0.8434 ± 0.0093** | 0.8373 ± 0.012 | 0.5 |
-| average_precision | 0.6539 ± 0.016 | **0.6543 ± 0.018** | 0.6484 ± 0.014 | 0.2654 |
-| mcc | **0.4663 ± 0.024** | 0.4642 ± 0.022 | 0.4400 ± 0.02 | 0 |
+| metric | logistic | logistic_splines | lasso_logistic | group_lasso_logistic | naive |
+|---|---|---|---|---|---|
+| log_loss | 0.4186 ± 0.0097 | **0.4101 ± 0.011** | 0.4183 ± 0.01 | 0.4266 ± 0.012 | 0.5786 |
+| roc_auc | 0.8433 ± 0.0088 | **0.8502 ± 0.0092** | 0.8434 ± 0.0093 | 0.8373 ± 0.012 | 0.5 |
+| average_precision | 0.6539 ± 0.016 | **0.6722 ± 0.014** | 0.6543 ± 0.018 | 0.6484 ± 0.014 | 0.2654 |
+| mcc | 0.4663 ± 0.024 | **0.4765 ± 0.014** | 0.4642 ± 0.022 | 0.4400 ± 0.02 | 0 |
 
 The lasso path chosen by cross-validation lands on the same model as the plain logistic,
 which is the honest answer on a book this size with fifteen well-chosen factors. The group
 lasso on the one-standard-error rule drops whole factors and pays a little log-loss for a
 shorter rating table; the report shows the price of that choice rather than hiding it.
+What does move the book is a shape: `logistic_splines` gives tenure and the monthly charge
+a spline each where the logistic had straight lines, and beats every neural model of the
+research track on every metric, in two seconds.
 
 **Credit-card fraud** (284,807 transactions, 0.17% positives, logistic, stratified 5-fold):
 `uv run glasshouse bench creditcard_glm`.
@@ -196,7 +220,9 @@ Threshold tab's alerts per catch, are the numbers a fraud team can act on.
   GLM's terms; and three numeric encodings (raw, piecewise linear, periodic) to run any of
   them under, so the feature-encoding trade-off is a row on the leaderboard. The fence runs
   on all four datasets (frequency, severity, a time-ordered count, churn), and the report
-  draws what each net adds to its GLM along every feature.
+  draws what each net adds to its GLM along every feature. Each net's gain then got its
+  glass-box reply, one GLM term per dataset; on churn and bike sharing the term takes back
+  most or all of it.
 
 Not trying to be scikit-learn. It does a few things and does them well.
 

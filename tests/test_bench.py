@@ -74,7 +74,14 @@ def test_rate_task_is_scored_on_the_rate_so_exact_ties_stay_ties() -> None:
 
 
 def test_report_json_markdown_and_html(tmp_path: Path) -> None:
-    res = bench.run(df, TASK, MODELS, splits.kfold(N, k=2, seed=1), dataset="synthetic")
+    res = bench.run(
+        df,
+        TASK,
+        MODELS,
+        splits.kfold(N, k=2, seed=1),
+        dataset="synthetic",
+        ladder=["age_only", "full"],
+    )
     out = res.write(tmp_path / "synthetic")
     payload = json.loads((out / "report.json").read_text())
     assert payload["schema"] == "glasshouse-report/1"
@@ -85,8 +92,9 @@ def test_report_json_markdown_and_html(tmp_path: Path) -> None:
         payload["provenance"]["n_rows"]
         == len(res.doc["models"]) * 0 + payload["provenance"]["n_rows"]
     )
-    md = (out / "report.md").read_text()
+    md = (out / "report.md").read_text(encoding="utf-8")  # the arrow is not in cp1252
     assert "| deviance |" in md and "**" in md and "naive" in md
+    assert "Ladder: age_only → full." in md and payload["bench"]["ladder"] == ["age_only", "full"]
     html = (out / "report.html").read_text(encoding="utf-8")
     assert "GlasshouseReport" in html and "__GLASSHOUSE_" not in html
     pinned = json.loads((out / "pinned.json").read_text())

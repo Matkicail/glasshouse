@@ -76,6 +76,44 @@
     "std": 0.0005196661621732861
    }
   },
+  "glm_piecewise": {
+   "deviance": {
+    "mean": 0.592210261653989,
+    "std": 0.0020864064144862754
+   },
+   "deviance_per_row": {
+    "mean": 0.3130087061403014,
+    "std": 0.0011001601943994598
+   },
+   "d2": {
+    "mean": 0.052279062682370106,
+    "std": 0.001226751071128926
+   },
+   "gini": {
+    "mean": 0.48624517116326854,
+    "std": 0.017957114021408035
+   },
+   "normalized_gini": {
+    "mean": 0.4911428257386964,
+    "std": 0.018105414767465938
+   },
+   "balance": {
+    "mean": 1.0000095977523173,
+    "std": 0.0035526662014729905
+   },
+   "rmse": {
+    "mean": 0.7336351819184772,
+    "std": 0.011628833121995972
+   },
+   "mae": {
+    "mean": 0.1856989312363107,
+    "std": 0.000549622206600804
+   },
+   "r2": {
+    "mean": 0.007867418261293424,
+    "std": 0.0005639980562037335
+   }
+  },
   "glm_smooth": {
    "deviance": {
     "mean": 0.5919761576458861,
@@ -150,6 +188,82 @@
    "r2": {
     "mean": 0.008174229382086073,
     "std": 0.0006158229544656124
+   }
+  },
+  "lightgbm_additive": {
+   "deviance": {
+    "mean": 0.5876637645764842,
+    "std": 0.0023535120963323456
+   },
+   "deviance_per_row": {
+    "mean": 0.31060608238223597,
+    "std": 0.0013375000338975076
+   },
+   "d2": {
+    "mean": 0.059556042485065054,
+    "std": 0.0015795306792468343
+   },
+   "gini": {
+    "mean": 0.4963570844230986,
+    "std": 0.016322158575704168
+   },
+   "normalized_gini": {
+    "mean": 0.5013548481015803,
+    "std": 0.016393719524393266
+   },
+   "balance": {
+    "mean": 1.0011424706384093,
+    "std": 0.00313462802587367
+   },
+   "rmse": {
+    "mean": 0.7332035319565893,
+    "std": 0.01161126893078293
+   },
+   "mae": {
+    "mean": 0.18484613646251852,
+    "std": 0.0006405194420468946
+   },
+   "r2": {
+    "mean": 0.009034052638559298,
+    "std": 0.0006769088114355211
+   }
+  },
+  "lightgbm_pairs": {
+   "deviance": {
+    "mean": 0.5775125374347125,
+    "std": 0.002527264031576969
+   },
+   "deviance_per_row": {
+    "mean": 0.3052401357833449,
+    "std": 0.0012907398538530377
+   },
+   "d2": {
+    "mean": 0.07580055065532469,
+    "std": 0.002487545587273573
+   },
+   "gini": {
+    "mean": 0.5151643766602005,
+    "std": 0.022604057513994098
+   },
+   "normalized_gini": {
+    "mean": 0.5203512803195738,
+    "std": 0.022757657161185656
+   },
+   "balance": {
+    "mean": 1.001063122235537,
+    "std": 0.003693051543405349
+   },
+   "rmse": {
+    "mean": 0.730998032434502,
+    "std": 0.011667164505645672
+   },
+   "mae": {
+    "mean": 0.18314066589083197,
+    "std": 0.000570646666794378
+   },
+   "r2": {
+    "mean": 0.01499057871919307,
+    "std": 0.0008036164774579093
    }
   },
   "lightgbm": {
@@ -233,127 +347,211 @@
   {
    "label": "glm_full",
    "fold": 0,
-   "seconds": 1.381
+   "seconds": 1.553
   },
   {
    "label": "glm_full",
    "fold": 1,
-   "seconds": 1.247
+   "seconds": 1.353
   },
   {
    "label": "glm_full",
    "fold": 2,
-   "seconds": 1.215
+   "seconds": 1.33
   },
   {
    "label": "glm_full",
    "fold": 3,
-   "seconds": 1.235
+   "seconds": 1.323
   },
   {
    "label": "glm_full",
    "fold": 4,
-   "seconds": 1.255
+   "seconds": 1.379
   },
   {
    "label": "glm_splines",
    "fold": 0,
-   "seconds": 2.335
+   "seconds": 2.617
   },
   {
    "label": "glm_splines",
    "fold": 1,
-   "seconds": 2.282
+   "seconds": 2.495
   },
   {
    "label": "glm_splines",
    "fold": 2,
-   "seconds": 2.323
+   "seconds": 2.549
   },
   {
    "label": "glm_splines",
    "fold": 3,
-   "seconds": 2.358
+   "seconds": 2.546
   },
   {
    "label": "glm_splines",
    "fold": 4,
-   "seconds": 2.272
+   "seconds": 2.453
+  },
+  {
+   "label": "glm_piecewise",
+   "fold": 0,
+   "seconds": 2.474
+  },
+  {
+   "label": "glm_piecewise",
+   "fold": 1,
+   "seconds": 2.512
+  },
+  {
+   "label": "glm_piecewise",
+   "fold": 2,
+   "seconds": 2.528
+  },
+  {
+   "label": "glm_piecewise",
+   "fold": 3,
+   "seconds": 2.549
+  },
+  {
+   "label": "glm_piecewise",
+   "fold": 4,
+   "seconds": 2.516
   },
   {
    "label": "glm_smooth",
    "fold": 0,
-   "seconds": 30.945
+   "seconds": 32.005
   },
   {
    "label": "glm_smooth",
    "fold": 1,
-   "seconds": 30.655
+   "seconds": 31.711
   },
   {
    "label": "glm_smooth",
    "fold": 2,
-   "seconds": 31.255
+   "seconds": 33.488
   },
   {
    "label": "glm_smooth",
    "fold": 3,
-   "seconds": 30.573
+   "seconds": 32.006
   },
   {
    "label": "glm_smooth",
    "fold": 4,
-   "seconds": 31.863
+   "seconds": 31.647
   },
   {
    "label": "glm_interaction",
    "fold": 0,
-   "seconds": 42.027
+   "seconds": 42.501
   },
   {
    "label": "glm_interaction",
    "fold": 1,
-   "seconds": 41.377
+   "seconds": 42.71
   },
   {
    "label": "glm_interaction",
    "fold": 2,
-   "seconds": 42.613
+   "seconds": 42.917
   },
   {
    "label": "glm_interaction",
    "fold": 3,
-   "seconds": 40.91
+   "seconds": 43.402
   },
   {
    "label": "glm_interaction",
    "fold": 4,
-   "seconds": 39.356
+   "seconds": 40.046
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 0,
+   "seconds": 38.715
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 1,
+   "seconds": 32.443
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 2,
+   "seconds": 22.988
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 3,
+   "seconds": 38.494
+  },
+  {
+   "label": "lightgbm_additive",
+   "fold": 4,
+   "seconds": 20.194
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 0,
+   "seconds": 8.293
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 1,
+   "seconds": 7.195
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 2,
+   "seconds": 6.732
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 3,
+   "seconds": 6.208
+  },
+  {
+   "label": "lightgbm_pairs",
+   "fold": 4,
+   "seconds": 5.569
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 13.72
+   "seconds": 8.156
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 9.109
+   "seconds": 9.73
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 6.434
+   "seconds": 6.795
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 9.174
+   "seconds": 9.763
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 9.023
+   "seconds": 9.606
   }
+ ],
+ "ladder": [
+  "glm_full",
+  "glm_splines",
+  "glm_smooth",
+  "glm_interaction",
+  "lightgbm_additive",
+  "lightgbm_pairs",
+  "lightgbm"
  ]
 }

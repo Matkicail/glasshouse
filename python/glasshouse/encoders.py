@@ -579,6 +579,15 @@ class Interaction:
     the group lasso drops it whole. A two-feature A/E grid that goes flat after adding it
     is the picture of an interaction found.
 
+    When one side is a categorical (or a 0/1 flag), name it as ``factor``: that side is
+    one-hot encoded with its reference level dropped, and the term is the other side's
+    spline times each indicator, so every level gets its own curve as a departure from the
+    reference level's. A spline on a two-valued column would collapse to constant columns,
+    so the factor form is the one to use for ``"hour*workingday"``::
+
+        GLM(family="poisson", terms={"hour": BSpline(df=12),
+                                     "hour*workingday": Interaction(df=12, factor="workingday")})
+
     Examples
     --------
     >>> from glasshouse.encoders import Interaction
@@ -586,13 +595,18 @@ class Interaction:
     >>> m, names = enc.fit_transform(([0.0, 0.5, 1.0, 1.5, 2.0], [1.0, 2.0, 3.0, 4.0, 5.0]))
     >>> m.shape, names[:2]
     ((5, 16), ['a*b_1_1', 'a*b_1_2'])
+    >>> by = Interaction(df=4, name="a*g", factor="g")
+    >>> m, names = by.fit_transform(([0.0, 0.5, 1.0, 1.5, 2.0], ["u", "v", "u", "v", "u"]))
+    >>> m.shape, names
+    ((5, 4), ['a*g_1_g=v', 'a*g_2_g=v', 'a*g_3_g=v', 'a*g_4_g=v'])
     """
 
     df: int = 4
     degree: int = 3
     name: str = "a*b"
-    a_: BSpline = field(default_factory=BSpline, repr=False)
-    b_: BSpline = field(default_factory=BSpline, repr=False)
+    factor: str | None = None
+    a_: BSpline | OneHot = field(default_factory=BSpline, repr=False)
+    b_: BSpline | OneHot = field(default_factory=BSpline, repr=False)
 
     def fit(
         self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
@@ -601,22 +615,39 @@ class Interaction:
         _ = y, sample_weight
         left, right = self._pair(x)
         a, b = self.name.split("*", 1) if "*" in self.name else ("a", "b")
-        self.a_ = BSpline(df=self.df, degree=self.degree, name=a).fit(left)
-        self.b_ = BSpline(df=self.df, degree=self.degree, name=b).fit(right)
+        if self.factor is not None and self.factor not in (a, b):
+            msg = f"{self.name}: factor={self.factor!r} is neither side of the interaction"
+            raise ValueError(msg)
+        self.a_ = self._marginal(a).fit(left)
+        self.b_ = self._marginal(b).fit(right)
         return self
 
+    def _marginal(self, side: str) -> BSpline | OneHot:
+        """Build one side's basis: a one-hot for the factor, a B-spline for anything else."""
+        if side == self.factor:
+            return OneHot(name=side)
+        return BSpline(df=self.df, degree=self.degree, name=side)
+
     def transform(self, x: ArrayLike) -> tuple[F64, list[str]]:
-        """Every product of one column of each marginal basis, in row-major order."""
+        """Every product of one column of each marginal basis, in row-major order.
+
+        A spline column is named by its index, a one-hot column by its level, so the names
+        say which curve a coefficient belongs to.
+        """
         left, right = self._pair(x)
-        ma, _ = self.a_.transform(left)
-        mb, _ = self.b_.transform(right)
+        ma, names_a = self.a_.transform(left)
+        mb, names_b = self.b_.transform(right)
         out = (ma[:, :, None] * mb[:, None, :]).reshape(len(ma), -1)
-        names = [
-            f"{self.name}_{i}_{j}"
-            for i in range(1, ma.shape[1] + 1)
-            for j in range(1, mb.shape[1] + 1)
-        ]
+        labels_a = self._labels(self.a_, names_a)
+        labels_b = self._labels(self.b_, names_b)
+        names = [f"{self.name}_{i}_{j}" for i in labels_a for j in labels_b]
         return np.ascontiguousarray(out), names
+
+    @staticmethod
+    def _labels(basis: BSpline | OneHot, names: list[str]) -> list[str]:
+        if isinstance(basis, OneHot):
+            return names  # "g=v": the level
+        return [str(i) for i in range(1, len(names) + 1)]
 
     def fit_transform(
         self, x: ArrayLike, y: ArrayLike | None = None, sample_weight: ArrayLike | None = None
@@ -631,6 +662,7 @@ class Interaction:
             "name": self.name,
             "df": self.df,
             "degree": self.degree,
+            "factor": self.factor,
             "a": self.a_.to_dict(),
             "b": self.b_.to_dict(),
         }
@@ -638,9 +670,9 @@ class Interaction:
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> Interaction:
         """Rebuild from :meth:`to_dict`."""
-        enc = cls(df=d["df"], degree=d["degree"], name=d["name"])
-        enc.a_ = BSpline.from_dict(d["a"])
-        enc.b_ = BSpline.from_dict(d["b"])
+        enc = cls(df=d["df"], degree=d["degree"], name=d["name"], factor=d.get("factor"))
+        enc.a_ = _marginal_from_dict(d["a"])
+        enc.b_ = _marginal_from_dict(d["b"])
         return enc
 
     def _pair(self, x: ArrayLike) -> tuple[ArrayLike, ArrayLike]:
@@ -648,6 +680,13 @@ class Interaction:
             msg = f"{self.name}: an interaction takes a pair of columns (a, b)"
             raise ValueError(msg)
         return x[0], x[1]
+
+
+def _marginal_from_dict(d: dict[str, Any]) -> BSpline | OneHot:
+    """One side of a saved interaction: a spline, or the factor's one-hot."""
+    if d["kind"] == "onehot":
+        return OneHot.from_dict(d)
+    return BSpline.from_dict(d)
 
 
 Encoder = OneHot | TargetEncode | Standardize | BSpline | Smooth | Interaction

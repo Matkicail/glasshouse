@@ -5,6 +5,27 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `LightGBM(max_depth=...)`, and two constrained rows on motor frequency, motor severity
+  and bike sharing: `lightgbm_additive` (depth 1, a sum of one-feature steps, no
+  interaction) and `lightgbm_pairs` (depth 2, a sum of two-feature steps). Next to the free
+  trees they say how much of a GBM's gain over the GLM is shapes, how much pairs, and how
+  much neither.
+- `bench.run(ladder=[...])` and `Benchmark.ladder`: the recipe's models least flexible
+  first. The Overview tab draws the primary metric along the ladder with the fold spread
+  and the naive line, `report.md` states the order, and the labels must be models of the
+  run. Three benchmarks re-pinned.
+- `Interaction(factor="workingday")`: an interaction where one side is a categorical or a
+  0/1 flag. That side is one-hot encoded with its reference level dropped and the other
+  side's spline is multiplied by each indicator, so every level gets its own curve as a
+  departure from the reference level's. A spline on a two-valued column collapses to
+  constant columns, so this is the form for a curve that differs by group.
+- The glass-box replies to the research track, one row per dataset, each the one GLM term
+  the nets' gain pointed at: `glm_piecewise` on motor frequency (the smooth GLM's shapes as
+  piecewise linear terms, the encoding that served the nets best), `glm_interaction` on
+  bike sharing (the hour curve by working day), `logistic_splines` on churn (splines on
+  tenure and the monthly charge where the logistic had straight lines). Each sits in its
+  dataset's plain benchmark and, on bike sharing and churn, next to the nets in the fence
+  benchmark; `docs/research.md` reads the result. Five benchmarks re-pinned.
 - `metrics.deviance_per_row`, and a `deviance_per_row` row on every weighted scorecard: the
   weighted total deviance divided by the row count rather than the total weight, which for
   a frequency model is the deviance per policy of Wüthrich & Merz (formula 5.28) and the

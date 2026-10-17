@@ -80,8 +80,10 @@ Python side computes everything; the TS side only draws.
    across models. Sorted by the task's
    primary metric (deviance for the actuarial trio, average precision for binary, MAE for
    regression, normalised Gini for ranking) — with a visible note that the primary is a
-   convention, not a verdict. The provenance block (data, cleaning, split, sample) sits
-   under it, copyable.
+   convention, not a verdict. When the recipe names a `ladder` (its models least flexible
+   first), the primary metric is drawn along it with the fold spread and the naive line, so
+   what each step of flexibility buys is one picture. The provenance block (data, cleaning,
+   split, sample) sits under it, copyable.
 2. **Compare** — pick model A and model B: the `compare()` table, the double lift, and both
    calibration curves overlaid. This is the pricing-review screen.
 3. **Curves** — the task's charts with model toggles: Lorenz/lift/calibration, or PR/ROC/

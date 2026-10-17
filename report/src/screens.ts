@@ -55,6 +55,14 @@ function overviewScreen(doc: ReportDoc, root: HTMLElement): void {
     `★ primary metric by convention for a ${doc.task.type} task, not a verdict. Bold = best model on that metric. ✓ / ✗ = better / worse than the naive baseline (the weighted mean of y${doc.task.type === "binary" ? ", i.e. the class prior" : ""}). Hover a metric for what it is for.`,
   ]));
 
+  const ladder = (doc.bench?.ladder ?? []).filter((m) => doc.bench?.summary[m]);
+  if (doc.bench && ladder.length > 1) {
+    root.append(el("h3", {}, ["The ladder: what each step of flexibility buys"]));
+    const chart = el("div", { class: "chart ladder" });
+    root.append(chart);
+    renderChart(chart, ladderSpec(doc.bench, ladder, primary, doc.models, doc.bench.naive_summary?.[primary]?.mean ?? doc.naive[primary]));
+  }
+
   if (doc.tournament && doc.models.length > 1) {
     root.append(el("h3", {}, ["Tournament: every risk to the cheapest model"]));
     root.append(tournamentTable(doc.tournament.overall, doc.models));

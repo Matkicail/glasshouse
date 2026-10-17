@@ -67,8 +67,11 @@ if __name__ == "__main__":
         ],
         splits.kfold(N, k=3, seed=0),
         features=["region", "age"],
+        ladder=["mean", "glm", "kan"],
     )
     freq.doc["explain"] = run.doc["explain"]
+    # the Overview's ladder reads the bench block: the same small run supplies it
+    freq.doc["bench"] = run.to_dict()["bench"]
     out = freq.write(fixtures / "report_small.json")
     print(f"wrote {out} ({out.stat().st_size / 1024:.0f} KB)")
     binary = report.build(
