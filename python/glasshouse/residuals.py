@@ -258,6 +258,80 @@ def ae_by_two(  # noqa: PLR0913 — two features, one model, the knobs
     )
 
 
+def interaction_strength(grid: AEGrid, *, max_iter: int = 100, tol: float = 1e-12) -> float:
+    """Return the deviance per unit weight the pair grid explains beyond its two one-way views.
+
+    The model's expected totals per cell are rescaled by one factor per row and one per
+    column until the grid's margins match the actual totals (iterative proportional fitting,
+    the independence log-linear model with the model's predictions as offsets). What is left
+    is the Poisson deviance of the actual cell totals against that main-effects fit, divided
+    by the total weight: the deviance a perfect ``a*b`` term could remove on these rows,
+    on the scorecard's ``deviance`` scale for a frequency model and a ranking statistic on
+    the same footing for any other family. Zero for a grid the one-way views explain
+    entirely; the biggest number names the pair the model most needs. The golden reference
+    is statsmodels' Poisson GLM on the cells with the expected totals as offset.
+
+    Examples
+    --------
+    >>> from glasshouse.residuals import ae_by_two, interaction_strength
+    >>> flat = ae_by_two(["x", "x", "y", "y"], [0.0, 1.0, 0.0, 1.0], [1, 3, 2, 6], [1, 3, 2, 6],
+    ...                  n_bins=2)
+    >>> interaction_strength(flat)
+    0.0
+    >>> crossed = ae_by_two(["x", "x", "y", "y"], [0.0, 1.0, 0.0, 1.0], [3, 1, 1, 3],
+    ...                     [2, 2, 2, 2], n_bins=2)
+    >>> round(interaction_strength(crossed), 4)
+    0.5232
+    """
+    actual = grid.actual * grid.weight  # cell totals: Σ w y
+    expected = grid.predicted * grid.weight  # Σ w mu
+    actual = np.where(np.isfinite(actual), actual, 0.0)
+    expected = np.where(np.isfinite(expected), expected, 0.0)
+    total = float(grid.weight.sum())
+    if total <= 0 or expected.sum() <= 0:
+        return 0.0
+    fitted = expected.copy()
+    row_target, col_target = actual.sum(axis=1), actual.sum(axis=0)
+    for _ in range(max_iter):
+        before = fitted.copy()
+        rows = fitted.sum(axis=1)
+        fitted *= np.where(rows > 0, row_target / np.where(rows > 0, rows, 1.0), 0.0)[:, None]
+        cols = fitted.sum(axis=0)
+        fitted *= np.where(cols > 0, col_target / np.where(cols > 0, cols, 1.0), 0.0)[None, :]
+        if np.abs(fitted - before).max() <= tol * max(1.0, float(actual.sum())):
+            break
+    # Poisson deviance of the cells against the main-effects fit; A log(A/F) is 0 at A = 0
+    positive = (actual > 0) & (fitted > 0)
+    term = np.zeros_like(actual)
+    term[positive] = actual[positive] * np.log(actual[positive] / fitted[positive])
+    deviance_total = 2.0 * float((term - (actual - fitted)).sum())
+    return max(deviance_total, 0.0) / total
+
+
+def rank_pairs(grids: list[AEGrid]) -> list[dict[str, Any]]:
+    """Return every pair grid's strength, biggest first: the interaction candidates.
+
+    Examples
+    --------
+    >>> from glasshouse.residuals import ae_by_two, rank_pairs
+    >>> g = ae_by_two(["x", "x", "y", "y"], [0.0, 1.0, 0.0, 1.0], [3, 1, 1, 3], [2, 2, 2, 2],
+    ...               names=("group", "flag"), n_bins=2)
+    >>> top = rank_pairs([g])[0]
+    >>> top["feature_a"], top["feature_b"], round(top["strength"], 4)
+    ('group', 'flag', 0.5232)
+    """
+    ranked = [
+        {
+            "feature_a": g.feature_a,
+            "feature_b": g.feature_b,
+            "pair": f"{g.feature_a} × {g.feature_b}",  # noqa: RUF001 — the viewer's spelling
+            "strength": interaction_strength(g),
+        }
+        for g in grids
+    ]
+    return sorted(ranked, key=lambda r: -r["strength"])
+
+
 def _axis(feature: ArrayLike, w: F64 | None, n_bins: int, name: str) -> tuple[list[int], list[str]]:
     """Cut one feature: the bin index per row and a label per bin.
 
@@ -281,4 +355,13 @@ def _axis(feature: ArrayLike, w: F64 | None, n_bins: int, name: str) -> tuple[li
     return index.tolist(), labels
 
 
-__all__ = ["AEByFeature", "AEGrid", "ae_by_feature", "ae_by_two", "deviance", "pearson"]
+__all__ = [
+    "AEByFeature",
+    "AEGrid",
+    "ae_by_feature",
+    "ae_by_two",
+    "deviance",
+    "interaction_strength",
+    "pearson",
+    "rank_pairs",
+]

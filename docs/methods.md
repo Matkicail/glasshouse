@@ -227,6 +227,19 @@ References: McCullagh & Nelder (1989) §2.5; Nelder & Wedderburn, "Generalized L
   `floor · Σw / (n_a · n_b)`; the report greys thin cells out rather than dropping them.
   This is the interaction view: a one-way A/E of 1 for young drivers and 1 for powerful
   cars says nothing about young drivers in powerful cars.
+- **Interaction strength** of a pair grid (`residuals.interaction_strength`, ranked by
+  `rank_pairs`, the `pairs_ranked` list of every residual entry): with `A_ij = Σ w y` and
+  `E_ij = Σ w mu` the actual and expected totals per cell, rescale `E` by one factor per row
+  and one per column until its margins equal `A`'s (iterative proportional fitting, which is
+  the independence log-linear model `log F_ij = log E_ij + r_i + c_j` fitted by maximum
+  likelihood). The strength is the Poisson deviance of the cells against that fit,
+  `2 Σ [A_ij log(A_ij / F_ij) − (A_ij − F_ij)]`, divided by `Σ w`. It is the deviance per unit
+  weight a perfect `a × b` term could remove on these rows: on the scorecard's `deviance`
+  scale for a frequency model, and a ranking statistic on the same footing for any other
+  family (the cell totals are treated as Poisson whatever the rows are). Zero when the two
+  one-way views explain the grid; the biggest value names the pair the model most needs.
+  Thin cells are included: they carry little weight, so they move the number little.
+  Golden reference: statsmodels' Poisson GLM on the cells with `log E_ij` as offset.
 
 Golden references: statsmodels `resid_deviance`, `resid_pearson` (with `var_weights`).
 

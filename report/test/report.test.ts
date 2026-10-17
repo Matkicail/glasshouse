@@ -228,6 +228,10 @@ describe("glasshouse report viewer", () => {
     expect(pane.textContent).toContain("A/E by region and age");
     const pairSel = pane.querySelectorAll("select")[1] as HTMLSelectElement;
     expect(Array.from(pairSel.options).map((o) => o.value)).toEqual(["region × age"]);
+    // the interaction candidates: one row per pair, strength and its share of the model's deviance
+    const cand = Array.from(pane.querySelectorAll("table.candidates tbody tr"));
+    expect(cand.map((r) => r.querySelector("th")?.textContent)).toEqual(["region × age"]);
+    expect(cand[0]!.querySelectorAll("td")[2]!.textContent).toContain("%");
   });
 
   it("the heatmap leaves thin cells blank and keeps every other cell", () => {

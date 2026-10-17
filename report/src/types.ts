@@ -98,7 +98,15 @@ interface ResidualDoc {
   scatter: { fitted: number[]; deviance: number[]; actual: number[] };
   by_feature: AEByFeature[];
   by_pair?: AEGridDoc[];
+  pairs_ranked?: PairRank[]; // biggest first: the interaction candidates
   over_time: AEByFeature | null;
+}
+
+interface PairRank {
+  feature_a: string;
+  feature_b: string;
+  pair: string;
+  strength: number; // deviance per unit weight the pair grid explains beyond the one-way views
 }
 
 interface BenchBlock {

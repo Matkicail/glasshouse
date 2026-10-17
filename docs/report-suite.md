@@ -168,7 +168,9 @@ the residuals tab. Adopted into the backlog, in order of value:
 2. **Two-feature A/P heatmap** — DONE (2026-09-05): `residuals.ae_by_two` on a Rust
    `grid_table` (the one binning rule, `bin_index`, shared with the one-way table), the
    `by_pair` list on every residual entry (all pairs of `features`), and a heatmap per pair
-   on the Residuals tab with cells under the weight floor left blank.
+   on the Residuals tab with cells under the weight floor left blank. Then (2026-10-17) the
+   grids ranked: `pairs_ranked`, the deviance each grid explains beyond its one-way views,
+   as a table above the heatmap and the heatmap opening on the top pair.
 3. **Data overview tab** — DONE (2026-09-05): `glasshouse.profile`, the `data` block of the
    document (outcome and weight histograms with weighted summaries, one profile per
    feature: weight and mean outcome per even-width bin or level) and the Data tab after

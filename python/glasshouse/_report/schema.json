@@ -325,6 +325,33 @@
                 "$ref": "#/$defs/ae_by_feature"
               }
             ]
+          },
+          "pairs_ranked": {
+            "type": "array",
+            "description": "Every pair of features, biggest first: the deviance per unit weight its A/E grid explains beyond the two one-way views (iterative proportional fitting on the model's expected totals). The interaction candidates.",
+            "items": {
+              "type": "object",
+              "required": [
+                "feature_a",
+                "feature_b",
+                "pair",
+                "strength"
+              ],
+              "properties": {
+                "feature_a": {
+                  "type": "string"
+                },
+                "feature_b": {
+                  "type": "string"
+                },
+                "pair": {
+                  "type": "string"
+                },
+                "strength": {
+                  "type": "number"
+                }
+              }
+            }
           }
         }
       }

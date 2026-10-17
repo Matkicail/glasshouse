@@ -125,3 +125,57 @@ def test_fails_early() -> None:
         _core.residuals("studentised", "poisson", np.ones(2), np.ones(2))
     with pytest.raises(ValueError, match="infinite value"):
         residuals.ae_by_feature(np.array([1.0, np.inf]), [1.0, 1.0], [1.0, 1.0], name="x")
+
+
+def _cells(g: residuals.AEGrid) -> tuple[np.ndarray, np.ndarray]:
+    return (g.actual * g.weight).ravel(), (g.predicted * g.weight).ravel()
+
+
+def test_interaction_strength_is_the_independence_deviance_statsmodels_fits() -> None:
+    """Golden: statsmodels' Poisson GLM on the cells, row + column effects, log E as offset."""
+    region = rng.choice(["n", "s", "e"], size=N)
+    power = rng.uniform(-1.0, 1.0, size=N)
+    # the model has the marginals right and misses a region-by-power interaction
+    truth = np.exp(0.3 * power + np.where(region == "s", 0.8 * power, 0.0))
+    mu = np.exp(0.3 * power + np.where(region == "s", 0.25, 0.0))
+    y = rng.poisson(truth, size=N).astype(float)
+    g = residuals.ae_by_two(power, region, y, mu, W, names=("power", "region"), n_bins=5)
+    actual, expected = _cells(g)
+    rows = np.repeat(np.arange(5), 3)
+    cols = np.tile(np.arange(3), 5)
+    design = np.column_stack(
+        [np.ones(15), *[(rows == i) for i in range(1, 5)], *[(cols == j) for j in range(1, 3)]]
+    ).astype(float)
+    fit = sm.GLM(actual, design, family=sm.families.Poisson(), offset=np.log(expected)).fit()
+    assert residuals.interaction_strength(g) == pytest.approx(fit.deviance / W.sum(), rel=1e-8)
+    assert residuals.interaction_strength(g) > 0.0
+
+
+def test_interaction_strength_properties() -> None:
+    region = rng.choice(["n", "s", "e"], size=N)
+    power = rng.uniform(-1.0, 1.0, size=N)
+    truth = np.exp(0.3 * power + np.where(region == "s", 0.8 * power, 0.0))
+    y = rng.poisson(truth, size=N).astype(float)
+    # a model that is wrong only in its marginals: the one-way views explain the grid
+    marginal_only = truth * np.exp(0.4 * power) * np.where(region == "n", 1.3, 1.0)
+    flat = residuals.ae_by_two(power, region, y, marginal_only, W, n_bins=5)
+    # a model that misses the interaction
+    missing = np.exp(0.3 * power + np.where(region == "s", 0.25, 0.0))
+    crossed = residuals.ae_by_two(power, region, y, missing, W, n_bins=5)
+    assert residuals.interaction_strength(flat) < 0.3 * residuals.interaction_strength(crossed)
+    # symmetric in the two features
+    swapped = residuals.ae_by_two(region, power, y, missing, W, n_bins=5)
+    assert residuals.interaction_strength(swapped) == pytest.approx(
+        residuals.interaction_strength(crossed), rel=1e-10
+    )
+    # per unit weight: doubling every row's weight leaves it unchanged
+    doubled = residuals.ae_by_two(power, region, y, missing, 2 * W, n_bins=5)
+    assert residuals.interaction_strength(doubled) == pytest.approx(
+        residuals.interaction_strength(crossed), rel=1e-10
+    )
+    # the grid's own fit (mu = y per cell) has nothing left to explain
+    perfect = residuals.ae_by_two(power, region, y, y + 1e-9, W, n_bins=5)
+    assert residuals.interaction_strength(perfect) == pytest.approx(0.0, abs=1e-6)
+    ranked = residuals.rank_pairs([flat, crossed])
+    assert [r["strength"] for r in ranked] == sorted([r["strength"] for r in ranked], reverse=True)
+    assert ranked[0]["pair"] == "a × b"  # noqa: RUF001 — the viewer's spelling

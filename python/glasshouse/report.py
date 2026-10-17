@@ -302,6 +302,13 @@ def _residuals(  # noqa: PLR0913, PLR0917
         dev = residuals.deviance(y, mu, family=family, sample_weight=w, power=power)
         pea = residuals.pearson(y, mu, family=family, sample_weight=w, power=power)
         hist, edges = np.histogram(dev, bins=40)
+        grids = [
+            residuals.ae_by_two(
+                features[a], features[b], y, mu, w, names=(a, b), n_bins=n_bins, label=label
+            )
+            for i, a in enumerate(names)
+            for b in names[i + 1 :]
+        ]
         entry: dict[str, Any] = {
             "definition": {
                 "deviance": "sign(y - mu) * sqrt(w * d(y, mu))",
@@ -323,13 +330,9 @@ def _residuals(  # noqa: PLR0913, PLR0917
                 ).to_dict()
                 for name, col in features.items()
             ],
-            "by_pair": [
-                residuals.ae_by_two(
-                    features[a], features[b], y, mu, w, names=(a, b), n_bins=n_bins, label=label
-                ).to_dict()
-                for i, a in enumerate(names)
-                for b in names[i + 1 :]
-            ],
+            "by_pair": [g.to_dict() for g in grids],
+            # the interaction candidates: what each pair grid explains beyond its one-way views
+            "pairs_ranked": residuals.rank_pairs(grids),
             "over_time": None
             if time_col is None
             else residuals.ae_by_feature(
