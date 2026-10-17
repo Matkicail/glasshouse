@@ -94,13 +94,13 @@ wrong: heavy-tailed claims, a rare event, a time-ordered series, and a churn boo
 **French motor claim frequency** (freMTPL2, 678,013 policies, Poisson with exposure offset,
 stratified 5-fold): `uv run glasshouse bench fremtpl2_challengers`.
 
-| metric | glm_full | glm_splines | glm_piecewise | glm_smooth | glm_interaction | lightgbm_additive | lightgbm_pairs | lightgbm | naive |
-|---|---|---|---|---|---|---|---|---|---|
-| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59221 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | 0.58766 ± 0.0024 | 0.57751 ± 0.0025 | **0.5724 ± 0.0026** | 0.62488 |
-| deviance_per_row | 0.31973 ± 0.0013 | 0.31331 ± 0.0011 | 0.31301 ± 0.0011 | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | 0.31061 ± 0.0013 | 0.30524 ± 0.0013 | **0.30253 ± 0.0012** | 0.33028 |
-| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052279 ± 0.0012 | 0.052654 ± 0.0011 | 0.053769 ± 0.0014 | 0.059556 ± 0.0016 | 0.075801 ± 0.0025 | **0.08399 ± 0.0023** | 0 |
-| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48625 ± 0.018 | 0.48938 ± 0.016 | 0.49098 ± 0.016 | 0.49636 ± 0.016 | 0.51516 ± 0.023 | **0.53505 ± 0.021** | 0 |
-| balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0036 | 1 ± 0.0033 | 0.99991 ± 0.0038 | 1.0011 ± 0.0031 | 1.0011 ± 0.0037 | 0.99912 ± 0.0037 | 1 |
+| metric | glm_full | glm_splines | glm_piecewise | glm_smooth | glm_interaction | glm_interactions | lightgbm_additive | lightgbm_pairs | lightgbm | naive |
+|---|---|---|---|---|---|---|---|---|---|---|
+| deviance | 0.60493 ± 0.0025 | 0.59279 ± 0.0021 | 0.59221 ± 0.0021 | 0.59198 ± 0.0021 | 0.59128 ± 0.0021 | 0.58628 ± 0.0021 | 0.58766 ± 0.0024 | 0.57751 ± 0.0025 | **0.5724 ± 0.0026** | 0.62488 |
+| deviance_per_row | 0.31973 ± 0.0013 | 0.31331 ± 0.0011 | 0.31301 ± 0.0011 | 0.31289 ± 0.0011 | 0.31252 ± 0.0011 | 0.30988 ± 0.0012 | 0.31061 ± 0.0013 | 0.30524 ± 0.0013 | **0.30253 ± 0.0012** | 0.33028 |
+| d2 | 0.03192 ± 0.00033 | 0.051355 ± 0.0011 | 0.052279 ± 0.0012 | 0.052654 ± 0.0011 | 0.053769 ± 0.0014 | 0.061765 ± 0.0015 | 0.059556 ± 0.0016 | 0.075801 ± 0.0025 | **0.08399 ± 0.0023** | 0 |
+| gini | 0.39515 ± 0.016 | 0.48879 ± 0.016 | 0.48625 ± 0.018 | 0.48938 ± 0.016 | 0.49098 ± 0.016 | 0.48295 ± 0.022 | 0.49636 ± 0.016 | 0.51516 ± 0.023 | **0.53505 ± 0.021** | 0 |
+| balance | **1 ± 0.0049** | 1 ± 0.0037 | 1 ± 0.0036 | 1 ± 0.0033 | 0.99991 ± 0.0038 | 1 ± 0.0028 | 1.0011 ± 0.0031 | 1.0011 ± 0.0037 | 0.99912 ± 0.0037 | 1 |
 
 `deviance` is scikit-learn's convention, per unit of exposure (its freMTPL2 tutorial gets
 0.625, 0.594 and 0.575 for the same three shapes); `deviance_per_row` is the same total per
@@ -122,8 +122,13 @@ shapes the GLM lacks; depth two is a sum of two-feature steps, so its further st
 pairwise interactions; the free trees add whatever is beyond pairs. Of the gap from the
 smooth GLM (0.5920) to the free trees (0.5724), shapes are about a fifth, pairs about a
 half, and higher-order structure about a quarter. The GLM's one hand-picked interaction
-took back a fifteenth of the pairs step, so the next glass-box question is which pairs, in
-order; `docs/research.md` has the ladder on all three datasets.
+took back a fifteenth of the pairs step. The Residuals tab then ranks every pair of
+features by the deviance its A/E grid explains beyond the one-way views, and
+`glm_interactions` is the smooth GLM plus the top three (vehicle brand by vehicle age, fuel
+by vehicle age, region by driver age, each a spline with one curve per level): it takes
+back over half the pairs step and overtakes the additive trees, still a table of
+relativities with a balance of 1.0000, at the price of a Gini a little lower and a long
+fit. `docs/research.md` has the ladder and the candidates on all three datasets.
 
 **French motor claim severity** (freMTPL2sev, 24,944 policies with claims, gamma, weight =
 claim count): `uv run glasshouse bench fremtpl2_sev`.
@@ -160,7 +165,9 @@ factor="workingday")`): the commute peaks the nets found, as a rating table, in 
 seconds, closing most of the gap to the tree. The ladder says why that one term does so
 much: trees held to depth one gain almost nothing on the GLM (its splines already hold the
 shapes), trees of depth two take the whole gap and beat the free trees, so on this data the
-gap is pairwise interactions and nothing else.
+gap is pairwise interactions and nothing else. The Residuals tab's candidates table would
+have named the term without a net: on the plain GLM, hour by working day scores 19.6 where
+the next pair scores 1.6, and after the term is added it leaves the table.
 
 **Telco customer churn** (7,043 customers, 26.5% churn, logistic, splined logistic and
 lasso logistic on fifteen one-hot factors, stratified 5-fold): `uv run glasshouse bench

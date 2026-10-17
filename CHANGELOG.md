@@ -5,6 +5,15 @@ All notable changes, newest first. Pre-1.0: minor versions may break the API; th
 ## Unreleased
 
 ### Added
+- `residuals.interaction_strength` and `rank_pairs`, and a `pairs_ranked` list on every
+  residual entry of the report: the deviance per unit weight a pair's A/E grid explains
+  beyond its two one-way views (iterative proportional fitting of the model's expected
+  totals to the actual margins, then the Poisson deviance of the cells), biggest first. It
+  is the most a perfect `a × b` term could remove, on the scorecard's deviance scale for a
+  frequency model; golden-tested against statsmodels. The Residuals tab lists the candidates
+  with their share of the model's deviance and opens the heatmap on the top pair;
+  `report.md` names the three strongest per model. The motor frequency and bike sharing
+  recipes profile every column so every pair is ranked.
 - `LightGBM(max_depth=...)`, and two constrained rows on motor frequency, motor severity
   and bike sharing: `lightgbm_additive` (depth 1, a sum of one-feature steps, no
   interaction) and `lightgbm_pairs` (depth 2, a sum of two-feature steps). Next to the free

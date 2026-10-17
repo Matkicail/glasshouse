@@ -209,127 +209,127 @@
   {
    "label": "glm_poisson",
    "fold": 0,
-   "seconds": 0.254
+   "seconds": 0.338
   },
   {
    "label": "glm_poisson",
    "fold": 1,
-   "seconds": 0.193
+   "seconds": 0.319
   },
   {
    "label": "glm_poisson",
    "fold": 2,
-   "seconds": 0.219
+   "seconds": 0.304
   },
   {
    "label": "glm_poisson",
-   "fold": 3,
-   "seconds": 0.223
-  },
-  {
-   "label": "glm_poisson",
-   "fold": 4,
-   "seconds": 0.231
-  },
-  {
-   "label": "glm_interaction",
-   "fold": 0,
-   "seconds": 0.308
-  },
-  {
-   "label": "glm_interaction",
-   "fold": 1,
-   "seconds": 0.317
-  },
-  {
-   "label": "glm_interaction",
-   "fold": 2,
-   "seconds": 0.323
-  },
-  {
-   "label": "glm_interaction",
    "fold": 3,
    "seconds": 0.316
   },
   {
+   "label": "glm_poisson",
+   "fold": 4,
+   "seconds": 0.324
+  },
+  {
+   "label": "glm_interaction",
+   "fold": 0,
+   "seconds": 0.452
+  },
+  {
+   "label": "glm_interaction",
+   "fold": 1,
+   "seconds": 0.476
+  },
+  {
+   "label": "glm_interaction",
+   "fold": 2,
+   "seconds": 0.474
+  },
+  {
+   "label": "glm_interaction",
+   "fold": 3,
+   "seconds": 0.477
+  },
+  {
    "label": "glm_interaction",
    "fold": 4,
-   "seconds": 0.329
+   "seconds": 0.491
   },
   {
    "label": "lightgbm_additive",
    "fold": 0,
-   "seconds": 6.256
+   "seconds": 7.022
   },
   {
    "label": "lightgbm_additive",
    "fold": 1,
-   "seconds": 2.02
+   "seconds": 3.285
   },
   {
    "label": "lightgbm_additive",
    "fold": 2,
-   "seconds": 1.613
+   "seconds": 2.665
   },
   {
    "label": "lightgbm_additive",
    "fold": 3,
-   "seconds": 0.868
+   "seconds": 1.378
   },
   {
    "label": "lightgbm_additive",
    "fold": 4,
-   "seconds": 1.703
+   "seconds": 2.796
   },
   {
    "label": "lightgbm_pairs",
    "fold": 0,
-   "seconds": 1.051
+   "seconds": 1.717
   },
   {
    "label": "lightgbm_pairs",
    "fold": 1,
-   "seconds": 1.187
+   "seconds": 1.965
   },
   {
    "label": "lightgbm_pairs",
    "fold": 2,
-   "seconds": 1.702
+   "seconds": 2.784
   },
   {
    "label": "lightgbm_pairs",
    "fold": 3,
-   "seconds": 1.849
+   "seconds": 2.912
   },
   {
    "label": "lightgbm_pairs",
    "fold": 4,
-   "seconds": 1.947
+   "seconds": 3.238
   },
   {
    "label": "lightgbm",
    "fold": 0,
-   "seconds": 1.03
+   "seconds": 1.664
   },
   {
    "label": "lightgbm",
    "fold": 1,
-   "seconds": 1.153
+   "seconds": 1.851
   },
   {
    "label": "lightgbm",
    "fold": 2,
-   "seconds": 2.149
+   "seconds": 3.472
   },
   {
    "label": "lightgbm",
    "fold": 3,
-   "seconds": 2.245
+   "seconds": 3.59
   },
   {
    "label": "lightgbm",
    "fold": 4,
-   "seconds": 1.745
+   "seconds": 2.754
   }
  ],
  "ladder": [

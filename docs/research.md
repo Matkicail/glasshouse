@@ -31,6 +31,14 @@ be, nothing else.
 The go/no-go sits at each step. A model that fails it stays a notebook, and the report
 shows why.
 
+One reading of the rule learned on the way: the calibration half cannot be the balance row
+alone. A net re-balanced after training ties the GLM at 1.0000 by construction and will
+never beat it, so "calibration" here means calibration by segment, the one-way A/E tables
+and the two-feature grids on the Residuals tab, where a model that has found an interaction
+shows a grid gone flat and one that has not shows the coloured corner. The ranked
+candidates table under the grids puts a number on that: a model that clears the fence
+should leave less there than the GLM did.
+
 ## CANN: the combined actuarial neural network
 
 Wüthrich and Merz's idea (Schelldorfer & Wüthrich, "Nesting classical actuarial models into
@@ -516,6 +524,81 @@ on motor frequency, all of it on bike sharing. That is the case for the next pie
 glass-box work, ranking the feature pairs from the two-way A/E grid and adding the top few
 as interaction terms, before any further neural model. It also bounds that work: on motor
 frequency a GLM with every pair would still sit a quarter of the gap above the free trees.
+
+## Interaction candidates: which pairs, in order
+
+The ladder said pairs; this names them. Every residual entry of the report now carries
+`pairs_ranked`: for each pair of profiled features, the deviance per unit weight its A/E
+grid explains beyond the two one-way views. The model's expected totals per cell are
+rescaled row by row and column by column until the margins match the actual totals, and
+what is left is the Poisson deviance of the cells against that fit, divided by the total
+weight (`docs/methods.md` has the formula; statsmodels is the golden reference). It is the
+most a perfect `a × b` term could remove on those rows, on the scorecard's deviance scale
+for a frequency model. The Residuals tab lists it per model and opens the heatmap on the top
+pair; `report.md` names the three strongest per model. The motor frequency and bike sharing
+recipes now profile every column, so every pair is ranked. Run on 2026-10-17.
+
+**The statistic checks itself on bike sharing.** On the plain GLM, hour by working day
+scores 19.6; the next pair, working day by temperature, scores 1.6. After the one term is
+added, the pair leaves the table and the top is hour by temperature at 1.4, then season by
+hour at 1.1, on a model whose remaining gap to the depth-two trees is 4.0. The trees held to
+depth one show the same top pair at 19.7 (they cannot hold it either); the depth-two trees
+leave nothing above 0.7. The number found the term the research track needed three
+networks to find, from the GLM's own residuals.
+
+**Motor frequency: what the smooth GLM most needs.** Its top pairs, and the trees' for
+comparison (deviance per unit of exposure; the smooth GLM's deviance is 0.5920):
+
+| pair | glm_smooth | glm_interactions | lightgbm_pairs | lightgbm |
+|---|---|---|---|---|
+| VehBrand × VehAge | **0.00194** | added | 0.00040 | 0.00028 |
+| VehGas × VehAge | **0.00152** | added | | |
+| Region × DrivAge | **0.00120** | added | 0.00067 | 0.00050 |
+| Region × LogDensity | 0.00107 | 0.00109 | 0.00055 | 0.00056 |
+| VehAge × VehPower | 0.00105 | 0.00108 | 0.00040 | |
+| VehBrand × Region | 0.00105 | 0.00104 | 0.00064 | 0.00046 |
+| VehBrand × BonusMalus | 0.00094 | **0.00128** | | |
+| VehAge × BonusMalus | | **0.00117** | | |
+
+Two things to read. The hand-picked DrivAge by BonusMalus term of the earlier sessions,
+chosen from the heatmaps by eye, is not in the smooth GLM's top eight: the eye picked the
+most legible grid, not the heaviest. And the trees' columns are the noise floor: with a
+hundred cells and about a hundred and thirty thousand held-out policies per fold, a grid
+reads 0.0003 to 0.0006 with nothing in it, so a candidate is real when it clears about
+0.001 and the GLM has eight of those.
+
+**`glm_interactions`: the top three as terms.** Each of the three is a factor by a number,
+so each is `Interaction(df=4, factor=...)`: a four-column spline of the number with one
+curve per level of the factor, 40, 4 and 84 columns, unpenalised, on top of the smooth GLM.
+
+| rung | model | deviance | gini | balance | fit, all folds |
+|---|---|---|---|---|---|
+| | glm_smooth | 0.59198 ± 0.0021 | 0.4894 ± 0.016 | 1.0000 ± 0.0033 | 168 s |
+| | glm_interaction (one pair, by eye) | 0.59128 ± 0.0021 | 0.4910 ± 0.016 | 0.9999 ± 0.0038 | 218 s |
+| | glm_interactions (three pairs, ranked) | **0.58628 ± 0.0021** | 0.4830 ± 0.022 | **1.0000 ± 0.0028** | 963 s |
+| | lightgbm_additive | 0.58766 ± 0.0024 | 0.4964 ± 0.016 | 1.0011 ± 0.0031 | 193 s |
+| | lightgbm_pairs | 0.57751 ± 0.0025 | 0.5152 ± 0.023 | 1.0011 ± 0.0037 | 44 s |
+| | lightgbm | 0.57240 ± 0.0026 | 0.5351 ± 0.021 | 0.9991 ± 0.0037 | 58 s |
+
+Three ranked pairs take the deviance down 0.0057, eight times what the one pair chosen by
+eye took, which is 29 % of the whole GLM-to-tree gap and 56 % of the pairs step, and the
+row overtakes the additive trees. Its balance is exactly 1 and every term is a curve on the
+Model tab, one per brand, per fuel, per region. Two costs, both honest. The Gini is a little
+lower (0.483 against 0.489, within a fold spread): 84 unpenalised columns for region by
+driver age let thin regions wiggle, which the ranking does not punish and a held-out Gini
+does; a group-lasso penalty on the interaction blocks, or a lower `df`, is the obvious next
+knob. And the fit took sixteen minutes, because the GCV sweep for the four smooths runs the
+whole 128-column-wider design at every candidate lambda; pinning the smooths' lambdas from
+the plain smooth GLM would cut it to the cost of one fit. After the three terms, the table's
+top is a new set (brand by bonus-malus, vehicle age by bonus-malus, region by density) at
+about 0.0011 to 0.0013 each, so a fourth to sixth term would each be worth about a tenth of
+what the first three were.
+
+**What this decides.** With pairs ranked, the glass-box route is explicit: read the table,
+add the top term, re-run, repeat until the top of the table is at the noise floor or the
+Gini says stop. On motor frequency three steps of that took back more than half of what
+pairwise trees know; the quarter of the gap beyond pairs stays with the trees, as the ladder
+said it would. The research track's nets are not needed for any of it.
 
 ## Save and load
 
