@@ -242,9 +242,12 @@ class BenchResult:
         out = Path(directory)
         out.mkdir(parents=True, exist_ok=True)
         doc = self.to_dict()
-        (out / "report.json").write_text(json.dumps(doc, indent=1))
-        (out / "report.md").write_text(self.to_markdown() + "\n")
-        (out / "pinned.json").write_text(json.dumps(doc["bench"], indent=1) + "\n")
+        # UTF-8 by name: report.md carries ± and →, and Windows' default is cp1252
+        (out / "report.json").write_text(json.dumps(doc, indent=1), encoding="utf-8")
+        (out / "report.md").write_text(self.to_markdown() + "\n", encoding="utf-8")
+        (out / "pinned.json").write_text(
+            json.dumps(doc["bench"], indent=1) + "\n", encoding="utf-8"
+        )
         report_mod.to_html(doc, out / "report.html")
         return out
 
